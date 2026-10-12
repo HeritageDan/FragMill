@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-navy: #1F3864;
+    --color-navy-dark: #142543;
+    --color-navy-light: #2a4c87;
+    --color-blue: #2E75B6;
+    --color-blue-light: #D6E4F0;
+    --color-blue-hover: #235d94;
+  }
+
+  body {
+    @apply antialiased text-slate-800 bg-slate-50 font-sans;
+  }
+
+  /* High contrast outdoor mode */
+  body.outdoor-mode {
+    @apply bg-black text-white font-bold;
+  }
+  body.outdoor-mode .card,
+  body.outdoor-mode .bg-white,
+  body.outdoor-mode .bg-slate-50,
+  body.outdoor-mode .bg-slate-100 {
+    background-color: #0f172a !important;
+    border-color: #38bdf8 !important;
+    color: #ffffff !important;
+  }
+  body.outdoor-mode .text-slate-600,
+  body.outdoor-mode .text-slate-500,
+  body.outdoor-mode .text-slate-400 {
+    color: #e2e8f0 !important;
+  }
+  body.outdoor-mode button {
+    border: 2px solid #38bdf8 !important;
+  }
+
+  /* Dark mode */
+  body.dark {
+    @apply bg-slate-950 text-slate-100;
+  }
+  body.dark .bg-white {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+  }
+  body.dark .border-slate-200 {
+    border-color: #334155 !important;
+  }
+  body.dark .text-slate-700,
+  body.dark .text-slate-800 {
+    color: #f1f5f9 !important;
+  }
+  body.dark .text-slate-600,
+  body.dark .text-slate-500 {
+    color: #94a3b8 !important;
+  }
+  body.dark .bg-slate-50,
+  body.dark .bg-slate-100 {
+    background-color: #1e293b !important;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
