@@ -131,3 +131,5 @@ FragMill initializes automatically with rich, real-world data from an artisanal 
 ## Licence & Citation
 
 FragMill is released for educational and open research purposes supporting graduation research on blast fragmentation, comminution efficiency, and gold recovery in artisanal and small-scale mining.
+#   F r a g M i l l  
+ 
