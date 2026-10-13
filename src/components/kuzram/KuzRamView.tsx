@@ -8,6 +8,7 @@ import {
   DEFAULT_ROCK_TABLES,
 } from '../../services/kuzram';
 import { TornadoSensitivityChart, CumulativeDistributionChart } from '../charts/FragmentationCharts';
+import { t } from '../../i18n';
 import {
   Sparkles,
   Sliders,
@@ -95,16 +96,16 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) =
           <Compass className="w-6 h-6 text-blue-600" />
           <div>
             <h2 className="text-lg font-black text-slate-900">
-              {lang === 'fr' ? 'Modèle Kuz-Ram & Étalonnage Bayésien' : 'Cunningham Kuz-Ram Blast Model & Bayesian Calibration'}
+              {t('kuzRamTitle', lang)}
             </h2>
             <p className="text-xs text-slate-500">
-              Standard engineering blast fragmentation prediction and Bayesian MCMC site-specific calibration
+              {t('kuzRamSubtitle', lang)}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-600">Select Blast:</span>
+          <span className="text-xs font-semibold text-slate-600">{t('selectBlast', lang)}</span>
           <select
             value={selectedBlastId}
             onChange={(e) => setSelectedBlastId(e.target.value)}
@@ -123,10 +124,8 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) =
       <div className="p-3.5 bg-amber-500/10 border-2 border-amber-500/30 rounded-xl flex items-start gap-3">
         <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
         <div className="text-xs text-amber-950 font-medium">
-          <span className="font-bold uppercase tracking-wider block mb-0.5">Mandatory Mining Safety Notice:</span>
-          Decision support only. Blast design changes must be reviewed and approved by a qualified blasting engineer and
-          comply with local regulations, pit stability constraints, and site safety rules. Never exceed statutory vibration,
-          flyrock, or explosive storage limits.
+          <span className="font-bold uppercase tracking-wider block mb-0.5">{t('safetyNoticeTitle', lang)}</span>
+          {t('safetyNoticeText', lang)}
         </div>
       </div>
 
@@ -136,62 +135,62 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) =
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Cunningham (1987) Rock Factor Tables
+              {t('cunninghamTablesTitle', lang)}
             </h3>
             <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-black text-xs">
-              Rock Factor A = {calculatedA}
+              {t('rockFactorA', lang)} = {calculatedA}
             </span>
           </div>
 
           <div className="space-y-3 text-xs">
             <div>
               <label className="block text-slate-600 font-semibold mb-1">
-                Rock Mass Description (RMD):
+                {t('rmdLabel', lang)}
               </label>
               <select
                 value={tables.rmd}
                 onChange={(e) => setTables({ ...tables, rmd: parseInt(e.target.value) })}
                 className="w-full p-2 border border-slate-300 rounded-lg bg-white text-slate-800"
               >
-                <option value={10}>Powdery / Friable (10)</option>
-                <option value={20}>Blocky / Closely Jointed (20)</option>
-                <option value={50}>Massive / Tight Joints (50)</option>
+                <option value={10}>{t('rmdPowdery', lang)}</option>
+                <option value={20}>{t('rmdBlocky', lang)}</option>
+                <option value={50}>{t('rmdMassive', lang)}</option>
               </select>
             </div>
 
             <div>
               <label className="block text-slate-600 font-semibold mb-1">
-                Joint Spacing Factor (JF):
+                {t('jfLabel', lang)}
               </label>
               <select
                 value={tables.jf}
                 onChange={(e) => setTables({ ...tables, jf: parseInt(e.target.value) })}
                 className="w-full p-2 border border-slate-300 rounded-lg bg-white text-slate-800"
               >
-                <option value={10}>Vertical Joints &lt; 0.1 m (10)</option>
-                <option value={20}>Joint Spacing 0.1 to 1.0 m (20)</option>
-                <option value={50}>Joint Spacing &gt; 1.0 m (50)</option>
+                <option value={10}>{t('jfTight', lang)}</option>
+                <option value={20}>{t('jfMedium', lang)}</option>
+                <option value={50}>{t('jfWide', lang)}</option>
               </select>
             </div>
 
             <div>
               <label className="block text-slate-600 font-semibold mb-1">
-                Joint Face Orientation (JFO):
+                {t('jfoLabel', lang)}
               </label>
               <select
                 value={tables.jfo}
                 onChange={(e) => setTables({ ...tables, jfo: parseInt(e.target.value) })}
                 className="w-full p-2 border border-slate-300 rounded-lg bg-white text-slate-800"
               >
-                <option value={20}>Dip Out of Face - Unfavourable (20)</option>
-                <option value={30}>Strike Perpendicular to Face (30)</option>
-                <option value={40}>Dip Into Face - Favourable (40)</option>
+                <option value={20}>{t('jfoDipOut', lang)}</option>
+                <option value={30}>{t('jfoPerp', lang)}</option>
+                <option value={40}>{t('jfoDipIn', lang)}</option>
               </select>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-slate-600 font-semibold mb-1">Density (t/m³)</label>
+                <label className="block text-slate-600 font-semibold mb-1">{t('densityLabel', lang)}</label>
                 <input
                   type="number"
                   step="0.05"
@@ -201,7 +200,7 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) =
                 />
               </div>
               <div>
-                <label className="block text-slate-600 font-semibold mb-1">Hardness HF (E/30)</label>
+                <label className="block text-slate-600 font-semibold mb-1">{t('hardnessLabel', lang)}</label>
                 <input
                   type="number"
                   step="1"
@@ -214,18 +213,18 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) =
           </div>
 
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
-            <span className="font-bold text-slate-700 block">Kuz-Ram Analytical Output:</span>
+            <span className="font-bold text-slate-700 block">{t('analyticalOutputTitle', lang)}</span>
             <div className="grid grid-cols-3 gap-2 text-center pt-1">
               <div className="p-1.5 bg-white rounded border border-slate-200">
-                <span className="text-[10px] text-slate-500 block">Mean X50</span>
+                <span className="text-[10px] text-slate-500 block">{t('meanX50', lang)}</span>
                 <span className="font-bold text-slate-900">{currentKuzRam.meanSizeX50Mm} mm</span>
               </div>
               <div className="p-1.5 bg-white rounded border border-slate-200">
-                <span className="text-[10px] text-slate-500 block">Index n</span>
+                <span className="text-[10px] text-slate-500 block">{t('indexN', lang)}</span>
                 <span className="font-bold text-slate-900">{currentKuzRam.uniformityIndexN}</span>
               </div>
               <div className="p-1.5 bg-white rounded border border-slate-200">
-                <span className="text-[10px] text-slate-500 block">Predicted P80</span>
+                <span className="text-[10px] text-slate-500 block">{t('predictedP80', lang)}</span>
                 <span className="font-bold text-slate-900">{currentKuzRam.p80Mm} mm</span>
               </div>
             </div>
@@ -238,7 +237,8 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) =
             <CumulativeDistributionChart
               metrics={selectedBlast.images[0].segmentationRuns[0].metrics}
               kuzRam={currentKuzRam}
-              title="Kuz-Ram Theoretical vs Image Measured Fragmentation Curve"
+              title={lang === 'fr' ? 'Courbe Théorique Kuz-Ram vs Granulométrie Mesurée' : 'Kuz-Ram Theoretical vs Image Measured Fragmentation Curve'}
+              lang={lang}
             />
           )}
         </div>
@@ -249,43 +249,43 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) =
         <div className="flex flex-wrap justify-between items-center gap-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-purple-600" /> Bayesian Metropolis-Hastings MCMC Rock Calibration
+              <Sparkles className="w-4 h-4 text-purple-600" /> {t('bayesianTitle', lang)}
             </h3>
             <p className="text-xs text-slate-500">
-              Calibrate site rock factor A using historical photographic X50 measurements across all monitored blasts
+              {t('bayesianSubtitle', lang)}
             </p>
           </div>
 
           <button
             onClick={handleRunCalibration}
             disabled={isCalibrating}
-            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer"
           >
             {isCalibrating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {isCalibrating ? 'Sampling MCMC Posterior...' : 'Run Bayesian MCMC Calibration'}
+            {isCalibrating ? t('samplingMcmc', lang) : t('runBayesianBtn', lang)}
           </button>
         </div>
 
         {bayesianResult && (
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 p-4 bg-purple-50/50 border border-purple-100 rounded-xl">
             <div className="bg-white p-3 rounded-lg border border-purple-200 text-center">
-              <span className="text-[10px] text-slate-500 font-semibold block">Prior Mean A</span>
+              <span className="text-[10px] text-slate-500 font-semibold block">{t('priorMeanA', lang)}</span>
               <span className="text-base font-bold text-slate-800">{bayesianResult.priorMeanA} ± {bayesianResult.priorStdA}</span>
             </div>
             <div className="bg-white p-3 rounded-lg border border-purple-200 text-center">
-              <span className="text-[10px] text-purple-700 font-semibold block">Calibrated Posterior Mean A</span>
+              <span className="text-[10px] text-purple-700 font-semibold block">{t('calibratedPosteriorA', lang)}</span>
               <span className="text-base font-black text-purple-950">{bayesianResult.posteriorMeanA} ± {bayesianResult.posteriorStdA}</span>
             </div>
             <div className="bg-white p-3 rounded-lg border border-purple-200 text-center">
-              <span className="text-[10px] text-slate-500 font-semibold block">95% Credible Interval</span>
+              <span className="text-[10px] text-slate-500 font-semibold block">{t('credibleInterval95', lang)}</span>
               <span className="text-base font-bold text-slate-800">
                 [{bayesianResult.credibleInterval95A[0]} - {bayesianResult.credibleInterval95A[1]}]
               </span>
             </div>
             <div className="bg-white p-3 rounded-lg border border-purple-200 text-center">
-              <span className="text-[10px] text-slate-500 font-semibold block">MCMC Acceptance Rate</span>
+              <span className="text-[10px] text-slate-500 font-semibold block">{t('acceptanceRate', lang)}</span>
               <span className="text-base font-bold text-emerald-600">
-                {(bayesianResult.acceptanceRate * 100).toFixed(0)}% (Target: 25-50%)
+                {(bayesianResult.acceptanceRate * 100).toFixed(0)}% {t('targetRate', lang)}
               </span>
             </div>
           </div>
@@ -297,16 +297,16 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) =
         <div className="flex flex-wrap justify-between items-center gap-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-blue-600" /> Blast Advisor: Parameter Search & Tornado Sensitivity
+              <Sliders className="w-4 h-4 text-blue-600" /> {t('blastAdvisorTitle', lang)}
             </h3>
             <p className="text-xs text-slate-500">
-              Optimize Burden, Spacing, and Stemming within safe bounds to achieve target crusher feed size
+              {t('blastAdvisorSubtitle', lang)}
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              Target P80 (mm):
+              {t('targetP80Label', lang)}
               <input
                 type="number"
                 value={targetP80}
@@ -316,9 +316,9 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) =
             </label>
             <button
               onClick={handleRunAdvisor}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer"
             >
-              Optimize Pattern
+              {t('optimizePatternBtn', lang)}
             </button>
           </div>
         </div>
@@ -327,35 +327,35 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) =
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
             <div className="lg:col-span-5 bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
-                Recommended Blast Design (Target P80: {targetP80} mm)
+                {t('recommendedDesignTitle', lang)} ({t('targetP80Label', lang)} {targetP80} mm)
               </span>
 
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between py-1 border-b border-slate-200">
-                  <span className="text-slate-600">Recommended Burden B:</span>
+                  <span className="text-slate-600">{t('recBurden', lang)}</span>
                   <span className="font-bold text-slate-900">{advisorResult.recommendedBurden} m</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-200">
-                  <span className="text-slate-600">Recommended Spacing S:</span>
+                  <span className="text-slate-600">{t('recSpacing', lang)}</span>
                   <span className="font-bold text-slate-900">{advisorResult.recommendedSpacing} m</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-200">
-                  <span className="text-slate-600">Recommended Stemming T:</span>
+                  <span className="text-slate-600">{t('recStemming', lang)}</span>
                   <span className="font-bold text-slate-900">{advisorResult.recommendedStemming} m</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-200">
-                  <span className="text-slate-600">Target Powder Factor:</span>
+                  <span className="text-slate-600">{t('targetPowderFactor', lang)}</span>
                   <span className="font-bold text-slate-900">{advisorResult.recommendedPowderFactor} kg/m³</span>
                 </div>
                 <div className="flex justify-between py-1.5 bg-blue-100/60 px-2 rounded font-bold text-blue-950">
-                  <span>Predicted P80 Outcome:</span>
+                  <span>{t('predictedP80Outcome', lang)}</span>
                   <span>{advisorResult.predictedP80Mm} mm [CI: {advisorResult.predictedP80CI[0]}-{advisorResult.predictedP80CI[1]}]</span>
                 </div>
               </div>
             </div>
 
             <div className="lg:col-span-7">
-              <TornadoSensitivityChart sensitivity={advisorResult.sensitivity} />
+              <TornadoSensitivityChart sensitivity={advisorResult.sensitivity} lang={lang} />
             </div>
           </div>
         )}

@@ -83,6 +83,7 @@ export interface QualityCheck {
   contrastStatus: 'pass' | 'warn' | 'fail';
   resolutionStatus: 'pass' | 'warn' | 'fail';
   scaleMarkerStatus: 'pass' | 'warn' | 'fail';
+  isArtificialGraphic?: boolean;
   advice: string[];
 }
 
@@ -114,6 +115,9 @@ export interface Fragment {
   volumeMm3: number; // Shape factor volume, e.g. pi/6 * d^3
   confidence: number;
   isFines?: boolean;
+  depthMm?: number;
+  thicknessMm?: number; // C-axis (triaxial ellipsoid: A = maxFeret, B = minFeret, C = thickness)
+  trueVolume3DMm3?: number; // (pi / 6) * A * B * C true 3D particle volume
 }
 
 export interface CumulativePoint {
@@ -134,6 +138,51 @@ export interface FitParametersRosinRammler {
   n: number;
   r2: number;
   rmse: number;
+}
+
+// PROPOSAL 1: 3D Depth & Stereology
+export interface StereoPair {
+  isStereo: boolean;
+  baselineMm: number;
+  leftDataUrl?: string;
+  rightDataUrl?: string;
+  convergenceAngleDeg?: number;
+}
+
+// PROPOSAL 3: Live Camera Orientation HUD
+export interface CameraOrientation {
+  pitchDeg: number;
+  rollDeg: number;
+  yawDeg?: number;
+  deviationDeg: number;
+  isLevelAndPerpendicular: boolean;
+}
+
+// PROPOSAL 4: Mine-to-Mill Economic & Carbon Parameters
+export interface EconomicParameters {
+  drillingCostPerMeter: number;
+  explosiveCostPerKg: number;
+  secondaryBreakingCostPerBoulder: number;
+  crushingEnergyCostPerKwh: number;
+  millingEnergyCostPerKwh: number;
+  dieselCostPerLiter: number;
+}
+
+export interface EconomicEvaluation {
+  drillingCostPerTon: number;
+  blastingCostPerTon: number;
+  secondaryBreakingCostPerTon: number;
+  crushingCostPerTon: number;
+  millingCostPerTon: number;
+  totalCostPerTon: number;
+  optimalP80Mm: number;
+  potentialSavingsPerTon: number;
+  carbonEmissions: {
+    scope1ExplosivesKgCo2ePerTon: number;
+    scope1DieselKgCo2ePerTon: number;
+    scope2ElectricityKgCo2ePerTon: number;
+    totalKgCo2ePerTon: number;
+  };
 }
 
 export interface BootstrapConfidenceInterval {
@@ -163,6 +212,16 @@ export interface FragmentationMetrics {
   rosinRammlerFit?: FitParametersRosinRammler;
   rawCurve: CumulativePoint[];
   correctedCurve: CumulativePoint[];
+  stereologicalCorrectionApplied?: boolean;
+  true3D_P50?: number;
+  true3D_P80?: number;
+  activeDistributionModel?: 'rosin_rammler' | 'swebrec' | 'hybrid';
+  swebrecExtrapolatedFines?: {
+    cutoffApertureMm: number;
+    finesPercentSwebrec: number;
+    finesPercentRosinRammler: number;
+    bParameter: number;
+  };
 }
 
 export interface ClassicalEngineParams {
@@ -212,6 +271,7 @@ export interface SegmentationRun {
     threshold?: string;
     distance?: string;
     markers?: string;
+    depthMap?: string;
     overlay?: string;
   };
 }
@@ -378,6 +438,10 @@ export interface Blast {
   images: ImageRecord[];
   groundTruth?: GroundTruth;
   millBatch?: MillBatch;
+  gpsCoordinates?: { lat: number; lng: number; altitudeM: number };
+  benchElevation?: number; // e.g., 1240 RL
+  polygonCoords?: [number, number][]; // 2D bench polygon in local meters [x, y]
+  economicParams?: EconomicParameters;
   createdAt: number;
   updatedAt: number;
 }
@@ -388,6 +452,7 @@ export interface AppSettings {
   unit: 'mm' | 'cm' | 'in';
   mode: 'field' | 'expert';
   defaultSizeDefinition: SizeDefinition;
+  defaultCurveModel?: 'rosin_rammler' | 'swebrec';
   minFragmentCutoffPx: number;
   oversizeThresholdMm: number;
   finesThresholdMm: number;
@@ -397,6 +462,7 @@ export interface AppSettings {
   geminiModelFlash: string;
   geminiModelPro: string;
   validationErrorThresholdPercent: number; // default 15%
+  economicParams?: EconomicParameters;
 }
 
 export interface GeminiQualityResponse {

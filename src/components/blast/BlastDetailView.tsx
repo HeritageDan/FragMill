@@ -9,27 +9,44 @@ import type {
 } from '../../types';
 import { CumulativeDistributionChart } from '../charts/FragmentationCharts';
 import { ManualEditor } from '../segmentation/ManualEditor';
-import { runClassicalSegmentation, DEFAULT_CLASSICAL_PARAMS } from '../../services/imageProcessing';
+import {
+  runClassicalSegmentation,
+  DEFAULT_CLASSICAL_PARAMS,
+  analyzeImageQuality,
+  calibrateTwoPoint,
+} from '../../services/imageProcessing';
 import { runAiSegmentation, runHybridSegmentation } from '../../services/aiSegmentation';
 import { computeFragmentationMetrics } from '../../services/statistics';
 import { generateBlastPdfReport, exportFragmentsCsv, exportBlastWorkbookXlsx } from '../../services/export';
+import { createSyntheticMuckpileDataUrl } from '../../db/seedData';
+import { t } from '../../i18n';
 import {
   FileDown,
   Edit3,
   Layers,
   Sparkles,
   Sliders,
+  Ruler,
+  RefreshCw,
+  Camera,
+  ImagePlus,
+  Save,
   CheckCircle2,
   AlertTriangle,
-  Ruler,
-  Maximize2,
-  RefreshCw,
+  Shield,
+  Trash2,
+  Plus,
+  Minus,
+  Grid,
 } from 'lucide-react';
+import { CameraInclinometerModal } from '../camera/CameraInclinometerModal';
 
 interface BlastDetailViewProps {
   blast: Blast;
   settings: AppSettings;
   onUpdateBlast: (updated: Blast) => void;
+  onDeleteBlast?: (blastId: string) => void;
+  onDeleteImage?: (imageId: string) => void;
   onSaveRun: (image: ImageRecord, run: SegmentationRun) => void;
   lang?: 'en' | 'fr';
 }
@@ -38,6 +55,8 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   blast,
   settings,
   onUpdateBlast,
+  onDeleteBlast,
+  onDeleteImage,
   onSaveRun,
   lang = 'en',
 }) => {
@@ -48,14 +67,199 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
   const [showManualEditor, setShowManualEditor] = useState(false);
-  const [activeStepTab, setActiveStepTab] = useState<'overlay' | 'grayscale' | 'clahe' | 'threshold' | 'distance' | 'markers'>('overlay');
+  const [showInclinometer, setShowInclinometer] = useState(false);
+  const [activeStepTab, setActiveStepTab] = useState<'overlay' | 'grayscale' | 'clahe' | 'threshold' | 'distance' | 'markers' | 'depthMap'>('overlay');
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
+
+  const handleInclinometerCapture = async (dataUrl: string) => {
+    const img = new Image();
+    img.src = dataUrl;
+    img.onload = async () => {
+      const qc = await analyzeImageQuality(img);
+      const imgId = `img-${Date.now()}`;
+      const newImage: ImageRecord = {
+        id: imgId,
+        blastId: blast.id,
+        dataUrl,
+        filename: `aligned_capture_${Date.now()}.jpg`,
+        zone: 'middle',
+        lighting: 'sun',
+        time: new Date().toLocaleTimeString(),
+        hasScaleMarker: true,
+        qualityCheck: qc,
+        calibration: {
+          method: 'two_point',
+          points: [{ x: 100, y: 100 }, { x: 300, y: 100 }],
+          realWorldDistanceMm: 500,
+          pxPerMm: 0.4,
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      const updatedBlast = {
+        ...blast,
+        images: [newImage, ...blast.images],
+      };
+      onUpdateBlast(updatedBlast);
+      setSelectedImageId(imgId);
+    };
+  };
+
+  // Editable blast parameters state
+  const [benchHeight, setBenchHeight] = useState(blast.parameters.benchHeight);
+  const [holeDiameter, setHoleDiameter] = useState(blast.parameters.holeDiameter);
+  const [holeDepth, setHoleDepth] = useState(blast.parameters.holeDepth || 6.8);
+  const [subdrill, setSubdrill] = useState(blast.parameters.subdrill || 0.8);
+  const [burden, setBurden] = useState(blast.parameters.burden);
+  const [spacing, setSpacing] = useState(blast.parameters.spacing);
+  const [stemmingLength, setStemmingLength] = useState(blast.parameters.stemmingLength);
+  const [numberOfHoles, setNumberOfHoles] = useState(blast.parameters.numberOfHoles || 30);
+  const [excludedHoles, setExcludedHoles] = useState<number[]>([]);
+  const [chargePerHole, setChargePerHole] = useState(blast.parameters.chargePerHole);
+  const [explosiveType, setExplosiveType] = useState(blast.parameters.explosiveType);
+  const [rockType, setRockType] = useState(blast.rockMass.rockType);
+  const [density, setDensity] = useState(blast.rockMass.density);
+  const [meanJointSpacing, setMeanJointSpacing] = useState(blast.rockMass.meanJointSpacing);
+  const [jointOrientation, setJointOrientation] = useState(blast.rockMass.jointOrientation);
 
   const selectedImage = blast.images.find((i) => i.id === selectedImageId) || blast.images[0];
   const activeRun = selectedImage
-    ? (blast as any).segmentationRuns?.find((r: any) => r.imageId === selectedImage.id) ||
-      (selectedImage as any).segmentationRuns?.[0] ||
-      null
+    ? (selectedImage as any).segmentationRuns?.[0] || null
     : null;
+
+  // Handle saving blast parameter edits
+  const handleSaveBlastParameters = () => {
+    const updated: Blast = {
+      ...blast,
+      parameters: {
+        ...blast.parameters,
+        benchHeight,
+        holeDiameter,
+        holeDepth,
+        subdrill,
+        burden,
+        spacing,
+        stemmingLength,
+        numberOfHoles,
+        chargePerHole,
+        explosiveType,
+      },
+      rockMass: {
+        ...blast.rockMass,
+        rockType,
+        density,
+        meanJointSpacing,
+        jointOrientation,
+      },
+      updatedAt: Date.now(),
+    };
+    onUpdateBlast(updated);
+    setSaveSuccessMsg(true);
+    setTimeout(() => setSaveSuccessMsg(false), 2500);
+  };
+
+  // Handle uploading a photo for this blast
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target?.result as string;
+      const img = new Image();
+      img.src = dataUrl;
+      img.onload = async () => {
+        const qc = await analyzeImageQuality(img);
+        const imgId = `img-${Date.now()}`;
+        const newImage: ImageRecord = {
+          id: imgId,
+          blastId: blast.id,
+          dataUrl,
+          filename: file.name,
+          zone: 'middle',
+          lighting: 'sun',
+          time: new Date().toLocaleTimeString(),
+          hasScaleMarker: true,
+          qualityCheck: qc,
+          calibration: {
+            method: 'two_point',
+            points: [{ x: 100, y: 100 }, { x: 300, y: 100 }],
+            realWorldDistanceMm: 500,
+            pxPerMm: 0.4,
+          },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+
+        const updatedBlast = {
+          ...blast,
+          images: [newImage, ...blast.images],
+        };
+        onUpdateBlast(updatedBlast);
+        setSelectedImageId(imgId);
+      };
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Generate synthetic sample photo for rapid testing
+  const handleGenerateSamplePhoto = () => {
+    const syn = createSyntheticMuckpileDataUrl(800, 600, 1.0);
+    const imgId = `img-syn-${Date.now()}`;
+    const calib = calibrateTwoPoint({ x: 540, y: 550 }, { x: 740, y: 550 }, 500);
+    calib.pxPerMm = syn.pxPerMm;
+
+    const newImage: ImageRecord = {
+      id: imgId,
+      blastId: blast.id,
+      dataUrl: syn.dataUrl,
+      filename: `sample_muckpile_${blast.blastId}.jpg`,
+      zone: 'middle',
+      lighting: 'sun',
+      time: new Date().toLocaleTimeString(),
+      hasScaleMarker: true,
+      qualityCheck: {
+        blurScore: 480,
+        blurStatus: 'pass',
+        exposureStatus: 'pass',
+        contrastStatus: 'pass',
+        resolutionStatus: 'pass',
+        scaleMarkerStatus: 'pass',
+        advice: ['Optimal synthetic sample generated for testing.'],
+      },
+      calibration: calib,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    const metrics = computeFragmentationMetrics(
+      syn.fragments,
+      settings.defaultSizeDefinition,
+      settings.oversizeThresholdMm,
+      settings.finesThresholdMm
+    );
+
+    const run: SegmentationRun = {
+      id: `run-${Date.now()}`,
+      imageId: imgId,
+      engine: 'classical',
+      timestamp: Date.now(),
+      parameters: DEFAULT_CLASSICAL_PARAMS,
+      fragments: syn.fragments,
+      metrics,
+    };
+
+    newImage.segmentationRuns = [run];
+
+    const updatedBlast = {
+      ...blast,
+      images: [newImage, ...blast.images],
+    };
+    onUpdateBlast(updatedBlast);
+    onSaveRun(newImage, run);
+    setSelectedImageId(imgId);
+  };
 
   // Run selected engine
   const handleExecuteEngine = async (engine: EngineType) => {
@@ -77,12 +281,12 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
       let stepPreviews = undefined;
 
       if (engine === 'classical') {
-        setProgressMsg('Running Classical CLAHE & Watershed...');
+        setProgressMsg(lang === 'fr' ? 'Calcul CLAHE et Ligne de Partage...' : 'Running Classical CLAHE & Watershed...');
         const res = await runClassicalSegmentation(img, calib, DEFAULT_CLASSICAL_PARAMS);
         frags = res.fragments;
         stepPreviews = res.stepPreviews;
       } else if (engine === 'ai_sam') {
-        setProgressMsg('Running In-Browser SAM 2.1 Neural Network...');
+        setProgressMsg(lang === 'fr' ? 'Inférence Réseau Neuronal SAM 2.1...' : 'Running In-Browser SAM 2.1 Neural Network...');
         frags = await runAiSegmentation(
           img,
           calib,
@@ -98,7 +302,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
           (_, msg) => setProgressMsg(msg)
         );
       } else if (engine === 'hybrid') {
-        setProgressMsg('Running Hybrid (AI Seeds + Classical Fines)...');
+        setProgressMsg(lang === 'fr' ? 'Calcul Hybride (Semences IA + Fines Classiques)...' : 'Running Hybrid (AI Seeds + Classical Fines)...');
         const classicalRes = await runClassicalSegmentation(img, calib);
         const aiFrags = await runAiSegmentation(img, calib, {
           modelType: 'slimsam_int8',
@@ -137,6 +341,9 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
     };
   };
 
+  const holeVol = burden * spacing * benchHeight;
+  const computedPowderFactor = chargePerHole / Math.max(0.1, holeVol);
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Export Actions */}
@@ -145,7 +352,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-black text-slate-900">{blast.blastId}</h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
-              {blast.rockMass.rockType}
+              {rockType}
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -154,13 +361,28 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Add photo button */}
+          <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition">
+            <ImagePlus className="w-3.5 h-3.5 text-blue-600" />
+            <span>{t('takeOrUpload', lang)}</span>
+            <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+          </label>
+
+          <button
+            onClick={() => setShowInclinometer(true)}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow transition"
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span>{lang === 'fr' ? 'Viseur AR (90°)' : 'AR Inclinometer (90°)'}</span>
+          </button>
+
           {activeRun && (
             <>
               <button
                 onClick={() => setShowManualEditor(true)}
                 className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow"
               >
-                <Edit3 className="w-3.5 h-3.5" /> Manual Editor
+                <Edit3 className="w-3.5 h-3.5" /> {t('manualEditEngine', lang)}
               </button>
 
               <button
@@ -180,7 +402,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                 }}
                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow"
               >
-                <FileDown className="w-3.5 h-3.5" /> PDF Report
+                <FileDown className="w-3.5 h-3.5" /> {t('exportPdf', lang)}
               </button>
 
               <button
@@ -194,7 +416,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                 }}
                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow"
               >
-                <FileDown className="w-3.5 h-3.5" /> Excel (.xlsx)
+                <FileDown className="w-3.5 h-3.5" /> {t('exportXlsx', lang)}
               </button>
 
               <button
@@ -209,9 +431,27 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                 }}
                 className="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow"
               >
-                <FileDown className="w-3.5 h-3.5" /> CSV
+                <FileDown className="w-3.5 h-3.5" /> {t('exportCsv', lang)}
               </button>
             </>
+          )}
+
+          {onDeleteBlast && (
+            <button
+              onClick={() => {
+                const confirmMsg = lang === 'fr'
+                  ? `Êtes-vous sûr de vouloir supprimer définitivement le tir ${blast.blastId} ainsi que toutes ses photos, analyses et données associées ?`
+                  : `Are you sure you want to permanently delete blast ${blast.blastId} and all associated photos, runs, and data?`;
+                if (window.confirm(confirmMsg)) {
+                  onDeleteBlast(blast.id);
+                }
+              }}
+              className="px-3 py-1.5 bg-red-50 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 hover:border-red-600 rounded-lg text-xs font-bold flex items-center gap-1 transition shadow-xs"
+              title={lang === 'fr' ? 'Supprimer ce tir' : 'Delete this blast'}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{t('deleteBlast', lang)}</span>
+            </button>
           )}
         </div>
       </div>
@@ -250,243 +490,653 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
         </div>
       )}
 
-      {/* Main Grid: Left Image & Segmentation, Right Parameters & Curves */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column (7 cols): Images, Engines, and Step Previews */}
-        <div className="lg:col-span-7 space-y-4">
-          {/* Engine Selector */}
-          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1 text-xs">
-              <span className="font-bold text-slate-700 mr-1">Engine:</span>
-              <button
-                onClick={() => handleExecuteEngine('classical')}
-                disabled={isProcessing}
-                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${
-                  activeEngine === 'classical' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <Sliders className="w-3.5 h-3.5" /> Engine A: Classical
-              </button>
-              <button
-                onClick={() => handleExecuteEngine('ai_sam')}
-                disabled={isProcessing}
-                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${
-                  activeEngine === 'ai_sam' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5" /> Engine B: AI SAM
-              </button>
-              <button
-                onClick={() => handleExecuteEngine('hybrid')}
-                disabled={isProcessing}
-                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${
-                  activeEngine === 'hybrid' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" /> Engine C: Hybrid
-              </button>
-            </div>
-
-            {isProcessing && (
-              <span className="text-xs font-bold text-blue-600 flex items-center gap-1 animate-pulse">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" /> {progressMsg || 'Processing...'}
-              </span>
-            )}
+      {/* EMPTY STATE: If no photos exist for this blast */}
+      {blast.images.length === 0 ? (
+        <div className="bg-white p-8 rounded-2xl border-2 border-dashed border-slate-300 text-center space-y-5">
+          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto">
+            <Camera className="w-8 h-8" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">{t('noPhotosYet', lang)}</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+              {t('noPhotosDesc', lang)}
+            </p>
           </div>
 
-          {/* Main Visual Viewport with Intermediate Steps Tabs */}
-          <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-md">
-            {/* Step Previews Tab Bar */}
-            {activeRun?.stepPreviews && (
-              <div className="flex bg-slate-900 border-b border-slate-800 px-2 py-1.5 overflow-x-auto text-[11px] gap-1">
-                {(['overlay', 'grayscale', 'clahe', 'threshold', 'distance', 'markers'] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveStepTab(tab)}
-                    className={`px-2.5 py-1 rounded font-semibold capitalize whitespace-nowrap transition ${
-                      activeStepTab === tab ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'
+          <div className="flex flex-wrap justify-center items-center gap-3">
+            <button
+              onClick={() => setShowInclinometer(true)}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow"
+            >
+              <Shield className="w-4 h-4" />
+              <span>{lang === 'fr' ? 'Viseur Inclinomètre AR (90°)' : 'AR Inclinometer Viewfinder (90°)'}</span>
+            </button>
+
+            <label className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow">
+              <Camera className="w-4 h-4" />
+              <span>{t('takeOrUpload', lang)}</span>
+              <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+            </label>
+
+            <button
+              onClick={handleGenerateSamplePhoto}
+              className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow"
+            >
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>{t('generateSamplePhoto', lang)}</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Photo Gallery Strip */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+                  {lang === 'fr' ? 'Photographies du Tas d’Abattage' : 'Muckpile Photographs'} ({blast.images.length})
+                </span>
+                <span className="text-slate-300">•</span>
+                <span className="text-slate-500 text-[11px] hidden sm:inline">
+                  {lang === 'fr' ? 'Sélectionnez une photo pour l’analyser ou la supprimer' : 'Click a photo to inspect or delete'}
+                </span>
+              </div>
+              <label className="text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1 cursor-pointer text-xs">
+                <ImagePlus className="w-3.5 h-3.5" />
+                <span>{lang === 'fr' ? 'Ajouter une photo' : 'Add Photo'}</span>
+                <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+              </label>
+            </div>
+
+            <div className="flex items-center gap-3 overflow-x-auto pb-1.5 pt-1">
+              {blast.images.map((img, idx) => {
+                const isSelected = img.id === (selectedImage?.id || selectedImageId);
+                return (
+                  <div
+                    key={img.id}
+                    className={`relative group shrink-0 rounded-xl overflow-hidden border-2 transition cursor-pointer ${
+                      isSelected
+                        ? 'border-blue-600 ring-2 ring-blue-400/30 shadow-md'
+                        : 'border-slate-200 hover:border-slate-300 opacity-80 hover:opacity-100'
                     }`}
+                    onClick={() => setSelectedImageId(img.id)}
                   >
-                    {tab}
-                  </button>
-                ))}
+                    <img
+                      src={img.dataUrl}
+                      alt={img.filename}
+                      className="w-28 h-18 object-cover bg-slate-900"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-1.5 text-[9px] text-white font-medium flex justify-between items-center">
+                      <span className="truncate max-w-[70px]">#{idx + 1} {img.zone}</span>
+                      {img.qualityCheck?.isArtificialGraphic && (
+                        <span className="text-amber-400 font-bold text-[10px]" title="Logo / Non-geological">⚠</span>
+                      )}
+                    </div>
+                    {onDeleteImage && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const confirmMsg = lang === 'fr'
+                            ? `Supprimer définitivement la photo #${idx + 1} (${img.filename}) ainsi que ses analyses de segmentation ?`
+                            : `Permanently delete photo #${idx + 1} (${img.filename}) and its segmentation runs?`;
+                          if (window.confirm(confirmMsg)) {
+                            onDeleteImage(img.id);
+                            if (selectedImage?.id === img.id) {
+                              const remaining = blast.images.filter((i) => i.id !== img.id);
+                              setSelectedImageId(remaining[0]?.id || '');
+                            }
+                          }
+                        }}
+                        className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-md opacity-0 group-hover:opacity-100 transition shadow hover:bg-red-700"
+                        title={lang === 'fr' ? 'Supprimer cette photo' : 'Delete this photo'}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Main Grid: Left Image & Segmentation, Right Parameters & Curves */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left Column (7 cols): Images, Engines, and Step Previews */}
+          <div className="lg:col-span-7 space-y-4">
+            {/* Warning if Artificial Graphic / Logo Detected */}
+            {selectedImage?.qualityCheck?.isArtificialGraphic && (
+              <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5 shadow-xs">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <div className="font-bold text-amber-900 text-sm">
+                    {t('nonGeologicalWarningTitle', lang)}
+                  </div>
+                  <p className="text-amber-800 leading-relaxed">
+                    {t('nonGeologicalWarningDesc', lang)}
+                  </p>
+                </div>
               </div>
             )}
 
-            <div className="relative p-2 flex justify-center items-center min-h-[360px] max-h-[500px] overflow-hidden">
-              {selectedImage && (
-                <img
-                  src={
-                    activeRun?.stepPreviews && activeRun.stepPreviews[activeStepTab]
-                      ? activeRun.stepPreviews[activeStepTab]
-                      : selectedImage.dataUrl
-                  }
-                  alt="Muck pile analysis"
-                  className="max-h-[480px] w-auto object-contain rounded-lg"
-                />
+            {/* Engine Selector */}
+            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1 text-xs">
+                <span className="font-bold text-slate-700 mr-1">{t('colEngine', lang)}:</span>
+                <button
+                  onClick={() => handleExecuteEngine('classical')}
+                  disabled={isProcessing}
+                  className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${
+                    activeEngine === 'classical' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <Sliders className="w-3.5 h-3.5" /> {t('engineA', lang)}
+                </button>
+                <button
+                  onClick={() => handleExecuteEngine('ai_sam')}
+                  disabled={isProcessing}
+                  className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${
+                    activeEngine === 'ai_sam' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" /> {t('engineB', lang)}
+                </button>
+                <button
+                  onClick={() => handleExecuteEngine('hybrid')}
+                  disabled={isProcessing}
+                  className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${
+                    activeEngine === 'hybrid' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" /> {t('engineC', lang)}
+                </button>
+              </div>
+
+              {isProcessing && (
+                <span className="text-xs font-bold text-blue-600 flex items-center gap-1 animate-pulse">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" /> {progressMsg || t('processingMsg', lang)}
+                </span>
               )}
             </div>
 
-            {/* Quality & Scale Pill */}
-            {selectedImage && (
-              <div className="flex items-center justify-between px-4 py-2 bg-slate-900 text-xs text-slate-400 border-t border-slate-800">
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1 text-slate-300">
-                    <Ruler className="w-3.5 h-3.5 text-blue-400" />
-                    Scale: {selectedImage.calibration?.pxPerMm?.toFixed(3) || '0.400'} px/mm
-                  </span>
-                  <span>Zone: {selectedImage.zone}</span>
-                  <span>Lighting: {selectedImage.lighting}</span>
+            {/* Main Visual Viewport with Intermediate Steps Tabs */}
+            <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-md">
+              {/* Step Previews Tab Bar */}
+              {activeRun?.stepPreviews && (
+                <div className="flex bg-slate-900 border-b border-slate-800 px-2 py-1.5 overflow-x-auto text-[11px] gap-1">
+                  {(['overlay', 'grayscale', 'clahe', 'threshold', 'distance', 'markers', 'depthMap'] as const).map((tab) => {
+                    const labelMap: Record<string, string> = {
+                      overlay: t('tabOverlay', lang),
+                      grayscale: t('tabGrayscale', lang),
+                      clahe: t('tabClahe', lang),
+                      threshold: t('tabThreshold', lang),
+                      distance: t('tabDistance', lang),
+                      markers: t('tabMarkers', lang),
+                      depthMap: t('tabDepthMap', lang),
+                    };
+                    return (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveStepTab(tab)}
+                        className={`px-2.5 py-1 rounded font-semibold capitalize whitespace-nowrap transition ${
+                          activeStepTab === tab ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'
+                        }`}
+                      >
+                        {labelMap[tab]}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div>
-                  Sharpness: {selectedImage.qualityCheck.blurScore} ({selectedImage.qualityCheck.blurStatus})
+              )}
+
+              <div className="relative p-2 flex justify-center items-center min-h-[360px] max-h-[500px] overflow-hidden">
+                {selectedImage && (
+                  <img
+                    src={
+                      activeRun?.stepPreviews && activeRun.stepPreviews[activeStepTab]
+                        ? activeRun.stepPreviews[activeStepTab]
+                        : selectedImage.dataUrl
+                    }
+                    alt="Muck pile analysis"
+                    className="max-h-[480px] w-auto object-contain rounded-lg"
+                  />
+                )}
+              </div>
+
+              {/* Quality & Scale Pill */}
+              {selectedImage && (
+                <div className="flex items-center justify-between px-4 py-2 bg-slate-900 text-xs text-slate-400 border-t border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1 text-slate-300">
+                      <Ruler className="w-3.5 h-3.5 text-blue-400" />
+                      {t('scaleResult', lang)} {selectedImage.calibration?.pxPerMm?.toFixed(3) || '0.400'} px/mm
+                    </span>
+                    <span>Zone: {selectedImage.zone}</span>
+                    <span>Lighting: {selectedImage.lighting}</span>
+                  </div>
+                  <div>
+                    {t('sharpness', lang)}: {selectedImage.qualityCheck.blurScore} ({selectedImage.qualityCheck.blurStatus})
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Sizing Distribution Percentiles Table */}
+            {activeRun && (
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  {t('percentilesTitle', lang)}
+                </h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2 px-3">{t('percentile', lang)}</th>
+                        <th className="py-2 px-3">{t('sizeMm', lang)}</th>
+                        <th className="py-2 px-3">{t('bootstrapCI', lang)}</th>
+                        <th className="py-2 px-3">{t('description', lang)}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      <tr>
+                        <td className="py-1.5 px-3 font-semibold text-slate-700">{t('p10', lang)}</td>
+                        <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p10} mm</td>
+                        <td className="py-1.5 px-3 text-slate-500">
+                          [{activeRun.metrics.bootstrapCI.p10[0]} - {activeRun.metrics.bootstrapCI.p10[1]}]
+                        </td>
+                        <td className="py-1.5 px-3 text-slate-500">{t('p10Desc', lang)}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 px-3 font-semibold text-slate-700">{t('p20', lang)}</td>
+                        <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p20} mm</td>
+                        <td className="py-1.5 px-3 text-slate-500">
+                          [{activeRun.metrics.bootstrapCI.p20[0]} - {activeRun.metrics.bootstrapCI.p20[1]}]
+                        </td>
+                        <td className="py-1.5 px-3 text-slate-500">{t('p20Desc', lang)}</td>
+                      </tr>
+                      <tr className="bg-blue-50/50">
+                        <td className="py-1.5 px-3 font-bold text-blue-900">{t('p50', lang)}</td>
+                        <td className="py-1.5 px-3 font-extrabold text-blue-950">{activeRun.metrics.p50} mm</td>
+                        <td className="py-1.5 px-3 text-blue-700">
+                          [{activeRun.metrics.bootstrapCI.p50[0]} - {activeRun.metrics.bootstrapCI.p50[1]}]
+                        </td>
+                        <td className="py-1.5 px-3 text-blue-700 font-medium">{t('p50Desc', lang)}</td>
+                      </tr>
+                      <tr className="bg-blue-50/50">
+                        <td className="py-1.5 px-3 font-bold text-blue-900">{t('p80', lang)}</td>
+                        <td className="py-1.5 px-3 font-extrabold text-blue-950">{activeRun.metrics.p80} mm</td>
+                        <td className="py-1.5 px-3 text-blue-700">
+                          [{activeRun.metrics.bootstrapCI.p80[0]} - {activeRun.metrics.bootstrapCI.p80[1]}]
+                        </td>
+                        <td className="py-1.5 px-3 text-blue-700 font-medium">{t('p80Desc', lang)}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 px-3 font-semibold text-slate-700">{t('p90', lang)}</td>
+                        <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p90} mm</td>
+                        <td className="py-1.5 px-3 text-slate-500">
+                          [{activeRun.metrics.bootstrapCI.p90[0]} - {activeRun.metrics.bootstrapCI.p90[1]}]
+                        </td>
+                        <td className="py-1.5 px-3 text-slate-500">{t('p90Desc', lang)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Sizing Distribution Percentiles Table */}
-          {activeRun && (
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2">
-              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                Distribution Sizing Percentiles (95% Bootstrap Intervals)
-              </h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                    <tr>
-                      <th className="py-2 px-3">Percentile</th>
-                      <th className="py-2 px-3">Size (mm)</th>
-                      <th className="py-2 px-3">95% Bootstrap CI</th>
-                      <th className="py-2 px-3">Description</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr>
-                      <td className="py-1.5 px-3 font-semibold text-slate-700">P10</td>
-                      <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p10} mm</td>
-                      <td className="py-1.5 px-3 text-slate-500">
-                        [{activeRun.metrics.bootstrapCI.p10[0]} - {activeRun.metrics.bootstrapCI.p10[1]}]
-                      </td>
-                      <td className="py-1.5 px-3 text-slate-500">Fine fraction limit</td>
-                    </tr>
-                    <tr>
-                      <td className="py-1.5 px-3 font-semibold text-slate-700">P20</td>
-                      <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p20} mm</td>
-                      <td className="py-1.5 px-3 text-slate-500">
-                        [{activeRun.metrics.bootstrapCI.p20[0]} - {activeRun.metrics.bootstrapCI.p20[1]}]
-                      </td>
-                      <td className="py-1.5 px-3 text-slate-500">Lower uniformity reference</td>
-                    </tr>
-                    <tr className="bg-blue-50/50">
-                      <td className="py-1.5 px-3 font-bold text-blue-900">P50</td>
-                      <td className="py-1.5 px-3 font-extrabold text-blue-950">{activeRun.metrics.p50} mm</td>
-                      <td className="py-1.5 px-3 text-blue-700">
-                        [{activeRun.metrics.bootstrapCI.p50[0]} - {activeRun.metrics.bootstrapCI.p50[1]}]
-                      </td>
-                      <td className="py-1.5 px-3 text-blue-700 font-medium">Median fragment diameter</td>
-                    </tr>
-                    <tr className="bg-blue-50/50">
-                      <td className="py-1.5 px-3 font-bold text-blue-900">P80</td>
-                      <td className="py-1.5 px-3 font-extrabold text-blue-950">{activeRun.metrics.p80} mm</td>
-                      <td className="py-1.5 px-3 text-blue-700">
-                        [{activeRun.metrics.bootstrapCI.p80[0]} - {activeRun.metrics.bootstrapCI.p80[1]}]
-                      </td>
-                      <td className="py-1.5 px-3 text-blue-700 font-medium">Crusher feed critical parameter</td>
-                    </tr>
-                    <tr>
-                      <td className="py-1.5 px-3 font-semibold text-slate-700">P90</td>
-                      <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p90} mm</td>
-                      <td className="py-1.5 px-3 text-slate-500">
-                        [{activeRun.metrics.bootstrapCI.p90[0]} - {activeRun.metrics.bootstrapCI.p90[1]}]
-                      </td>
-                      <td className="py-1.5 px-3 text-slate-500">Coarse envelope boundary</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          {/* Right Column (5 cols): Cumulative Curve & Blast Parameters */}
+          <div className="lg:col-span-5 space-y-4">
+            {activeRun && (
+              <CumulativeDistributionChart
+                metrics={activeRun.metrics}
+                sieveData={blast.groundTruth?.sieveData}
+                lang={lang}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+      )}
+
+      {/* Editable Blast & Rock Mass Parameters Section */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-wrap justify-between items-center gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">
+              {lang === 'fr' ? 'Configuration & Géométrie du Tir' : 'Blast Geometry & Rock Mass Design'}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {lang === 'fr'
+                ? 'Modifiez les paramètres du tir et recalculez la consommation d’explosif'
+                : 'Edit design parameters and recalculate powder factor live'}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {saveSuccessMsg && (
+              <span className="text-xs font-bold text-emerald-600 flex items-center gap-1 animate-pulse">
+                <CheckCircle2 className="w-3.5 h-3.5" /> {t('success', lang)}
+              </span>
+            )}
+            <button
+              onClick={handleSaveBlastParameters}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>{t('saveBlastChanges', lang)}</span>
+            </button>
+          </div>
         </div>
 
-        {/* Right Column (5 cols): Cumulative Curve & Blast Parameters */}
-        <div className="lg:col-span-5 space-y-4">
-          {activeRun && (
-            <CumulativeDistributionChart
-              metrics={activeRun.metrics}
-              sieveData={blast.groundTruth?.sieveData}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('burden', lang)}</label>
+            <input
+              type="number"
+              step="0.1"
+              value={burden}
+              onChange={(e) => setBurden(parseFloat(e.target.value) || 0)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
             />
-          )}
+          </div>
 
-          {/* Blast Geometry & Powder Factor Card */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Blast Geometry & Explosive Loading
-            </h4>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="p-2 bg-slate-50 rounded">
-                <span className="text-slate-500 block text-[10px]">Bench Height</span>
-                <span className="font-bold text-slate-800">{blast.parameters.benchHeight} m</span>
-              </div>
-              <div className="p-2 bg-slate-50 rounded">
-                <span className="text-slate-500 block text-[10px]">Hole Diameter</span>
-                <span className="font-bold text-slate-800">{blast.parameters.holeDiameter} mm</span>
-              </div>
-              <div className="p-2 bg-slate-50 rounded">
-                <span className="text-slate-500 block text-[10px]">Burden x Spacing</span>
-                <span className="font-bold text-slate-800">
-                  {blast.parameters.burden}m x {blast.parameters.spacing}m
-                </span>
-              </div>
-              <div className="p-2 bg-slate-50 rounded">
-                <span className="text-slate-500 block text-[10px]">Stemming Length</span>
-                <span className="font-bold text-slate-800">{blast.parameters.stemmingLength} m</span>
-              </div>
-              <div className="p-2 bg-slate-50 rounded">
-                <span className="text-slate-500 block text-[10px]">Explosive Type</span>
-                <span className="font-bold text-slate-800 truncate block">{blast.parameters.explosiveType}</span>
-              </div>
-              <div className="p-2 bg-blue-50 border border-blue-200 rounded">
-                <span className="text-blue-600 block text-[10px] font-semibold">Powder Factor</span>
-                <span className="font-bold text-blue-900">
-                  {(
-                    blast.parameters.chargePerHole /
-                    Math.max(0.1, blast.parameters.burden * blast.parameters.spacing * blast.parameters.benchHeight)
-                  ).toFixed(2)}{' '}
-                  kg/m³
-                </span>
-              </div>
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('spacing', lang)}</label>
+            <input
+              type="number"
+              step="0.1"
+              value={spacing}
+              onChange={(e) => setSpacing(parseFloat(e.target.value) || 0)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('benchHeight', lang)}</label>
+            <input
+              type="number"
+              step="0.5"
+              value={benchHeight}
+              onChange={(e) => setBenchHeight(parseFloat(e.target.value) || 0)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('stemmingLength', lang)}</label>
+            <input
+              type="number"
+              step="0.1"
+              value={stemmingLength}
+              onChange={(e) => setStemmingLength(parseFloat(e.target.value) || 0)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('holeDiameter', lang)}</label>
+            <input
+              type="number"
+              value={holeDiameter}
+              onChange={(e) => setHoleDiameter(parseFloat(e.target.value) || 0)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('chargePerHole', lang)}</label>
+            <input
+              type="number"
+              step="0.5"
+              value={chargePerHole}
+              onChange={(e) => setChargePerHole(parseFloat(e.target.value) || 0)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('explosiveType', lang)}</label>
+            <input
+              type="text"
+              value={explosiveType}
+              onChange={(e) => setExplosiveType(e.target.value)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
+            />
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 p-2 rounded flex flex-col justify-center">
+            <span className="text-[10px] text-blue-700 font-bold uppercase">{t('computedPowderFactor', lang)}</span>
+            <span className="text-base font-black text-blue-950">
+              {computedPowderFactor.toFixed(2)} kg/m³
+            </span>
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('rockType', lang)}</label>
+            <input
+              type="text"
+              value={rockType}
+              onChange={(e) => setRockType(e.target.value)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('density', lang)}</label>
+            <input
+              type="number"
+              step="0.05"
+              value={density}
+              onChange={(e) => setDensity(parseFloat(e.target.value) || 2.65)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('meanJointSpacing', lang)}</label>
+            <input
+              type="number"
+              step="0.05"
+              value={meanJointSpacing}
+              onChange={(e) => setMeanJointSpacing(parseFloat(e.target.value) || 0.5)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('jointOrientation', lang)}</label>
+            <select
+              value={jointOrientation}
+              onChange={(e) => setJointOrientation(e.target.value as any)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800 bg-white"
+            >
+              <option value="dip_out_of_face">{t('dipOutOfFace', lang)}</option>
+              <option value="strike_perpendicular">{t('strikePerpendicular', lang)}</option>
+              <option value="dip_into_face">{t('dipIntoFace', lang)}</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('numberOfHoles', lang)}</label>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min="1"
+                value={numberOfHoles}
+                onChange={(e) => setNumberOfHoles(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (numberOfHoles > 1) {
+                    setNumberOfHoles((n) => n - 1);
+                    setExcludedHoles((prev) => prev.filter((idx) => idx < numberOfHoles - 1));
+                  }
+                }}
+                className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded border border-red-200 transition"
+                title={lang === 'fr' ? 'Supprimer un trou' : 'Delete hole'}
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setNumberOfHoles((n) => n + 1)}
+                className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded border border-blue-200 transition"
+                title={lang === 'fr' ? 'Ajouter un trou' : 'Add hole'}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 
-          {/* Rock Mass Geology Card */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Rock Mass Structure & Discontinuities
-            </h4>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="p-2 bg-slate-50 rounded">
-                <span className="text-slate-500 block text-[10px]">Rock Type</span>
-                <span className="font-bold text-slate-800">{blast.rockMass.rockType}</span>
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('holeDepth', lang)}</label>
+            <input
+              type="number"
+              step="0.1"
+              value={holeDepth}
+              onChange={(e) => setHoleDepth(parseFloat(e.target.value) || 0)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-600 font-semibold mb-1">{t('subdrill', lang)}</label>
+            <input
+              type="number"
+              step="0.1"
+              value={subdrill}
+              onChange={(e) => setSubdrill(parseFloat(e.target.value) || 0)}
+              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+            />
+          </div>
+        </div>
+
+        {/* Interactive Drill & Blast Pattern Hole Management */}
+        <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <Grid className="w-4 h-4 text-blue-600" />
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  {t('blastPatternHoles', lang)} ({numberOfHoles - excludedHoles.length} / {numberOfHoles} {t('activeHoles', lang)})
+                </h4>
               </div>
-              <div className="p-2 bg-slate-50 rounded">
-                <span className="text-slate-500 block text-[10px]">Density</span>
-                <span className="font-bold text-slate-800">{blast.rockMass.density} t/m³</span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {t('manageHolesDesc', lang)}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (numberOfHoles > 1) {
+                    setNumberOfHoles((prev) => prev - 1);
+                    setExcludedHoles((prev) => prev.filter((idx) => idx < numberOfHoles - 1));
+                  }
+                }}
+                className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold flex items-center gap-1 border border-red-200 transition"
+                title={lang === 'fr' ? 'Supprimer le dernier trou du schéma' : 'Delete last hole from pattern'}
+              >
+                <Minus className="w-3.5 h-3.5" />
+                <span>{t('deleteHole', lang)}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setNumberOfHoles((prev) => prev + 1)}
+                className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold flex items-center gap-1 border border-blue-200 transition"
+                title={lang === 'fr' ? 'Ajouter un trou au schéma' : 'Add hole to pattern'}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('addHole', lang)}</span>
+              </button>
+
+              {excludedHoles.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setExcludedHoles([])}
+                  className="px-2 py-1 text-slate-500 hover:text-slate-800 text-[11px] underline"
+                >
+                  {lang === 'fr' ? 'Réactiver tous' : 'Reset active'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Drill Pattern 2D Hole Layout Grid */}
+          <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
+              {Array.from({ length: numberOfHoles }, (_, i) => {
+                const isExcluded = excludedHoles.includes(i);
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      if (isExcluded) {
+                        setExcludedHoles((prev) => prev.filter((idx) => idx !== i));
+                      } else {
+                        setExcludedHoles((prev) => [...prev, i]);
+                      }
+                    }}
+                    className={`w-9 h-9 rounded-lg text-xs font-bold flex flex-col items-center justify-center transition border ${
+                      isExcluded
+                        ? 'bg-slate-800/80 text-slate-500 border-slate-700 line-through opacity-60 hover:opacity-100'
+                        : 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 shadow-sm shadow-blue-500/20'
+                    }`}
+                    title={
+                      isExcluded
+                        ? (lang === 'fr' ? `Trou #${i + 1} désactivé / exclu. Cliquez pour réactiver.` : `Hole #${i + 1} excluded/deleted. Click to reactivate.`)
+                        : (lang === 'fr' ? `Trou #${i + 1} actif (${chargePerHole} kg). Cliquez pour exclure/supprimer.` : `Hole #${i + 1} active (${chargePerHole} kg). Click to exclude/delete.`)
+                    }
+                  >
+                    <span>{i + 1}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Pattern Metrics Footer */}
+            <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-white text-[11px]">
+              <div className="bg-slate-800/60 p-2 rounded-lg">
+                <span className="text-slate-400 block text-[10px]">{lang === 'fr' ? 'Trous Actifs' : 'Active Holes'}</span>
+                <span className="font-extrabold text-blue-400 text-xs">
+                  {numberOfHoles - excludedHoles.length} / {numberOfHoles}
+                </span>
               </div>
-              <div className="p-2 bg-slate-50 rounded">
-                <span className="text-slate-500 block text-[10px]">Mean Joint Spacing</span>
-                <span className="font-bold text-slate-800">{blast.rockMass.meanJointSpacing} m</span>
+              <div className="bg-slate-800/60 p-2 rounded-lg">
+                <span className="text-slate-400 block text-[10px]">{lang === 'fr' ? 'Explosif Total' : 'Total Explosives'}</span>
+                <span className="font-extrabold text-emerald-400 text-xs">
+                  {((numberOfHoles - excludedHoles.length) * chargePerHole).toFixed(1)} kg
+                </span>
               </div>
-              <div className="p-2 bg-slate-50 rounded">
-                <span className="text-slate-500 block text-[10px]">Joint Orientation</span>
-                <span className="font-bold text-slate-800 capitalize truncate block">
-                  {blast.rockMass.jointOrientation.replace(/_/g, ' ')}
+              <div className="bg-slate-800/60 p-2 rounded-lg">
+                <span className="text-slate-400 block text-[10px]">{lang === 'fr' ? 'Volume Abattu' : 'Broken Volume'}</span>
+                <span className="font-extrabold text-amber-400 text-xs">
+                  {((numberOfHoles - excludedHoles.length) * burden * spacing * benchHeight).toFixed(1)} m³
+                </span>
+              </div>
+              <div className="bg-slate-800/60 p-2 rounded-lg">
+                <span className="text-slate-400 block text-[10px]">{lang === 'fr' ? 'Tonnage Abattu' : 'Broken Tonnage'}</span>
+                <span className="font-extrabold text-purple-400 text-xs">
+                  {((numberOfHoles - excludedHoles.length) * burden * spacing * benchHeight * density).toFixed(1)} t
                 </span>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {showInclinometer && (
+        <CameraInclinometerModal
+          onCapture={handleInclinometerCapture}
+          onClose={() => setShowInclinometer(false)}
+          lang={lang}
+        />
+      )}
     </div>
   );
 };

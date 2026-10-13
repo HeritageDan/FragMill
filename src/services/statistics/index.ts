@@ -334,6 +334,32 @@ export function computeFragmentationMetrics(
   // Fast bootstrap
   const bootstrapCI = runBootstrapResampling(fragments, sizeDef, 250);
 
+  // PROPOSAL 1: 3D Triaxial Stereological Sizing Unfolding
+  // Compute curve weighted by true 3D volume (A x B x C) rather than spherical d^3
+  const volumeItems = fragments.map((f) => {
+    const size = Math.max(0.1, getFragmentSize(f, sizeDef));
+    const vol = f.trueVolume3DMm3 || (Math.PI / 6) * Math.pow(size, 3) * 0.7;
+    return { size, volume: vol };
+  });
+  volumeItems.sort((a, b) => a.size - b.size);
+  const totalTrueVol = volumeItems.reduce((s, it) => s + it.volume, 0);
+  let cum3DVol = 0;
+  const true3DCurve: CumulativePoint[] = [];
+  for (const it of volumeItems) {
+    cum3DVol += it.volume;
+    true3DCurve.push({
+      sizeMm: it.size,
+      passingPercent: Number(((cum3DVol / Math.max(1, totalTrueVol)) * 100).toFixed(2)),
+    });
+  }
+  const true3D_P50 = findPercentileSize(true3DCurve, 50);
+  const true3D_P80 = findPercentileSize(true3DCurve, 80);
+
+  // PROPOSAL 2: Swebrec vs Rosin-Rammler Sub-Mesh Fines Modeling
+  const rrFines = Number(((1 - Math.exp(-Math.pow(finesCutoffMm / rosinRammlerFit.xc, rosinRammlerFit.n))) * 100).toFixed(1));
+  const swRatio = Math.log(swebrecFit.xMax / finesCutoffMm) / Math.max(0.01, Math.log(swebrecFit.xMax / swebrecFit.x50));
+  const swFines = Number(((1 / (1 + Math.pow(Math.max(0.001, swRatio), swebrecFit.b))) * 100).toFixed(1));
+
   return {
     sizeDefinition: sizeDef,
     fragmentCount: fragments.length,
@@ -353,5 +379,14 @@ export function computeFragmentationMetrics(
     rosinRammlerFit,
     rawCurve,
     correctedCurve,
+    stereologicalCorrectionApplied: true,
+    true3D_P50,
+    true3D_P80,
+    swebrecExtrapolatedFines: {
+      cutoffApertureMm: finesCutoffMm,
+      finesPercentSwebrec: swFines,
+      finesPercentRosinRammler: rrFines,
+      bParameter: swebrecFit.b,
+    },
   };
 }

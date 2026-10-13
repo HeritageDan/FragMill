@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import type {
   Blast,
   ImageRecord,
@@ -9,6 +9,8 @@ import { analyzeImageQuality, calibrateTwoPoint, runClassicalSegmentation } from
 import { computeFragmentationMetrics } from '../../services/statistics';
 import { CumulativeDistributionChart } from '../charts/FragmentationCharts';
 import { generateBlastPdfReport, exportFragmentsCsv } from '../../services/export';
+import { createSyntheticMuckpileDataUrl } from '../../db/seedData';
+import { t } from '../../i18n';
 import {
   Camera,
   CheckCircle2,
@@ -20,7 +22,9 @@ import {
   FileDown,
   Sparkles,
   Info,
+  Shield,
 } from 'lucide-react';
+import { CameraInclinometerModal } from '../camera/CameraInclinometerModal';
 
 interface FieldWizardProps {
   currentBlast: Blast;
@@ -50,21 +54,39 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
     currentBlast.images[0]?.dataUrl || null
   );
   const [qualityCheck, setQualityCheck] = useState(currentBlast.images[0]?.qualityCheck || null);
-  const [isCheckingQuality, setIsCheckingQuality] = useState(false);
+  const [showInclinometer, setShowInclinometer] = useState(false);
+
+  const handleInclinometerCapture = (dataUrl: string) => {
+    setPhotoDataUrl(dataUrl);
+    const img = new Image();
+    img.src = dataUrl;
+    img.onload = async () => {
+      const qc = await analyzeImageQuality(img);
+      setQualityCheck(qc);
+    };
+  };
 
   // Step 3: Scale Calibration (Two taps / clicks)
-  const [scalePoints, setScalePoints] = useState<Point2D[]>([]);
-  const [refBarLengthMm, setRefBarLengthMm] = useState(500); // 500 mm default
+  const [scalePoints, setScalePoints] = useState<Point2D[]>(
+    currentBlast.images[0]?.calibration?.points || []
+  );
+  const [refBarLengthMm, setRefBarLengthMm] = useState(
+    currentBlast.images[0]?.calibration?.realWorldDistanceMm || 500
+  );
   const [calibratedPxPerMm, setCalibratedPxPerMm] = useState<number | null>(
     currentBlast.images[0]?.calibration?.pxPerMm || null
   );
+  const [imageNaturalDim, setImageNaturalDim] = useState<{ width: number; height: number }>({
+    width: 800,
+    height: 600,
+  });
 
   // Step 4 & 5: Analysis and Results
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [activeRun, setActiveRun] = useState<SegmentationRun | null>(null);
-
-  const scaleCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [activeRun, setActiveRun] = useState<SegmentationRun | null>(
+    (currentBlast.images[0] as any)?.segmentationRuns?.[0] || null
+  );
 
   // Handle Image Upload
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,40 +98,34 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
       const dataUrl = ev.target?.result as string;
       setPhotoDataUrl(dataUrl);
 
-      setIsCheckingQuality(true);
       const img = new Image();
       img.src = dataUrl;
       img.onload = async () => {
         const qc = await analyzeImageQuality(img);
         setQualityCheck(qc);
-        setIsCheckingQuality(false);
       };
     };
     reader.readAsDataURL(file);
   };
 
-  // Step 3: Scale selection click
-  const handleScaleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = scaleCanvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x = Math.round((e.clientX - rect.left) * scaleX);
-    const y = Math.round((e.clientY - rect.top) * scaleY);
-
-    if (scalePoints.length === 0) {
-      setScalePoints([{ x, y }]);
-    } else if (scalePoints.length === 1) {
-      const p1 = scalePoints[0];
-      const p2 = { x, y };
-      setScalePoints([p1, p2]);
-      const calib = calibrateTwoPoint(p1, p2, refBarLengthMm);
-      setCalibratedPxPerMm(calib.pxPerMm);
-    } else {
-      setScalePoints([{ x, y }]);
-      setCalibratedPxPerMm(null);
-    }
+  // Generate synthetic sample photo for rapid testing
+  const handleGenerateSample = () => {
+    const syn = createSyntheticMuckpileDataUrl(800, 600, 1.0);
+    setPhotoDataUrl(syn.dataUrl);
+    setCalibratedPxPerMm(syn.pxPerMm);
+    setScalePoints([
+      { x: 540, y: 550 },
+      { x: 740, y: 550 },
+    ]);
+    setQualityCheck({
+      blurScore: 480,
+      blurStatus: 'pass',
+      exposureStatus: 'pass',
+      contrastStatus: 'pass',
+      resolutionStatus: 'pass',
+      scaleMarkerStatus: 'pass',
+      advice: ['Optimal synthetic sample generated for testing.'],
+    });
   };
 
   // Run Step 4 Analysis
@@ -191,25 +207,30 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
     };
   };
 
+  const computedPowderFactor =
+    chargePerHole / Math.max(0.1, burden * spacing * benchHeight);
+
   return (
     <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
       {/* 5-Step Progress Stepper */}
       <div className="bg-slate-900 px-6 py-4 text-white">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-            {lang === 'fr' ? 'Assistant Terrain Guidé' : 'Field Mode Wizard'}
+            {t('wizard', lang)}
           </span>
-          <span className="text-xs text-slate-300 font-medium">Step {step} of 5</span>
+          <span className="text-xs text-slate-300 font-medium">
+            {lang === 'fr' ? `Étape ${step} sur 5` : `Step ${step} of 5`}
+          </span>
         </div>
 
         {/* Stepper dots and bar */}
         <div className="grid grid-cols-5 gap-2">
           {[
-            { num: 1, label: lang === 'fr' ? 'Tir' : 'Blast' },
-            { num: 2, label: lang === 'fr' ? 'Photos' : 'Photos' },
-            { num: 3, label: lang === 'fr' ? 'Échelle' : 'Scale' },
-            { num: 4, label: lang === 'fr' ? 'Analyser' : 'Analyse' },
-            { num: 5, label: lang === 'fr' ? 'Résultats' : 'Results' },
+            { num: 1, label: t('step1Blast', lang).split('. ')[1] },
+            { num: 2, label: t('step2Photos', lang).split('. ')[1] },
+            { num: 3, label: t('step3Scale', lang).split('. ')[1] },
+            { num: 4, label: t('step4Analyse', lang).split('. ')[1] },
+            { num: 5, label: t('step5Result', lang).split('. ')[1] },
           ].map((s) => (
             <div
               key={s.num}
@@ -223,7 +244,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                   step >= s.num ? 'bg-blue-500' : 'bg-slate-700'
                 }`}
               />
-              <span className="text-[11px] font-semibold">{s.label}</span>
+              <span className="text-[11px] font-semibold truncate max-w-full">{s.label}</span>
             </div>
           ))}
         </div>
@@ -234,19 +255,13 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
         {step === 1 && (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-bold text-slate-900">
-                {lang === 'fr' ? 'Étape 1 : Paramètres Clés du Tir' : 'Step 1: Key Blast Information'}
-              </h3>
-              <p className="text-sm text-slate-500">
-                {lang === 'fr'
-                  ? 'Entrez les paramètres essentiels du tir pour calculer la consommation d’explosif.'
-                  : 'Enter the essential blast geometry to calculate energy distribution.'}
-              </p>
+              <h3 className="text-lg font-bold text-slate-900">{t('step1Blast', lang)}</h3>
+              <p className="text-sm text-slate-500">{t('step1Subtitle', lang)}</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Blast ID</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('blastId', lang)}</label>
                 <input
                   type="text"
                   value={blastId}
@@ -256,9 +271,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  {lang === 'fr' ? 'Type de Roche' : 'Rock Type'}
-                </label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('rockType', lang)}</label>
                 <input
                   type="text"
                   value={rockType}
@@ -268,9 +281,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  {lang === 'fr' ? 'Banquette B (m)' : 'Burden B (m)'}
-                </label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('burden', lang)}</label>
                 <input
                   type="number"
                   step="0.1"
@@ -281,9 +292,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  {lang === 'fr' ? 'Espacement S (m)' : 'Spacing S (m)'}
-                </label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('spacing', lang)}</label>
                 <input
                   type="number"
                   step="0.1"
@@ -294,9 +303,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  {lang === 'fr' ? 'Hauteur de Gradin (m)' : 'Bench Height (m)'}
-                </label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('benchHeight', lang)}</label>
                 <input
                   type="number"
                   step="0.5"
@@ -307,9 +314,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  {lang === 'fr' ? 'Charge par Trou (kg)' : 'Charge per Hole (kg)'}
-                </label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('chargePerHole', lang)}</label>
                 <input
                   type="number"
                   step="0.5"
@@ -322,11 +327,9 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
 
             {/* Powder factor live banner */}
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-blue-900 text-xs">
-              <span className="font-semibold">
-                {lang === 'fr' ? 'Consommation Spécifique Calculée :' : 'Computed Powder Factor:'}
-              </span>
+              <span className="font-semibold">{t('computedPowderFactor', lang)}</span>
               <span className="font-bold text-sm">
-                {(chargePerHole / Math.max(0.1, burden * spacing * benchHeight)).toFixed(2)} kg/m³
+                {computedPowderFactor.toFixed(2)} kg/m³
               </span>
             </div>
 
@@ -352,7 +355,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                 }}
                 className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center gap-2 shadow"
               >
-                {lang === 'fr' ? 'Suivant : Photos' : 'Next: Photos'} <ChevronRight className="w-4 h-4" />
+                {t('nextPhotos', lang)} <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -362,25 +365,19 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
         {step === 2 && (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-bold text-slate-900">
-                {lang === 'fr' ? 'Étape 2 : Photographie du Tas de Roches' : 'Step 2: Muck Pile Photography'}
-              </h3>
-              <p className="text-sm text-slate-500">
-                {lang === 'fr'
-                  ? 'Prenez ou téléversez une photo claire du tas avec une mire d’échelle visible.'
-                  : 'Capture or upload a clear muck pile photo with the scale reference visible.'}
-              </p>
+              <h3 className="text-lg font-bold text-slate-900">{t('step2Photos', lang)}</h3>
+              <p className="text-sm text-slate-500">{t('step2Subtitle', lang)}</p>
             </div>
 
             {/* Field Capture Guide */}
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
               <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold">Capture Protocol:</span> Stand perpendicular (90°) to the muck face, avoid shooting into direct sunlight, and ensure your 500 mm scale bar is placed flat on the rock pile face.
+                <span className="font-bold">{t('captureProtocolTitle', lang)}</span> {t('captureProtocolText', lang)}
               </div>
             </div>
 
-            <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 hover:bg-slate-100 transition">
+            <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 hover:bg-slate-100 transition space-y-4">
               {photoDataUrl ? (
                 <div className="flex flex-col items-center space-y-3">
                   <img
@@ -388,64 +385,114 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                     alt="Muck pile"
                     className="max-h-72 rounded-lg shadow-md border border-slate-300 object-contain"
                   />
-                  <label className="cursor-pointer px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold">
-                    {lang === 'fr' ? 'Remplacer la Photo' : 'Replace Photo'}
-                    <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-                  </label>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <label className="cursor-pointer px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold">
+                      {t('replacePhoto', lang)}
+                      <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowInclinometer(true)}
+                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow"
+                    >
+                      <Shield className="w-3.5 h-3.5" />
+                      <span>{lang === 'fr' ? 'Viseur AR (90°)' : 'AR Inclinometer (90°)'}</span>
+                    </button>
+                    <button
+                      onClick={handleGenerateSample}
+                      className="px-3 py-2 bg-blue-100 text-blue-800 hover:bg-blue-200 rounded-lg text-xs font-semibold flex items-center gap-1"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {t('generateSamplePhoto', lang)}
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <label className="flex flex-col items-center cursor-pointer">
-                  <Camera className="w-12 h-12 text-blue-500 mb-2" />
-                  <span className="text-sm font-bold text-slate-800">
-                    {lang === 'fr' ? 'Prendre une Photo ou Téléverser' : 'Take Photo or Choose File'}
-                  </span>
-                  <span className="text-xs text-slate-500 mt-1">JPEG or PNG from camera / library</span>
-                  <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-                </label>
+                <div className="flex flex-col items-center space-y-3">
+                  <label className="flex flex-col items-center cursor-pointer">
+                    <Camera className="w-12 h-12 text-blue-500 mb-2" />
+                    <span className="text-sm font-bold text-slate-800">{t('takeOrUpload', lang)}</span>
+                    <span className="text-xs text-slate-500 mt-1">{t('photoFormats', lang)}</span>
+                    <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                  </label>
+
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowInclinometer(true)}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+                    >
+                      <Shield className="w-3.5 h-3.5" />
+                      <span>{lang === 'fr' ? 'Viseur Inclinomètre AR (90°)' : 'AR Inclinometer Viewfinder (90°)'}</span>
+                    </button>
+                    <button
+                      onClick={handleGenerateSample}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      {t('generateSamplePhoto', lang)}
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
             {/* Quality Check Results */}
             {qualityCheck && (
-              <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-2">
+              <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+                {/* Warning if Artificial Graphic / Logo Detected */}
+                {qualityCheck.isArtificialGraphic && (
+                  <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <div className="font-bold text-amber-900 text-sm">
+                        {t('nonGeologicalWarningTitle', lang)}
+                      </div>
+                      <p className="text-amber-800 leading-relaxed">
+                        {t('nonGeologicalWarningDesc', lang)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex justify-between items-center">
                   <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    {lang === 'fr' ? 'Contrôle Qualité Automatique' : 'Automatic Quality Assessment'}
+                    {t('qualityChecks', lang)}
                   </h4>
                   {qualityCheck.blurStatus === 'pass' && qualityCheck.exposureStatus === 'pass' ? (
                     <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Ready for Analysis
+                      <CheckCircle2 className="w-3.5 h-3.5" /> {t('readyForAnalysis', lang)}
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-bold flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5" /> Quality Warning
+                      <AlertTriangle className="w-3.5 h-3.5" /> {t('qualityWarning', lang)}
                     </span>
                   )}
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
                   <div className="p-2 rounded bg-slate-50 border border-slate-200">
-                    <span className="text-slate-500 block text-[10px]">Sharpness</span>
+                    <span className="text-slate-500 block text-[10px]">{t('sharpness', lang)}</span>
                     <span className={`font-bold uppercase ${qualityCheck.blurStatus === 'pass' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      {qualityCheck.blurStatus} ({qualityCheck.blurScore})
+                      {t(qualityCheck.blurStatus, lang)} ({qualityCheck.blurScore})
                     </span>
                   </div>
                   <div className="p-2 rounded bg-slate-50 border border-slate-200">
-                    <span className="text-slate-500 block text-[10px]">Exposure</span>
+                    <span className="text-slate-500 block text-[10px]">{t('exposure', lang)}</span>
                     <span className={`font-bold uppercase ${qualityCheck.exposureStatus === 'pass' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      {qualityCheck.exposureStatus}
+                      {t(qualityCheck.exposureStatus, lang)}
                     </span>
                   </div>
                   <div className="p-2 rounded bg-slate-50 border border-slate-200">
-                    <span className="text-slate-500 block text-[10px]">Contrast</span>
+                    <span className="text-slate-500 block text-[10px]">{t('contrast', lang)}</span>
                     <span className={`font-bold uppercase ${qualityCheck.contrastStatus === 'pass' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      {qualityCheck.contrastStatus}
+                      {t(qualityCheck.contrastStatus, lang)}
                     </span>
                   </div>
                   <div className="p-2 rounded bg-slate-50 border border-slate-200">
-                    <span className="text-slate-500 block text-[10px]">Resolution</span>
+                    <span className="text-slate-500 block text-[10px]">{t('resolution', lang)}</span>
                     <span className={`font-bold uppercase ${qualityCheck.resolutionStatus === 'pass' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      {qualityCheck.resolutionStatus}
+                      {t(qualityCheck.resolutionStatus, lang)}
                     </span>
                   </div>
                 </div>
@@ -461,14 +508,14 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                 onClick={() => setStep(1)}
                 className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1"
               >
-                <ChevronLeft className="w-4 h-4" /> Back
+                <ChevronLeft className="w-4 h-4" /> {t('back', lang)}
               </button>
               <button
                 disabled={!photoDataUrl}
                 onClick={() => setStep(3)}
                 className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl font-bold flex items-center gap-2 shadow"
               >
-                {lang === 'fr' ? 'Suivant : Étalonnage' : 'Next: Scale Calibration'} <ChevronRight className="w-4 h-4" />
+                {t('nextScale', lang)} <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -478,20 +525,14 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
         {step === 3 && (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-bold text-slate-900">
-                {lang === 'fr' ? 'Étape 3 : Étalonnage de l’Échelle' : 'Step 3: Scale Calibration'}
-              </h3>
-              <p className="text-sm text-slate-500">
-                {lang === 'fr'
-                  ? 'Touchez les deux extrémités de la mire de référence (ex: barre de 500 mm).'
-                  : 'Tap the two ends of your scale reference object (e.g. 500 mm scale bar).'}
-              </p>
+              <h3 className="text-lg font-bold text-slate-900">{t('step3Scale', lang)}</h3>
+              <p className="text-sm text-slate-500">{t('step3Subtitle', lang)}</p>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-4">
               <label className="text-xs font-bold text-slate-700 flex items-center gap-2">
                 <Ruler className="w-4 h-4 text-blue-600" />
-                {lang === 'fr' ? 'Longueur de la Mire (mm) :' : 'Reference Bar Length (mm):'}
+                {t('referenceLengthMm', lang)}
                 <input
                   type="number"
                   value={refBarLengthMm}
@@ -503,44 +544,68 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
               {calibratedPxPerMm && (
                 <div className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-lg flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  Scale: {calibratedPxPerMm.toFixed(3)} px/mm (1 mm = {(1 / calibratedPxPerMm).toFixed(2)} px)
+                  {t('scaleResult', lang)} {calibratedPxPerMm.toFixed(3)} px/mm
                 </div>
               )}
             </div>
 
             {/* Clickable Image Canvas for Scale */}
-            <div className="relative border border-slate-300 rounded-xl overflow-hidden bg-slate-900 flex justify-center items-center">
+            <div className="relative border border-slate-300 rounded-xl overflow-hidden bg-slate-900 flex justify-center items-center p-2">
               {photoDataUrl && (
-                <img
-                  src={photoDataUrl}
-                  alt="Scale selection"
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const x = Math.round(((e.clientX - rect.left) / rect.width) * e.currentTarget.naturalWidth);
-                    const y = Math.round(((e.clientY - rect.top) / rect.height) * e.currentTarget.naturalHeight);
+                <div className="relative inline-block">
+                  <img
+                    src={photoDataUrl}
+                    alt="Scale selection"
+                    onLoad={(e) => {
+                      setImageNaturalDim({
+                        width: e.currentTarget.naturalWidth || 800,
+                        height: e.currentTarget.naturalHeight || 600,
+                      });
+                    }}
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = Math.round(((e.clientX - rect.left) / rect.width) * e.currentTarget.naturalWidth);
+                      const y = Math.round(((e.clientY - rect.top) / rect.height) * e.currentTarget.naturalHeight);
 
-                    if (scalePoints.length === 0) {
-                      setScalePoints([{ x, y }]);
-                    } else if (scalePoints.length === 1) {
-                      const p1 = scalePoints[0];
-                      const p2 = { x, y };
-                      setScalePoints([p1, p2]);
-                      const calib = calibrateTwoPoint(p1, p2, refBarLengthMm);
-                      setCalibratedPxPerMm(calib.pxPerMm);
-                    } else {
-                      setScalePoints([{ x, y }]);
-                      setCalibratedPxPerMm(null);
-                    }
-                  }}
-                  className="max-h-96 w-auto object-contain cursor-crosshair"
-                />
+                      if (scalePoints.length === 0) {
+                        setScalePoints([{ x, y }]);
+                      } else if (scalePoints.length === 1) {
+                        const p1 = scalePoints[0];
+                        const p2 = { x, y };
+                        setScalePoints([p1, p2]);
+                        const calib = calibrateTwoPoint(p1, p2, refBarLengthMm);
+                        setCalibratedPxPerMm(calib.pxPerMm);
+                      } else {
+                        setScalePoints([{ x, y }]);
+                        setCalibratedPxPerMm(null);
+                      }
+                    }}
+                    className="max-h-96 w-auto object-contain cursor-crosshair block rounded"
+                  />
+                  {/* Pin Markers */}
+                  {scalePoints.map((pt, idx) => {
+                    const leftPct = (pt.x / Math.max(1, imageNaturalDim.width)) * 100;
+                    const topPct = (pt.y / Math.max(1, imageNaturalDim.height)) * 100;
+                    return (
+                      <div
+                        key={idx}
+                        style={{ left: `${leftPct}%`, top: `${topPct}%` }}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10 flex flex-col items-center"
+                      >
+                        <span className="w-5 h-5 rounded-full bg-blue-500 border-2 border-white shadow-lg flex items-center justify-center text-[10px] font-bold text-white">
+                          {idx + 1}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
 
             <div className="text-xs text-slate-500">
-              {scalePoints.length === 0 && 'Click end 1 of your scale bar on the photo.'}
-              {scalePoints.length === 1 && 'Point 1 set. Now click end 2 of your scale bar.'}
-              {scalePoints.length === 2 && 'Scale bar calibration locked! You can proceed to analysis.'}
+              {scalePoints.length === 0 && t('scaleStep0', lang)}
+              {scalePoints.length === 1 && t('scaleStep1', lang)}
+              {scalePoints.length >= 2 && t('scaleStep2', lang)}
             </div>
 
             <div className="flex justify-between pt-4">
@@ -548,14 +613,14 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                 onClick={() => setStep(2)}
                 className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1"
               >
-                <ChevronLeft className="w-4 h-4" /> Back
+                <ChevronLeft className="w-4 h-4" /> {t('back', lang)}
               </button>
               <button
                 disabled={!calibratedPxPerMm}
                 onClick={() => setStep(4)}
                 className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-xl font-bold flex items-center gap-2 shadow"
               >
-                {lang === 'fr' ? 'Suivant : Analyser' : 'Next: Analyse'} <ChevronRight className="w-4 h-4" />
+                {t('nextAnalyse', lang)} <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -566,13 +631,9 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
           <div className="space-y-6 text-center py-8">
             <Cpu className="w-16 h-16 text-blue-600 mx-auto animate-bounce" />
             <div>
-              <h3 className="text-xl font-bold text-slate-900">
-                {lang === 'fr' ? 'Étape 4 : Détection Automatique des Blocs' : 'Step 4: Execute Rock Fragmentation Analysis'}
-              </h3>
+              <h3 className="text-xl font-bold text-slate-900">{t('step4Analyse', lang)}</h3>
               <p className="text-sm text-slate-500 max-w-md mx-auto mt-1">
-                {lang === 'fr'
-                  ? 'Segmentation classique haute vitesse OpenCV/WASM (CLAHE, filtre adaptatif, transformée en distance, ligne de partage des eaux).'
-                  : 'Engine A Classical pipeline runs locally in WebAssembly (CLAHE, adaptive filtering, distance transform, watershed).'}
+                {t('step4Subtitle', lang)}
               </p>
             </div>
 
@@ -585,7 +646,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                   />
                 </div>
                 <span className="text-xs font-bold text-slate-600">
-                  Processing fragments... {analysisProgress}%
+                  {t('processingMsg', lang)} {analysisProgress}%
                 </span>
               </div>
             ) : (
@@ -594,7 +655,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                 className="px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-base font-bold shadow-lg shadow-blue-500/30 flex items-center gap-2 mx-auto transition"
               >
                 <Sparkles className="w-5 h-5" />
-                {lang === 'fr' ? 'Démarrer l’Analyse Immédiate' : 'Run Fragmentation Engine'}
+                {t('runAnalysis', lang)}
               </button>
             )}
 
@@ -603,7 +664,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                 onClick={() => setStep(3)}
                 className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1"
               >
-                <ChevronLeft className="w-4 h-4" /> Back
+                <ChevronLeft className="w-4 h-4" /> {t('back', lang)}
               </button>
             </div>
           </div>
@@ -612,13 +673,13 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
         {/* STEP 5: Results & Percentiles */}
         {step === 5 && activeRun && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap justify-between items-center gap-2">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">
-                  {lang === 'fr' ? 'Étape 5 : Résultats de Fragmentation' : 'Step 5: Fragmentation Sizing & Results'}
-                </h3>
+                <h3 className="text-lg font-bold text-slate-900">{t('step5Result', lang)}</h3>
                 <p className="text-xs text-slate-500">
-                  Identified {activeRun.fragments.length} rock fragments | Minimum Feret Sieve Equivalent
+                  {lang === 'fr'
+                    ? `${activeRun.fragments.length} fragments identifiés | Équivalent Tamis Diamètre Féret Minimal`
+                    : `Identified ${activeRun.fragments.length} rock fragments | Minimum Feret Sieve Equivalent`}
                 </p>
               </div>
 
@@ -641,7 +702,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                   }}
                   className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow"
                 >
-                  <FileDown className="w-3.5 h-3.5" /> PDF Report
+                  <FileDown className="w-3.5 h-3.5" /> {t('exportPdf', lang)}
                 </button>
 
                 <button
@@ -656,7 +717,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                   }}
                   className="px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow"
                 >
-                  <FileDown className="w-3.5 h-3.5" /> CSV
+                  <FileDown className="w-3.5 h-3.5" /> {t('exportCsv', lang)}
                 </button>
               </div>
             </div>
@@ -664,7 +725,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
             {/* Key Sizing Metrics Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                <span className="text-[10px] text-blue-700 font-semibold uppercase block">P50 (Median)</span>
+                <span className="text-[10px] text-blue-700 font-semibold uppercase block">{t('p50', lang)}</span>
                 <span className="text-xl font-black text-blue-950">{activeRun.metrics.p50} mm</span>
                 <span className="text-[10px] text-blue-600 block mt-0.5">
                   95% CI: [{activeRun.metrics.bootstrapCI.p50[0]}-{activeRun.metrics.bootstrapCI.p50[1]}]
@@ -672,7 +733,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
               </div>
 
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                <span className="text-[10px] text-blue-700 font-semibold uppercase block">P80 (Crusher Feed)</span>
+                <span className="text-[10px] text-blue-700 font-semibold uppercase block">{t('p80', lang)}</span>
                 <span className="text-xl font-black text-blue-950">{activeRun.metrics.p80} mm</span>
                 <span className="text-[10px] text-blue-600 block mt-0.5">
                   95% CI: [{activeRun.metrics.bootstrapCI.p80[0]}-{activeRun.metrics.bootstrapCI.p80[1]}]
@@ -680,26 +741,26 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
               </div>
 
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                <span className="text-[10px] text-amber-700 font-semibold uppercase block">Oversize (&gt;300mm)</span>
+                <span className="text-[10px] text-amber-700 font-semibold uppercase block">{t('oversizePercent', lang)}</span>
                 <span className="text-xl font-black text-amber-950">{activeRun.metrics.oversizePercent}%</span>
-                <span className="text-[10px] text-amber-600 block mt-0.5">Requires secondary breaking</span>
+                <span className="text-[10px] text-amber-600 block mt-0.5">{t('oversizeNote', lang)}</span>
               </div>
 
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <span className="text-[10px] text-slate-600 font-semibold uppercase block">Fines (&lt;25mm)</span>
+                <span className="text-[10px] text-slate-600 font-semibold uppercase block">{t('finesPercent', lang)}</span>
                 <span className="text-xl font-black text-slate-900">{activeRun.metrics.finesPercent}%</span>
-                <span className="text-[10px] text-slate-500 block mt-0.5">Swebrec extrapolated</span>
+                <span className="text-[10px] text-slate-500 block mt-0.5">{t('finesNote', lang)}</span>
               </div>
             </div>
 
             {/* Interactive Cumulative Passing Chart */}
-            <CumulativeDistributionChart metrics={activeRun.metrics} />
+            <CumulativeDistributionChart metrics={activeRun.metrics} lang={lang} />
 
             {/* Segmentation Overlay Preview */}
             {activeRun.stepPreviews?.overlay && (
               <div className="p-3 bg-slate-900 rounded-xl border border-slate-700">
                 <h4 className="text-xs font-bold text-slate-300 uppercase mb-2">
-                  Segmentation Overlay View
+                  {t('overlayView', lang)}
                 </h4>
                 <img
                   src={activeRun.stepPreviews.overlay}
@@ -714,18 +775,26 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                 onClick={() => setStep(4)}
                 className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1"
               >
-                <ChevronLeft className="w-4 h-4" /> Re-Analyse
+                <ChevronLeft className="w-4 h-4" /> {t('reAnalyse', lang)}
               </button>
               <button
                 onClick={() => setStep(1)}
                 className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-2 shadow"
               >
-                <CheckCircle2 className="w-4 h-4" /> Done / Next Blast
+                <CheckCircle2 className="w-4 h-4" /> {t('doneNextBlast', lang)}
               </button>
             </div>
           </div>
         )}
       </div>
+
+      {showInclinometer && (
+        <CameraInclinometerModal
+          onCapture={handleInclinometerCapture}
+          onClose={() => setShowInclinometer(false)}
+          lang={lang}
+        />
+      )}
     </div>
   );
 };

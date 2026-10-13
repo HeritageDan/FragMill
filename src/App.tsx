@@ -11,14 +11,21 @@ import type {
   MillBatch,
   AppSettings,
 } from './types';
-import { AppHeader } from './components/layout/AppHeader';
+import { AppHeader, type NavigationTab } from './components/layout/AppHeader';
 import { FieldWizard } from './components/wizard/FieldWizard';
 import { BlastDetailView } from './components/blast/BlastDetailView';
+import { BenchMapView } from './components/spatial/BenchMapView';
 import { ValidationDashboard } from './components/validation/ValidationDashboard';
 import { MineToMillView } from './components/minetomill/MineToMillView';
 import { KuzRamView } from './components/kuzram/KuzRamView';
 import { SettingsView } from './components/settings/SettingsView';
 import { HelpView } from './components/help/HelpView';
+import { Drone3DSizingView } from './components/drone/Drone3DSizingView';
+import { BeltEdgeVisionView } from './components/belt/BeltEdgeVisionView';
+import { BlastTimingSimulatorView } from './components/timing/BlastTimingSimulatorView';
+import { ComminutionDigitalTwinView } from './components/comminution/ComminutionDigitalTwinView';
+import { BlockModelKrigingView } from './components/geostatistics/BlockModelKrigingView';
+import { DrillTelemetryP2PView } from './components/telemetry/DrillTelemetryP2PView';
 import { RefreshCw } from 'lucide-react';
 
 export function App() {
@@ -27,9 +34,7 @@ export function App() {
   const [sites, setSites] = useState<Site[]>([]);
   const [blasts, setBlasts] = useState<Blast[]>([]);
   const [activeBlastId, setActiveBlastId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<
-    'wizard' | 'blast' | 'validation' | 'minetomill' | 'kuzram' | 'settings' | 'help'
-  >('wizard');
+  const [activeTab, setActiveTab] = useState<NavigationTab>('wizard');
   const [isLoading, setIsLoading] = useState(true);
 
   // Initialize and load database
@@ -191,6 +196,92 @@ export function App() {
     setActiveTab(settings.mode === 'field' ? 'wizard' : 'blast');
   };
 
+  const handleDeleteBlast = async (blastIdToDelete: string) => {
+    try {
+      const blastImages = await db.images.where('blastId').equals(blastIdToDelete).toArray();
+      for (const img of blastImages) {
+        await db.segmentationRuns.where('imageId').equals(img.id).delete();
+      }
+      await db.images.where('blastId').equals(blastIdToDelete).delete();
+      await db.groundTruths.where('blastId').equals(blastIdToDelete).delete();
+      await db.millBatches.where('blastId').equals(blastIdToDelete).delete();
+      await db.blasts.delete(blastIdToDelete);
+
+      const remainingBlasts = blasts.filter((b) => b.id !== blastIdToDelete);
+
+      if (remainingBlasts.length === 0) {
+        const defaultId = `blast-bl-${Date.now().toString().slice(-4)}`;
+        const freshBlast: Blast = {
+          id: defaultId,
+          siteId: sites[0]?.id || 'site-1',
+          projectId: projects[0]?.id || 'proj-1',
+          blastId: 'BL-2026-001',
+          dateTime: new Date().toISOString().slice(0, 16),
+          weather: 'Clear, 28°C',
+          notes: 'Initial blast record',
+          parameters: {
+            benchHeight: 6.0,
+            holeDiameter: 89,
+            holeDepth: 6.8,
+            subdrill: 0.8,
+            burden: 2.4,
+            spacing: 2.8,
+            stemmingLength: 2.0,
+            numberOfHoles: 30,
+            holeInclination: 90,
+            explosiveType: 'ANFO',
+            rws: 100,
+            chargePerHole: 22.0,
+            bottomChargeLength: 2.0,
+            columnChargeLength: 2.4,
+            initiationSequenceNotes: 'Nonel 25ms surface delays',
+            waterInHoles: false,
+            drillingDeviationEstimate: 0.12,
+          },
+          rockMass: {
+            rockType: 'Granodiorite',
+            density: 2.68,
+            jointSetCount: 3,
+            meanJointSpacing: 0.5,
+            jointOrientation: 'dip_into_face',
+            estimatedGsiOrRmr: 65,
+            ucsMPa: 120,
+            youngsModulusGPa: 50,
+          },
+          images: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        await db.blasts.put(freshBlast);
+        setBlasts([freshBlast]);
+        setActiveBlastId(freshBlast.id);
+      } else {
+        setBlasts(remainingBlasts);
+        if (activeBlastId === blastIdToDelete) {
+          setActiveBlastId(remainingBlasts[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete blast:', err);
+    }
+  };
+
+  const handleDeleteImage = async (imageIdToDelete: string) => {
+    try {
+      await db.segmentationRuns.where('imageId').equals(imageIdToDelete).delete();
+      await db.images.delete(imageIdToDelete);
+
+      setBlasts((prev) =>
+        prev.map((b) => ({
+          ...b,
+          images: b.images.filter((img) => img.id !== imageIdToDelete),
+        }))
+      );
+    } catch (err) {
+      console.error('Failed to delete image:', err);
+    }
+  };
+
   const handleLoadDemoProject = async () => {
     await seedDemoProject();
     await loadDatabase();
@@ -214,6 +305,7 @@ export function App() {
         blasts={blasts}
         activeBlastId={activeBlastId}
         onSelectBlast={(id) => setActiveBlastId(id)}
+        onDeleteBlast={handleDeleteBlast}
         activeTab={activeTab}
         onSelectTab={(tab) => setActiveTab(tab)}
         settings={settings}
@@ -225,6 +317,7 @@ export function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
         {activeTab === 'wizard' && activeBlast && (
           <FieldWizard
+            key={activeBlast.id}
             currentBlast={activeBlast}
             onUpdateBlast={handleUpdateBlast}
             onSaveRun={handleSaveRun}
@@ -234,10 +327,48 @@ export function App() {
 
         {activeTab === 'blast' && activeBlast && (
           <BlastDetailView
+            key={activeBlast.id}
             blast={activeBlast}
             settings={settings}
             onUpdateBlast={handleUpdateBlast}
+            onDeleteBlast={handleDeleteBlast}
+            onDeleteImage={handleDeleteImage}
             onSaveRun={handleSaveRun}
+            lang={settings.language}
+          />
+        )}
+
+        {activeTab === 'drone3d' && activeBlast && (
+          <Drone3DSizingView blast={activeBlast} lang={settings.language} />
+        )}
+
+        {activeTab === 'beltvision' && (
+          <BeltEdgeVisionView lang={settings.language} />
+        )}
+
+        {activeTab === 'timing' && activeBlast && (
+          <BlastTimingSimulatorView blast={activeBlast} lang={settings.language} />
+        )}
+
+        {activeTab === 'comminution' && activeBlast && (
+          <ComminutionDigitalTwinView blast={activeBlast} lang={settings.language} />
+        )}
+
+        {activeTab === 'kriging' && (
+          <BlockModelKrigingView lang={settings.language} />
+        )}
+
+        {activeTab === 'telemetry' && activeBlast && (
+          <DrillTelemetryP2PView blast={activeBlast} lang={settings.language} />
+        )}
+
+        {activeTab === 'benchmap' && (
+          <BenchMapView
+            blasts={blasts}
+            onSelectBlast={(id) => {
+              setActiveBlastId(id);
+              setActiveTab('blast');
+            }}
             lang={settings.language}
           />
         )}

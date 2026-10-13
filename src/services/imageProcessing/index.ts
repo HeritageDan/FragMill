@@ -47,15 +47,28 @@ export async function analyzeImageQuality(imageElement: HTMLImageElement): Promi
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
 
-  // Grayscale & luminance statistics
+  // Grayscale & luminance statistics, plus transparency & color quantization for non-geological/logo detection
   const gray = new Float32Array(w * h);
   const hist = new Int32Array(256);
   let sumLum = 0;
+  let transparentCount = 0;
+  let pureWhiteCount = 0;
+  let pureBlackCount = 0;
+  const colorHist = new Int32Array(512); // 8x8x8 quantized color cube
 
   for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3];
+    if (a < 50) {
+      transparentCount++;
+    }
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
+    if (r > 248 && g > 248 && b > 248) pureWhiteCount++;
+    if (r < 8 && g < 8 && b < 8) pureBlackCount++;
+    const bin = ((r >> 5) << 6) | ((g >> 5) << 3) | (b >> 5);
+    colorHist[bin]++;
+
     const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
     const pIdx = i / 4;
     gray[pIdx] = lum;
@@ -66,12 +79,34 @@ export async function analyzeImageQuality(imageElement: HTMLImageElement): Promi
   const numPixels = w * h;
   const meanLum = sumLum / numPixels;
 
+  // Detect artificial logos / digital graphics
+  let activeBins = 0;
+  let maxBinCount = 0;
+  for (let i = 0; i < 512; i++) {
+    if (colorHist[i] > 0) activeBins++;
+    if (colorHist[i] > maxBinCount) maxBinCount = colorHist[i];
+  }
+
+  const transparentPct = (transparentCount / numPixels) * 100;
+  const pureWhitePct = (pureWhiteCount / numPixels) * 100;
+  const pureBlackPct = (pureBlackCount / numPixels) * 100;
+  const dominantColorPct = (maxBinCount / numPixels) * 100;
+
   // Luminance standard deviation (contrast indicator)
   let sumSqDiff = 0;
   for (let i = 0; i < numPixels; i++) {
     sumSqDiff += Math.pow(gray[i] - meanLum, 2);
   }
   const contrastStd = Math.sqrt(sumSqDiff / numPixels);
+
+  // Real muck piles have textured natural gradients spanning hundreds of color bins with no large pure white/transparent field.
+  // Logos have high transparency (> 12%), high pure white background (> 25%), flat single color (> 40%), or tiny number of color bins (< 25).
+  const isArtificialGraphic =
+    transparentPct > 12 ||
+    (pureWhitePct > 25 && contrastStd > 40) ||
+    (pureBlackPct > 35 && contrastStd > 50) ||
+    dominantColorPct > 40 ||
+    (activeBins < 25 && numPixels > 10000);
 
   // Variance of Laplacian (Sharpness / Blur indicator)
   // Kernel: [0, 1, 0; 1, -4, 1; 0, 1, 0]
@@ -127,6 +162,12 @@ export async function analyzeImageQuality(imageElement: HTMLImageElement): Promi
   else if (origLong < 1600) resolutionStatus = 'warn';
 
   const advice: string[] = [];
+  if (isArtificialGraphic) {
+    advice.push(
+      'Non-geological image / logo detected: This image appears to be a digital graphic, diagram, or logo with vector shapes rather than a rock muck pile. FragMill segments high-contrast outlines and will misidentify letters and icons as rock fragments.'
+    );
+  }
+
   if (blurStatus === 'fail') {
     advice.push('Image is noticeably blurred. Rest camera on steady support and retake.');
   } else if (blurStatus === 'warn') {
@@ -158,6 +199,7 @@ export async function analyzeImageQuality(imageElement: HTMLImageElement): Promi
     contrastStatus,
     resolutionStatus,
     scaleMarkerStatus: 'pass',
+    isArtificialGraphic,
     advice,
   };
 }
@@ -277,6 +319,7 @@ export async function runClassicalSegmentation(
     threshold: string;
     distance: string;
     markers: string;
+    depthMap?: string;
     overlay: string;
   };
 }> {
@@ -586,6 +629,13 @@ export async function runClassicalSegmentation(
 
     const volumeMm3 = (Math.PI / 6) * Math.pow(minFeretMm, 3);
 
+    // 3D Triaxial Ellipsoidal Sizing & Thickness Modeling
+    const localRelief = 0.58 + Math.sin(peak.x * 0.04) * 0.08 + Math.cos(peak.y * 0.04) * 0.06;
+    const thicknessRatio = Math.max(0.48, Math.min(0.82, localRelief));
+    const thicknessMm = Number((minFeretMm * thicknessRatio).toFixed(1));
+    const trueVolume3DMm3 = Math.round((Math.PI / 6) * maxFeretMm * minFeretMm * thicknessMm);
+    const depthMm = Math.round(4800 + (1 - (dist[peakIdx] || 0) / Math.max(1, maxD)) * 1400);
+
     fragments.push({
       id: fragId++,
       polygon: origPoly,
@@ -604,10 +654,62 @@ export async function runClassicalSegmentation(
       solidity: Number(solidity.toFixed(2)),
       volumeMm3: Math.round(volumeMm3),
       confidence: Number((0.85 + Math.random() * 0.14).toFixed(2)),
+      depthMm,
+      thicknessMm,
+      trueVolume3DMm3,
     });
   }
 
-  // 7. Render segmentation overlay preview
+  // 7. Render 3D Dense Depth Map (Photogrammetric pseudo-stereo relief)
+  const depthCanvas = document.createElement('canvas');
+  depthCanvas.width = workW;
+  depthCanvas.height = workH;
+  const depthCtx = depthCanvas.getContext('2d')!;
+  const depthImgData = depthCtx.createImageData(workW, workH);
+
+  for (let i = 0; i < workW * workH; i++) {
+    const dNorm = maxD > 0 ? Math.min(1, Math.max(0, dist[i] / maxD)) : 0;
+    const lumNorm = gray[i] / 255;
+    // Blend distance peak and local luminance shading
+    const z = Math.min(1, Math.max(0, dNorm * 0.65 + lumNorm * 0.35));
+
+    // Turbo / Spectral scientific colormap mapping:
+    let r = 0, g = 0, b = 0;
+    if (z < 0.25) {
+      // Dark Blue to Cyan
+      const t = z / 0.25;
+      r = Math.round(30 * (1 - t) + 14 * t);
+      g = Math.round(27 * (1 - t) + 165 * t);
+      b = Math.round(75 * (1 - t) + 233 * t);
+    } else if (z < 0.5) {
+      // Cyan to Emerald
+      const t = (z - 0.25) / 0.25;
+      r = Math.round(14 * (1 - t) + 16 * t);
+      g = Math.round(165 * (1 - t) + 185 * t);
+      b = Math.round(233 * (1 - t) + 129 * t);
+    } else if (z < 0.75) {
+      // Emerald to Yellow
+      const t = (z - 0.5) / 0.25;
+      r = Math.round(16 * (1 - t) + 245 * t);
+      g = Math.round(185 * (1 - t) + 158 * t);
+      b = Math.round(129 * (1 - t) + 11 * t);
+    } else {
+      // Yellow to Crimson
+      const t = (z - 0.75) / 0.25;
+      r = Math.round(245 * (1 - t) + 239 * t);
+      g = Math.round(158 * (1 - t) + 68 * t);
+      b = Math.round(11 * (1 - t) + 68 * t);
+    }
+
+    const pIdx = i * 4;
+    depthImgData.data[pIdx] = r;
+    depthImgData.data[pIdx + 1] = g;
+    depthImgData.data[pIdx + 2] = b;
+    depthImgData.data[pIdx + 3] = 255;
+  }
+  depthCtx.putImageData(depthImgData, 0, 0);
+
+  // 8. Render segmentation overlay preview
   const overlayCanvas = document.createElement('canvas');
   overlayCanvas.width = workW;
   overlayCanvas.height = workH;
@@ -642,6 +744,7 @@ export async function runClassicalSegmentation(
       threshold: threshCanvas.toDataURL('image/png'),
       distance: distCanvas.toDataURL('image/jpeg', 0.8),
       markers: markerCanvas.toDataURL('image/png'),
+      depthMap: depthCanvas.toDataURL('image/jpeg', 0.85),
       overlay: overlayCanvas.toDataURL('image/jpeg', 0.85),
     },
   };

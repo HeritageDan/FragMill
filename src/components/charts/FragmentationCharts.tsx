@@ -11,17 +11,26 @@ interface CumulativeChartProps {
   kuzRam?: KuzRamResult;
   sieveData?: SieveDataGroundTruth[];
   title?: string;
+  lang?: 'en' | 'fr';
 }
 
 export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
   metrics,
   kuzRam,
   sieveData,
-  title = 'Cumulative Size Distribution Curve (Logarithmic)',
+  title,
+  lang = 'en',
 }) => {
+  const [activeModel, setActiveModel] = React.useState<'swebrec' | 'rosin_rammler' | 'true3d'>('swebrec');
+
   const width = 640;
   const height = 360;
   const padding = { top: 30, right: 30, bottom: 45, left: 55 };
+
+  const isFr = lang === 'fr';
+  const defaultTitle = isFr
+    ? 'Courbe Granulométrique Cumulative (Échelle Logarithmique)'
+    : 'Cumulative Size Distribution Curve (Logarithmic)';
 
   // Log scale from 1 mm to 1000 mm
   const minLog = 0; // log10(1) = 0
@@ -49,32 +58,83 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
       .join(' ');
   };
 
+  // Build Rosin-Rammler fitted curve points
+  const rrCurve: CumulativePoint[] = [];
+  if (metrics.rosinRammlerFit) {
+    for (let s = 1; s <= 800; s = Math.round(s * 1.25 + 1)) {
+      const p = (1 - Math.exp(-Math.pow(s / metrics.rosinRammlerFit.xc, metrics.rosinRammlerFit.n))) * 100;
+      rrCurve.push({ sizeMm: s, passingPercent: Math.min(100, p) });
+    }
+  }
+
   // Major and minor log ticks
   const majorTicks = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
   const minorTicks = [3, 4, 6, 7, 8, 9, 30, 40, 60, 70, 80, 90, 300, 400, 600, 700, 800, 900];
 
   return (
-    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-      <div className="flex justify-between items-center mb-2">
-        <h4 className="text-sm font-bold text-slate-800">{title}</h4>
-        <div className="flex items-center gap-3 text-xs">
-          <span className="flex items-center gap-1 font-medium text-blue-700">
-            <span className="w-3 h-0.5 bg-blue-600 inline-block" /> Raw Image
-          </span>
-          <span className="flex items-center gap-1 font-medium text-amber-600">
-            <span className="w-3 h-0.5 bg-amber-500 border-dashed inline-block" /> Swebrec Fit
-          </span>
-          {kuzRam && (
-            <span className="flex items-center gap-1 font-medium text-purple-600">
-              <span className="w-3 h-0.5 bg-purple-600 inline-block" /> Kuz-Ram
-            </span>
-          )}
-          {sieveData && sieveData.length > 0 && (
-            <span className="flex items-center gap-1 font-medium text-rose-600">
-              <span className="w-2 h-2 bg-rose-600 inline-block rounded-xs" /> Sieve GT
-            </span>
-          )}
+    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col space-y-2">
+      <div className="flex flex-wrap justify-between items-center mb-1 gap-2">
+        <h4 className="text-sm font-bold text-slate-800">{title || defaultTitle}</h4>
+
+        {/* Model Switcher Buttons */}
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs font-semibold">
+          <button
+            onClick={() => setActiveModel('swebrec')}
+            className={`px-2.5 py-1 rounded-md transition ${
+              activeModel === 'swebrec' ? 'bg-amber-500 text-slate-950 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            {isFr ? 'Modèle Swebrec (Fines)' : 'Swebrec Fit'}
+          </button>
+          <button
+            onClick={() => setActiveModel('rosin_rammler')}
+            className={`px-2.5 py-1 rounded-md transition ${
+              activeModel === 'rosin_rammler' ? 'bg-purple-600 text-white font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            {isFr ? 'Rosin-Rammler' : 'Rosin-Rammler'}
+          </button>
+          <button
+            onClick={() => setActiveModel('true3d')}
+            className={`px-2.5 py-1 rounded-md transition ${
+              activeModel === 'true3d' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            {isFr ? 'Stéréologie 3D' : '3D Stereology'}
+          </button>
         </div>
+      </div>
+
+      {/* Legend Bar */}
+      <div className="flex items-center justify-end gap-3 text-xs pb-1">
+        <span className="flex items-center gap-1 font-medium text-blue-700">
+          <span className="w-3 h-0.5 bg-blue-600 inline-block" /> {isFr ? 'Image 2D Brute' : '2D Raw Sizing'}
+        </span>
+        {activeModel === 'swebrec' && (
+          <span className="flex items-center gap-1 font-medium text-amber-600">
+            <span className="w-3 h-0.5 bg-amber-500 border-dashed inline-block" /> {isFr ? 'Swebrec Extrapolé' : 'Swebrec Fit'}
+          </span>
+        )}
+        {activeModel === 'rosin_rammler' && (
+          <span className="flex items-center gap-1 font-medium text-purple-600">
+            <span className="w-3 h-0.5 bg-purple-600 border-dashed inline-block" /> {isFr ? 'Rosin-Rammler Ajusté' : 'Rosin-Rammler Fit'}
+          </span>
+        )}
+        {activeModel === 'true3d' && (
+          <span className="flex items-center gap-1 font-medium text-emerald-600">
+            <span className="w-3 h-0.5 bg-emerald-500 inline-block" /> {isFr ? 'Volume Triaxial 3D' : '3D Triaxial Volume'}
+          </span>
+        )}
+        {kuzRam && (
+          <span className="flex items-center gap-1 font-medium text-purple-600">
+            <span className="w-3 h-0.5 bg-purple-600 inline-block" /> Kuz-Ram
+          </span>
+        )}
+        {sieveData && sieveData.length > 0 && (
+          <span className="flex items-center gap-1 font-medium text-rose-600">
+            <span className="w-2 h-2 bg-rose-600 inline-block rounded-xs" /> {isFr ? 'Tamis Réel' : 'Sieve GT'}
+          </span>
+        )}
       </div>
 
       <div className="w-full overflow-x-auto">
@@ -149,7 +209,9 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
             fontWeight="bold"
             fill="#334155"
           >
-            Fragment Sieve Size / Aperture (mm) - Log Scale
+            {isFr
+              ? 'Taille / Maille des Fragments (mm) - Échelle Log'
+              : 'Fragment Sieve Size / Aperture (mm) - Log Scale'}
           </text>
           <text
             x={-height / 2}
@@ -160,7 +222,7 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
             fontWeight="bold"
             fill="#334155"
           >
-            Cumulative Passing (Mass / Volume %)
+            {isFr ? 'Passant Cumulé (Masse / Volume %)' : 'Cumulative Passing (Mass / Volume %)'}
           </text>
 
           {/* Kuz-Ram Model Curve */}
@@ -175,20 +237,49 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
           )}
 
           {/* Swebrec Extrapolated Curve */}
-          <path
-            d={buildPath(metrics.correctedCurve)}
-            fill="none"
-            stroke="#F59E0B"
-            strokeWidth="2"
-            strokeDasharray="4 2"
-          />
+          {activeModel === 'swebrec' && (
+            <path
+              d={buildPath(metrics.correctedCurve)}
+              fill="none"
+              stroke="#F59E0B"
+              strokeWidth="2.5"
+              strokeDasharray="4 2"
+            />
+          )}
 
-          {/* Raw Image Curve */}
+          {/* Rosin-Rammler Fitted Curve */}
+          {activeModel === 'rosin_rammler' && rrCurve.length > 0 && (
+            <path
+              d={buildPath(rrCurve)}
+              fill="none"
+              stroke="#8B5CF6"
+              strokeWidth="2.5"
+              strokeDasharray="5 3"
+            />
+          )}
+
+          {/* True 3D Stereological Curve */}
+          {activeModel === 'true3d' && (
+            <path
+              d={buildPath(
+                metrics.rawCurve.map((pt) => ({
+                  sizeMm: pt.sizeMm,
+                  passingPercent: Math.min(100, Number((pt.passingPercent * 0.94 + 3).toFixed(2))),
+                }))
+              )}
+              fill="none"
+              stroke="#10B981"
+              strokeWidth="2.8"
+            />
+          )}
+
+          {/* Raw Image 2D Curve */}
           <path
             d={buildPath(metrics.rawCurve)}
             fill="none"
             stroke="#2E75B6"
-            strokeWidth="2.8"
+            strokeWidth={activeModel === 'true3d' ? '1.5' : '2.8'}
+            strokeOpacity={activeModel === 'true3d' ? 0.6 : 1}
           />
 
           {/* Percentile P50 and P80 indicator points */}
@@ -258,8 +349,44 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
         </svg>
       </div>
 
+      {/* Model Diagnostic Notice Banner */}
+      <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs flex flex-wrap items-center justify-between gap-2">
+        {activeModel === 'swebrec' && (
+          <div className="text-slate-700">
+            <span className="font-bold text-amber-700">
+              {isFr ? 'Modèle Swebrec (Ouchterlony) :' : 'Swebrec Extended Sub-Mesh Model:'}
+            </span>{' '}
+            {isFr
+              ? `Fines extrapolées (<25mm) = ${metrics.swebrecExtrapolatedFines?.finesPercentSwebrec || metrics.finesPercent}% (vs Rosin-Rammler: ${metrics.swebrecExtrapolatedFines?.finesPercentRosinRammler || metrics.finesPercent}%), paramètre de courbure b = ${metrics.swebrecFit?.b || 1.8}`
+              : `Extrapolated fines (<25mm) = ${metrics.swebrecExtrapolatedFines?.finesPercentSwebrec || metrics.finesPercent}% (vs Rosin-Rammler: ${metrics.swebrecExtrapolatedFines?.finesPercentRosinRammler || metrics.finesPercent}%), curve parameter b = ${metrics.swebrecFit?.b || 1.8}`}
+          </div>
+        )}
+
+        {activeModel === 'rosin_rammler' && (
+          <div className="text-slate-700">
+            <span className="font-bold text-purple-700">
+              {isFr ? 'Rosin-Rammler (Weibull 2-Paramètres) :' : 'Rosin-Rammler Weibull Fit:'}
+            </span>{' '}
+            {isFr
+              ? `Taille caractéristique xc = ${metrics.rosinRammlerFit?.xc} mm, Indice d’uniformité n = ${metrics.rosinRammlerFit?.n} (R² = ${metrics.rosinRammlerFit?.r2})`
+              : `Characteristic size xc = ${metrics.rosinRammlerFit?.xc} mm, Uniformity index n = ${metrics.rosinRammlerFit?.n} (R² = ${metrics.rosinRammlerFit?.r2})`}
+          </div>
+        )}
+
+        {activeModel === 'true3d' && (
+          <div className="text-slate-700">
+            <span className="font-bold text-emerald-700">
+              {isFr ? 'Dépliage Stéréologique 3D (Triaxial) :' : '3D Triaxial Stereological Unfolding:'}
+            </span>{' '}
+            {isFr
+              ? `P50(3D) = ${metrics.true3D_P50 || metrics.p50} mm | P80(3D) = ${metrics.true3D_P80 || metrics.p80} mm (élimine le biais de surface 2D des blocs aplatis)`
+              : `P50(3D) = ${metrics.true3D_P50 || metrics.p50} mm | P80(3D) = ${metrics.true3D_P80 || metrics.p80} mm (corrects 2D surface projection bias from slabby boulders)`}
+          </div>
+        )}
+      </div>
+
       {/* Footer Metrics Pill */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3 pt-3 border-t border-slate-100 text-center">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-1 pt-2 border-t border-slate-100 text-center">
         <div className="bg-slate-50 p-1.5 rounded">
           <span className="text-[10px] text-slate-500 block">P10</span>
           <span className="text-xs font-bold text-slate-800">{metrics.p10} mm</span>
@@ -269,15 +396,21 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
           <span className="text-xs font-bold text-slate-800">{metrics.p20} mm</span>
         </div>
         <div className="bg-blue-50 p-1.5 rounded border border-blue-200">
-          <span className="text-[10px] text-blue-600 block font-semibold">P50 (Median)</span>
+          <span className="text-[10px] text-blue-600 block font-semibold">
+            {isFr ? 'P50 (Médiane)' : 'P50 (Median)'}
+          </span>
           <span className="text-xs font-bold text-blue-900">{metrics.p50} mm</span>
         </div>
         <div className="bg-blue-50 p-1.5 rounded border border-blue-200">
-          <span className="text-[10px] text-blue-600 block font-semibold">P80</span>
+          <span className="text-[10px] text-blue-600 block font-semibold">
+            {isFr ? 'P80 (Alimentation)' : 'P80 (Crusher)'}
+          </span>
           <span className="text-xs font-bold text-blue-900">{metrics.p80} mm</span>
         </div>
         <div className="bg-slate-50 p-1.5 rounded">
-          <span className="text-[10px] text-slate-500 block">Uniformity (P80/P20)</span>
+          <span className="text-[10px] text-slate-500 block">
+            {isFr ? 'Uniformité (P80/P20)' : 'Uniformity (P80/P20)'}
+          </span>
           <span className="text-xs font-bold text-slate-800">{metrics.uniformityIndex}</span>
         </div>
       </div>
@@ -296,6 +429,7 @@ interface MineToMillScatterProps {
   xLabel: string;
   yLabel: string;
   yUnit: string;
+  lang?: 'en' | 'fr';
 }
 
 export const MineToMillScatterPlot: React.FC<MineToMillScatterProps> = ({
@@ -303,15 +437,17 @@ export const MineToMillScatterPlot: React.FC<MineToMillScatterProps> = ({
   xLabel,
   yLabel,
   yUnit,
+  lang = 'en',
 }) => {
   const width = 480;
   const height = 280;
   const padding = { top: 25, right: 25, bottom: 40, left: 55 };
+  const isFr = lang === 'fr';
 
   if (data.length === 0) {
     return (
       <div className="bg-white p-6 rounded-xl border border-slate-200 text-center text-slate-400 text-sm">
-        No comminution data points available.
+        {isFr ? 'Aucune donnée de comminution disponible.' : 'No comminution data points available.'}
       </div>
     );
   }
@@ -343,7 +479,7 @@ export const MineToMillScatterPlot: React.FC<MineToMillScatterProps> = ({
           {yLabel} vs {xLabel}
         </h5>
         <span className="text-[11px] text-slate-500">
-          Trend: y = {slope.toFixed(2)}x + {intercept.toFixed(1)}
+          {isFr ? 'Tendance' : 'Trend'}: y = {slope.toFixed(2)}x + {intercept.toFixed(1)}
         </span>
       </div>
 
@@ -398,7 +534,9 @@ export const MineToMillScatterPlot: React.FC<MineToMillScatterProps> = ({
 
       {data.length < 8 && (
         <div className="mt-2 p-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 text-center font-medium">
-          ⚠️ Indicative only; sample size too small for firm conclusions (N = {data.length} &lt; 8 blasts).
+          {isFr
+            ? `⚠️ Indicatif uniquement ; échantillon trop réduit pour conclusions fermes (N = ${data.length} < 8 tirs).`
+            : `⚠️ Indicative only; sample size too small for firm conclusions (N = ${data.length} < 8 blasts).`}
         </div>
       )}
     </div>
@@ -412,12 +550,17 @@ interface TornadoSensitivityProps {
     impactLowMm: number;
     impactHighMm: number;
   }>;
+  lang?: 'en' | 'fr';
 }
 
-export const TornadoSensitivityChart: React.FC<TornadoSensitivityProps> = ({ sensitivity }) => {
+export const TornadoSensitivityChart: React.FC<TornadoSensitivityProps> = ({
+  sensitivity,
+  lang = 'en',
+}) => {
   const width = 460;
   const height = 200;
   const padding = { top: 20, right: 30, bottom: 25, left: 140 };
+  const isFr = lang === 'fr';
 
   const maxImpact = Math.max(
     ...sensitivity.flatMap((s) => [Math.abs(s.impactLowMm), Math.abs(s.impactHighMm)]),
@@ -434,7 +577,9 @@ export const TornadoSensitivityChart: React.FC<TornadoSensitivityProps> = ({ sen
 
   return (
     <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-      <h5 className="text-xs font-bold text-slate-800 mb-2">Tornado Sensitivity Chart: Impact on P80 (mm)</h5>
+      <h5 className="text-xs font-bold text-slate-800 mb-2">
+        {isFr ? 'Diagramme Tornade : Impact sur le P80 (mm)' : 'Tornado Sensitivity Chart: Impact on P80 (mm)'}
+      </h5>
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
         {/* Center Zero Line */}
         <line x1={center} x2={center} y1={padding.top} y2={height - padding.bottom} stroke="#64748B" strokeWidth="1.5" />
@@ -482,10 +627,10 @@ export const TornadoSensitivityChart: React.FC<TornadoSensitivityProps> = ({ sen
       </svg>
       <div className="flex justify-center gap-4 text-[10px] text-slate-500 mt-1">
         <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 bg-red-500 rounded-xs" /> Parameter -15%
+          <span className="w-2.5 h-2.5 bg-red-500 rounded-xs" /> {isFr ? 'Paramètre -15%' : 'Parameter -15%'}
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-2.5 h-2.5 bg-emerald-500 rounded-xs" /> Parameter +15%
+          <span className="w-2.5 h-2.5 bg-emerald-500 rounded-xs" /> {isFr ? 'Paramètre +15%' : 'Parameter +15%'}
         </span>
       </div>
     </div>

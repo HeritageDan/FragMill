@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { Fragment, Point2D, Calibration } from '../../types';
 import { computeConvexHull, computeFeretDiameters } from '../../services/imageProcessing';
+import { t } from '../../i18n';
 import {
   PlusCircle,
   Trash2,
@@ -359,7 +360,7 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
               activeTool === 'select' ? 'bg-blue-600 text-white' : 'bg-slate-700 hover:bg-slate-600'
             }`}
           >
-            Select
+            {lang === 'fr' ? 'Sélectionner' : 'Select'}
           </button>
           <button
             onClick={() => {
@@ -371,7 +372,7 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
             }`}
           >
             <PlusCircle className="w-3.5 h-3.5" />
-            Add Rock
+            {t('addFragment', lang)}
           </button>
           <button
             onClick={() => {
@@ -383,7 +384,7 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
             }`}
           >
             <Trash2 className="w-3.5 h-3.5" />
-            Delete
+            {t('deleteFragment', lang)}
           </button>
           <button
             onClick={() => {
@@ -395,7 +396,7 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
             }`}
           >
             <GitMerge className="w-3.5 h-3.5" />
-            Merge (2)
+            {t('mergeFragments', lang)}
           </button>
           <button
             onClick={() => {
@@ -407,7 +408,7 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
             }`}
           >
             <Scissors className="w-3.5 h-3.5" />
-            Split
+            {t('splitFragment', lang)}
           </button>
           <button
             onClick={() => {
@@ -419,7 +420,7 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
             }`}
           >
             <Paintbrush className="w-3.5 h-3.5" />
-            Fines Tag
+            {t('paintFines', lang)}
           </button>
         </div>
 
@@ -429,7 +430,7 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
             onClick={handleUndo}
             disabled={historyIndex <= 0}
             className="p-1.5 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40"
-            title="Undo"
+            title={t('undo', lang)}
           >
             <Undo2 className="w-4 h-4" />
           </button>
@@ -437,7 +438,7 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
             onClick={handleRedo}
             disabled={historyIndex >= history.length - 1}
             className="p-1.5 rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40"
-            title="Redo"
+            title={t('redo', lang)}
           >
             <Redo2 className="w-4 h-4" />
           </button>
@@ -445,7 +446,7 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
           <div className="h-5 w-px bg-slate-600 mx-1" />
 
           <label className="text-xs text-slate-300 flex items-center gap-1">
-            Opacity:
+            {t('opacity', lang)}
             <input
               type="range"
               min="0.1"
@@ -461,7 +462,7 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
             onClick={() => setShowOutlines(!showOutlines)}
             className={`px-2 py-1 text-xs rounded ${showOutlines ? 'bg-blue-600 text-white' : 'bg-slate-700'}`}
           >
-            Outlines
+            {t('outlines', lang)}
           </button>
         </div>
 
@@ -473,7 +474,7 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-xs font-bold flex items-center gap-1 text-white animate-pulse"
             >
               <Check className="w-3.5 h-3.5" />
-              Complete Rock ({drawingPoly.length} pts)
+              {t('completeRock', lang)} ({drawingPoly.length} pts)
             </button>
           )}
           <button
@@ -481,13 +482,13 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs font-bold flex items-center gap-1 text-white"
           >
             <Save className="w-3.5 h-3.5" />
-            Save New Version
+            {t('saveRunVersion', lang)}
           </button>
           <button
             onClick={onClose}
             className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs text-slate-300"
           >
-            Close
+            {t('close', lang)}
           </button>
         </div>
       </div>
@@ -504,12 +505,12 @@ export const ManualEditor: React.FC<ManualEditorProps> = ({
       {/* Status Bar */}
       <div className="flex items-center justify-between px-4 py-2 bg-slate-800 text-xs text-slate-400 border-t border-slate-700">
         <div>
-          Tool: <span className="font-bold text-white uppercase">{activeTool}</span> | Total Rocks:{' '}
+          {lang === 'fr' ? 'Outil :' : 'Tool:'} <span className="font-bold text-white uppercase">{activeTool}</span> | {t('totalRocks', lang)}{' '}
           <span className="font-bold text-white">{fragments.length}</span>
-          {selectedFragIds.length > 0 && ` | Selected: Rock #${selectedFragIds.join(', ')}`}
+          {selectedFragIds.length > 0 && ` | ${t('selected', lang)} #${selectedFragIds.join(', ')}`}
         </div>
         <div>
-          Scale: {calibration.pxPerMm?.toFixed(3)} px/mm | Edits are non-destructive (saves as a new run version)
+          {lang === 'fr' ? 'Échelle :' : 'Scale:'} {calibration.pxPerMm?.toFixed(3)} px/mm | {lang === 'fr' ? 'Modifications non destructives (enregistré comme nouvelle version)' : 'Edits are non-destructive (saves as a new run version)'}
         </div>
       </div>
     </div>

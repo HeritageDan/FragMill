@@ -101,3 +101,96 @@ export function computeValidationComparison(
     thresholdExceeded: mape > thresholdPercent,
   };
 }
+
+// Robust parser for user-pasted text (TSV from Excel, CSV, semicolon, with headers or units)
+export function parseSieveInput(text: string): {
+  rows: SieveDataGroundTruth[];
+  totalMassKg: number;
+  error?: string;
+} {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    return { rows: [], totalMassKg: 0, error: 'No text provided' };
+  }
+
+  const rows: SieveDataGroundTruth[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+
+    // Determine row separator
+    let tokens: string[] = [];
+    if (rawLine.includes('\t')) {
+      tokens = rawLine.split('\t');
+    } else if (rawLine.includes(';')) {
+      tokens = rawLine.split(';');
+    } else if (rawLine.includes(',')) {
+      const commaCount = (rawLine.match(/,/g) || []).length;
+      if (commaCount === 1) {
+        tokens = rawLine.split(',');
+      } else {
+        tokens = rawLine.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+      }
+    } else {
+      tokens = rawLine.split(/\s+/);
+    }
+
+    const cleanTokens = tokens
+      .map((t) => t.replace(/["']/g, '').trim())
+      .filter(Boolean);
+
+    const numericCandidates: number[] = [];
+    for (const t of cleanTokens) {
+      if (/\d/.test(t)) {
+        // Strip units like mm, cm, m, kg, g, %, lbs
+        const stripped = t.replace(/(mm|cm|m|kg|g|%|lbs|t)/gi, '').trim();
+        // Convert European comma to dot if applicable
+        const normalized = stripped.replace(',', '.');
+        const num = parseFloat(normalized);
+        if (!isNaN(num)) {
+          numericCandidates.push(num);
+        }
+      }
+    }
+
+    if (numericCandidates.length >= 2) {
+      const aperture = numericCandidates[0];
+      const mass = numericCandidates[1];
+      if (aperture > 0 && mass >= 0) {
+        rows.push({
+          apertureMm: Number(aperture.toFixed(2)),
+          massRetainedKg: Number(mass.toFixed(2)),
+        });
+      }
+    }
+  }
+
+  if (rows.length === 0) {
+    return {
+      rows: [],
+      totalMassKg: 0,
+      error: 'Could not detect 2 numeric columns (Screen Aperture & Mass Retained).',
+    };
+  }
+
+  // Deduplicate and aggregate any duplicate sieve sizes
+  const sizeMap = new Map<number, number>();
+  for (const r of rows) {
+    sizeMap.set(r.apertureMm, (sizeMap.get(r.apertureMm) || 0) + r.massRetainedKg);
+  }
+
+  const aggregatedRows: SieveDataGroundTruth[] = [];
+  for (const [apertureMm, massRetainedKg] of sizeMap.entries()) {
+    aggregatedRows.push({ apertureMm, massRetainedKg: Number(massRetainedKg.toFixed(2)) });
+  }
+
+  // Sort descending by aperture (e.g. 300mm down to 4.75mm)
+  aggregatedRows.sort((a, b) => b.apertureMm - a.apertureMm);
+  const totalMass = Number(aggregatedRows.reduce((sum, r) => sum + r.massRetainedKg, 0).toFixed(2));
+
+  return {
+    rows: aggregatedRows,
+    totalMassKg: totalMass,
+  };
+}
+

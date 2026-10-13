@@ -7,38 +7,39 @@ import {
 import { computeMillKPIs } from './minetomill';
 import { fitRosinRammler, fitSwebrec, calculateCumulativeDistribution } from './statistics';
 import { runCalibrationSelfTest } from './selftest';
-import type { BlastParameters, RockMass, Fragment } from '../types';
+import type { BlastParameters, RockMass, Fragment, Blast } from '../types';
+
+const baseParams: BlastParameters = {
+  benchHeight: 6.0,
+  holeDiameter: 89,
+  holeDepth: 6.8,
+  subdrill: 0.8,
+  burden: 2.5,
+  spacing: 3.0,
+  stemmingLength: 2.2,
+  numberOfHoles: 20,
+  holeInclination: 90,
+  explosiveType: 'ANFO',
+  rws: 100,
+  chargePerHole: 22.5,
+  bottomChargeLength: 2.0,
+  columnChargeLength: 2.6,
+  initiationSequenceNotes: '25ms row delay',
+  waterInHoles: false,
+  drillingDeviationEstimate: 0.1,
+};
+
+const baseRock: RockMass = {
+  rockType: 'Granodiorite',
+  density: 2.65,
+  jointSetCount: 3,
+  meanJointSpacing: 0.5,
+  jointOrientation: 'strike_perpendicular',
+  ucsMPa: 120,
+  youngsModulusGPa: 50,
+};
 
 describe('Cunningham Kuz-Ram Blast Formulation', () => {
-  const baseParams: BlastParameters = {
-    benchHeight: 6.0,
-    holeDiameter: 89,
-    holeDepth: 6.8,
-    subdrill: 0.8,
-    burden: 2.5,
-    spacing: 3.0,
-    stemmingLength: 2.2,
-    numberOfHoles: 20,
-    holeInclination: 90,
-    explosiveType: 'ANFO',
-    rws: 100,
-    chargePerHole: 22.5,
-    bottomChargeLength: 2.0,
-    columnChargeLength: 2.6,
-    initiationSequenceNotes: '25ms row delay',
-    waterInHoles: false,
-    drillingDeviationEstimate: 0.1,
-  };
-
-  const baseRock: RockMass = {
-    rockType: 'Granodiorite',
-    density: 2.65,
-    jointSetCount: 3,
-    meanJointSpacing: 0.5,
-    jointOrientation: 'strike_perpendicular',
-    ucsMPa: 120,
-    youngsModulusGPa: 50,
-  };
 
   it('calculates Rock Factor A correctly from Cunningham lookup tables', () => {
     // A = 0.06 * (RMD + JF + JFO + RDI + HF)
@@ -183,3 +184,104 @@ describe('Synthetic Calibration Self-Test Accuracy', () => {
     }
   });
 });
+
+describe('Mine-to-Mill Economic Optimization & Carbon Accounting Engine', () => {
+  it('correctly calculates comminution cost curve and identifies economic sweet spot', async () => {
+    const { evaluateMineToMillEconomics, DEFAULT_ECONOMIC_PARAMS } = await import('./economics');
+    const mockBlast: Blast = {
+      id: 'test-blast-1',
+      siteId: 'site-1',
+      projectId: 'proj-1',
+      blastId: 'BL-TEST-001',
+      dateTime: '2026-10-12T10:00',
+      weather: 'Clear',
+      notes: 'Test blast',
+      parameters: baseParams,
+      rockMass: baseRock,
+      images: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    const result = evaluateMineToMillEconomics(mockBlast, 180, undefined, DEFAULT_ECONOMIC_PARAMS);
+
+    expect(result.evaluation.drillingCostPerTon).toBeGreaterThan(0);
+    expect(result.evaluation.blastingCostPerTon).toBeGreaterThan(0);
+    expect(result.evaluation.crushingCostPerTon).toBeGreaterThan(0);
+    expect(result.evaluation.millingCostPerTon).toBeGreaterThan(0);
+    expect(result.evaluation.totalCostPerTon).toBeGreaterThan(0);
+
+    // Sum verification
+    const sum =
+      result.evaluation.drillingCostPerTon +
+      result.evaluation.blastingCostPerTon +
+      result.evaluation.secondaryBreakingCostPerTon +
+      result.evaluation.crushingCostPerTon +
+      result.evaluation.millingCostPerTon;
+    expect(result.evaluation.totalCostPerTon).toBeCloseTo(sum, 1);
+
+    // Sweet spot P80 verification
+    expect(result.sweetSpotP80Mm).toBeGreaterThanOrEqual(100);
+    expect(result.sweetSpotP80Mm).toBeLessThan(250);
+
+    // Carbon accounting verification
+    expect(result.evaluation.carbonEmissions.scope1ExplosivesKgCo2ePerTon).toBeGreaterThan(0);
+    expect(result.evaluation.carbonEmissions.scope2ElectricityKgCo2ePerTon).toBeGreaterThan(0);
+    expect(result.evaluation.carbonEmissions.totalKgCo2ePerTon).toBeGreaterThan(0);
+
+    // Curve check: P80 array has multiple points and shows trade-off
+    expect(result.costCurve.length).toBeGreaterThan(5);
+    const firstPoint = result.costCurve[0]; // fine P80: high drilling/blasting, lower crushing/milling
+    const lastPoint = result.costCurve[result.costCurve.length - 1]; // coarse P80: lower blast cost, higher crushing/milling
+    expect(firstPoint.drillingBlastingCostPerTon).toBeGreaterThan(lastPoint.drillingBlastingCostPerTon);
+    expect(lastPoint.crushingMillingCostPerTon).toBeGreaterThan(firstPoint.crushingMillingCostPerTon);
+  });
+});
+
+describe('Sieve Data Import & Excel Parser', () => {
+  it('parses standard tab-separated Excel copy-paste with headers and units', async () => {
+    const { parseSieveInput } = await import('./validation');
+    const input = `Screen (mm)\tMass Retained (kg)
+300 mm\t42.0 kg
+200 mm\t68.5 kg
+125 mm\t54.0 kg
+75 mm\t38.0 kg
+37.5 mm\t22.5 kg`;
+
+    const res = parseSieveInput(input);
+    expect(res.rows.length).toBe(5);
+    expect(res.rows[0].apertureMm).toBe(300);
+    expect(res.rows[0].massRetainedKg).toBe(42.0);
+    expect(res.rows[4].apertureMm).toBe(37.5);
+    expect(res.rows[4].massRetainedKg).toBe(22.5);
+    expect(res.totalMassKg).toBe(225.0);
+  });
+
+  it('parses European comma decimals and semicolon delimiters', async () => {
+    const { parseSieveInput } = await import('./validation');
+    const input = `300; 42,5
+200; 68,0
+37,5; 22,5`;
+
+    const res = parseSieveInput(input);
+    expect(res.rows.length).toBe(3);
+    expect(res.rows[0].apertureMm).toBe(300);
+    expect(res.rows[0].massRetainedKg).toBe(42.5);
+    expect(res.rows[2].apertureMm).toBe(37.5);
+    expect(res.rows[2].massRetainedKg).toBe(22.5);
+  });
+
+  it('parses comma-separated CSV with quotes', async () => {
+    const { parseSieveInput } = await import('./validation');
+    const input = `"300","42.0"
+"200","68.5"
+"125","54.0"`;
+
+    const res = parseSieveInput(input);
+    expect(res.rows.length).toBe(3);
+    expect(res.rows[0].apertureMm).toBe(300);
+    expect(res.rows[0].massRetainedKg).toBe(42.0);
+  });
+});
+
+

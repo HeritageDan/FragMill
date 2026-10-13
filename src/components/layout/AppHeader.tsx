@@ -13,15 +13,39 @@ import {
   Globe,
   PlusCircle,
   Database,
+  Map,
+  Trash2,
+  Plane,
+  Video,
+  Flame,
+  Cpu,
+  Layers,
 } from 'lucide-react';
+
+export type NavigationTab =
+  | 'wizard'
+  | 'blast'
+  | 'drone3d'
+  | 'beltvision'
+  | 'timing'
+  | 'comminution'
+  | 'kriging'
+  | 'telemetry'
+  | 'benchmap'
+  | 'validation'
+  | 'minetomill'
+  | 'kuzram'
+  | 'settings'
+  | 'help';
 
 interface AppHeaderProps {
   currentProject: Project | null;
   blasts: Blast[];
   activeBlastId: string;
   onSelectBlast: (id: string) => void;
-  activeTab: 'wizard' | 'blast' | 'validation' | 'minetomill' | 'kuzram' | 'settings' | 'help';
-  onSelectTab: (tab: 'wizard' | 'blast' | 'validation' | 'minetomill' | 'kuzram' | 'settings' | 'help') => void;
+  onDeleteBlast?: (id: string) => void;
+  activeTab: NavigationTab;
+  onSelectTab: (tab: NavigationTab) => void;
   settings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => void;
   onNewBlast: () => void;
@@ -33,6 +57,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   blasts,
   activeBlastId,
   onSelectBlast,
+  onDeleteBlast,
   activeTab,
   onSelectTab,
   settings,
@@ -119,17 +144,36 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 
           {/* Blast Quick Selector */}
           {blasts.length > 0 && (
-            <select
-              value={activeBlastId}
-              onChange={(e) => onSelectBlast(e.target.value)}
-              className="bg-slate-800 text-slate-200 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold focus:outline-hidden"
-            >
-              {blasts.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.blastId}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1">
+              <select
+                value={activeBlastId}
+                onChange={(e) => onSelectBlast(e.target.value)}
+                className="bg-slate-800 text-slate-200 border border-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold focus:outline-hidden"
+              >
+                {blasts.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.blastId}
+                  </option>
+                ))}
+              </select>
+              {onDeleteBlast && (
+                <button
+                  onClick={() => {
+                    const currentB = blasts.find((b) => b.id === activeBlastId);
+                    const confirmMsg = isFrench
+                      ? `Êtes-vous sûr de vouloir supprimer définitivement le tir ${currentB?.blastId || ''} ainsi que toutes ses photos et données associées ?`
+                      : `Are you sure you want to permanently delete blast ${currentB?.blastId || ''} and all its associated photos and data?`;
+                    if (window.confirm(confirmMsg)) {
+                      onDeleteBlast(activeBlastId);
+                    }
+                  }}
+                  className="p-1.5 bg-slate-800 hover:bg-red-900/60 text-slate-400 hover:text-red-300 rounded-lg transition"
+                  title={isFrench ? 'Supprimer ce tir' : 'Delete this blast'}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           )}
 
           <button
@@ -198,6 +242,69 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             >
               <Compass className="w-4 h-4" />
               {isFrench ? 'Tirs & Images' : 'Blast Records & Sizing'}
+            </button>
+            <button
+              onClick={() => onSelectTab('drone3d')}
+              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
+                activeTab === 'drone3d' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Plane className="w-4 h-4" />
+              {isFrench ? 'Drone 3D & Ortho' : 'Drone 3D Sizing'}
+            </button>
+            <button
+              onClick={() => onSelectTab('beltvision')}
+              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
+                activeTab === 'beltvision' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Video className="w-4 h-4" />
+              {isFrench ? 'Vision Convoyeur' : 'Belt Edge Vision'}
+            </button>
+            <button
+              onClick={() => onSelectTab('timing')}
+              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
+                activeTab === 'timing' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Flame className="w-4 h-4" />
+              {isFrench ? 'Séquence 3D & Front' : '3D Timing & Face'}
+            </button>
+            <button
+              onClick={() => onSelectTab('comminution')}
+              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
+                activeTab === 'comminution' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Factory className="w-4 h-4" />
+              {isFrench ? 'Jumeau Broyage (Bond)' : 'Comminution Twin'}
+            </button>
+            <button
+              onClick={() => onSelectTab('kriging')}
+              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
+                activeTab === 'kriging' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              {isFrench ? 'Modèle Blocs & Krigeage' : 'Block Model & Kriging'}
+            </button>
+            <button
+              onClick={() => onSelectTab('telemetry')}
+              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
+                activeTab === 'telemetry' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Cpu className="w-4 h-4" />
+              {isFrench ? 'Foration IREDES & P2P' : 'Drill Telemetry & P2P'}
+            </button>
+            <button
+              onClick={() => onSelectTab('benchmap')}
+              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
+                activeTab === 'benchmap' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Map className="w-4 h-4" />
+              {isFrench ? 'Plan Fosse' : 'Bench Map'}
             </button>
             <button
               onClick={() => onSelectTab('validation')}

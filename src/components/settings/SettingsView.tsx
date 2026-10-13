@@ -4,6 +4,7 @@ import { runCalibrationSelfTest, type SelfTestReport } from '../../services/self
 import { getDownloadedModels, deleteModelCache, checkWebGpuSupport, type ModelMetadata } from '../../services/aiSegmentation';
 import { generatePrintableA4CalibrationSheet, exportProjectBackupJson, importProjectBackupJson } from '../../services/export';
 import { db } from '../../db';
+import { t } from '../../i18n';
 import {
   Settings,
   ShieldCheck,
@@ -88,7 +89,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     a.href = url;
     a.download = `FragMill_Backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
-    setBackupStatus('Project exported successfully!');
+    setBackupStatus(lang === 'fr' ? 'Projet exporté avec succès !' : 'Project exported successfully!');
   };
 
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,17 +100,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       try {
         const text = ev.target?.result as string;
         await importProjectBackupJson(text);
-        setBackupStatus('Project restored successfully! Refreshing...');
+        setBackupStatus(lang === 'fr' ? 'Projet restauré avec succès ! Actualisation...' : 'Project restored successfully! Refreshing...');
         setTimeout(() => window.location.reload(), 1000);
       } catch (err: any) {
-        setBackupStatus(`Import failed: ${err.message}`);
+        setBackupStatus(lang === 'fr' ? `Échec de l'importation : ${err.message}` : `Import failed: ${err.message}`);
       }
     };
     reader.readAsText(file);
   };
 
   const handleClearAllData = async () => {
-    if (window.confirm('Are you sure you want to permanently erase all FragMill projects, blasts, and images from this device?')) {
+    const confirmMsg = lang === 'fr'
+      ? 'Êtes-vous sûr de vouloir effacer définitivement tous les projets, tirs et photos de cet appareil ?'
+      : 'Are you sure you want to permanently erase all FragMill projects, blasts, and images from this device?';
+    if (window.confirm(confirmMsg)) {
       await db.delete();
       window.location.reload();
     }
@@ -122,10 +126,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <Settings className="w-6 h-6 text-blue-600" />
         <div>
           <h2 className="text-lg font-black text-slate-900">
-            {lang === 'fr' ? 'Paramètres & Diagnostics du Système' : 'Settings & Diagnostics Lab'}
+            {t('settingsTitle', lang)}
           </h2>
           <p className="text-xs text-slate-500">
-            Configure measurement conventions, themes, in-browser AI models, and calibration self-tests
+            {t('settingsSubtitle', lang)}
           </p>
         </div>
       </div>
@@ -135,12 +139,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* Language & Theme */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
           <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-            Language & Display Appearance
+            {t('langThemeTitle', lang)}
           </h3>
 
           <div className="space-y-2 text-xs">
             <div>
-              <label className="block text-slate-600 font-semibold mb-1">Language (Langue):</label>
+              <label className="block text-slate-600 font-semibold mb-1">{t('langLabel', lang)}</label>
               <select
                 value={settings.language}
                 onChange={(e) => onUpdateSettings({ ...settings, language: e.target.value as any })}
@@ -152,7 +156,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-slate-600 font-semibold mb-1">Display Theme:</label>
+              <label className="block text-slate-600 font-semibold mb-1">{t('themeLabel', lang)}</label>
               <select
                 value={settings.theme}
                 onChange={(e) => {
@@ -164,22 +168,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 }}
                 className="w-full p-2 border border-slate-300 rounded-lg text-slate-800 bg-white"
               >
-                <option value="default">Default Deep Navy (Engineering)</option>
-                <option value="outdoor">High-Contrast Outdoor Sunlight Mode</option>
-                <option value="dark">Dark Room / Night Mode</option>
+                <option value="default">{t('themeDefault', lang)}</option>
+                <option value="outdoor">{t('themeOutdoor', lang)}</option>
+                <option value="dark">{t('themeDark', lang)}</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-slate-600 font-semibold mb-1">Measurement Unit:</label>
+              <label className="block text-slate-600 font-semibold mb-1">{t('unitLabel', lang)}</label>
               <select
                 value={settings.unit}
                 onChange={(e) => onUpdateSettings({ ...settings, unit: e.target.value as any })}
                 className="w-full p-2 border border-slate-300 rounded-lg text-slate-800 bg-white"
               >
-                <option value="mm">Millimetres (mm) - Mining Standard</option>
-                <option value="cm">Centimetres (cm)</option>
-                <option value="in">Inches (in)</option>
+                <option value="mm">{t('unitMm', lang)}</option>
+                <option value="cm">{t('unitCm', lang)}</option>
+                <option value="in">{t('unitIn', lang)}</option>
               </select>
             </div>
           </div>
@@ -188,26 +192,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* Engineering Sizing Thresholds */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
           <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-            Sizing Definitions & Cut-offs
+            {t('sizingTitle', lang)}
           </h3>
 
           <div className="space-y-2 text-xs">
             <div>
-              <label className="block text-slate-600 font-semibold mb-1">Default Size Definition:</label>
+              <label className="block text-slate-600 font-semibold mb-1">{t('defaultSizeDefLabel', lang)}</label>
               <select
                 value={settings.defaultSizeDefinition}
                 onChange={(e) => onUpdateSettings({ ...settings, defaultSizeDefinition: e.target.value as any })}
                 className="w-full p-2 border border-slate-300 rounded-lg text-slate-800 bg-white"
               >
-                <option value="min_feret">Minimum Feret (Closest to Square-Mesh Sieve)</option>
-                <option value="ecd">Equivalent Circular Diameter (ECD: 2*sqrt(A/pi))</option>
-                <option value="bbox_minor">Bounding Box Minor Axis</option>
+                <option value="min_feret">{t('sizeMinFeret', lang)}</option>
+                <option value="ecd">{t('sizeEcd', lang)}</option>
+                <option value="bbox_minor">{t('sizeBboxMinor', lang)}</option>
               </select>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-slate-600 font-semibold mb-1">Oversize Cut-off (mm)</label>
+                <label className="block text-slate-600 font-semibold mb-1">{t('oversizeCutoffLabel', lang)}</label>
                 <input
                   type="number"
                   value={settings.oversizeThresholdMm}
@@ -216,7 +220,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-slate-600 font-semibold mb-1">Fines Cut-off (mm)</label>
+                <label className="block text-slate-600 font-semibold mb-1">{t('finesCutoffLabel', lang)}</label>
                 <input
                   type="number"
                   value={settings.finesThresholdMm}
@@ -227,7 +231,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-slate-600 font-semibold mb-1">Validation Alert Threshold (%):</label>
+              <label className="block text-slate-600 font-semibold mb-1">{t('validationThresholdLabel', lang)}</label>
               <input
                 type="number"
                 value={settings.validationErrorThresholdPercent}
@@ -246,27 +250,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="flex flex-wrap justify-between items-center gap-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" /> Synthetic Calibration Self-Test (3% Tolerance)
+              <ShieldCheck className="w-4 h-4 text-emerald-600" /> {t('selfTestTitle', lang)}
             </h3>
             <p className="text-xs text-slate-500">
-              Generates virtual precision test geometries (100 mm disc & 80x50 mm block) to verify measurement accuracy
+              {t('selfTestSubtitle', lang)}
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={handleDownloadA4Target}
-              className="px-3.5 py-2 border border-slate-300 hover:bg-slate-50 rounded-xl text-xs font-semibold text-slate-700 flex items-center gap-1.5"
+              className="px-3.5 py-2 border border-slate-300 hover:bg-slate-50 rounded-xl text-xs font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer"
             >
-              <Printer className="w-4 h-4 text-blue-600" /> Print A4 Target PDF
+              <Printer className="w-4 h-4 text-blue-600" /> {t('printA4TargetBtn', lang)}
             </button>
             <button
               onClick={handleRunSelfTest}
               disabled={isRunningSelfTest}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer"
             >
               {isRunningSelfTest ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-              {isRunningSelfTest ? 'Testing...' : 'Run Self-Test'}
+              {isRunningSelfTest ? t('testing', lang) : t('runSelfTestBtn', lang)}
             </button>
           </div>
         </div>
@@ -274,14 +278,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {selfTestReport && (
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-slate-800">Self-Test Diagnostic Result:</span>
+              <span className="font-bold text-slate-800">{t('selfTestResult', lang)}</span>
               {selfTestReport.passed ? (
                 <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> PASSED (Max error: {selfTestReport.maxErrorPercent.toFixed(2)}% &le; 3.0%)
+                  <CheckCircle2 className="w-3.5 h-3.5" /> {t('selfTestPass', lang).replace('{err}', selfTestReport.maxErrorPercent.toFixed(2))}
                 </span>
               ) : (
                 <span className="px-2.5 py-0.5 bg-red-100 text-red-800 rounded-full font-bold flex items-center gap-1">
-                  <AlertTriangle className="w-3.5 h-3.5" /> FAILED (Error exceeds 3% tolerance)
+                  <AlertTriangle className="w-3.5 h-3.5" /> {t('selfTestFail', lang)}
                 </span>
               )}
             </div>
@@ -290,11 +294,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <table className="w-full text-left text-xs bg-white rounded border border-slate-200">
                 <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                   <tr>
-                    <th className="p-2">Target Geometry</th>
-                    <th className="p-2">True Size (mm)</th>
-                    <th className="p-2">Measured (mm)</th>
-                    <th className="p-2">Error %</th>
-                    <th className="p-2">Status</th>
+                    <th className="p-2">{t('colTargetGeo', lang)}</th>
+                    <th className="p-2">{t('colTrueSize', lang)}</th>
+                    <th className="p-2">{t('colMeasured', lang)}</th>
+                    <th className="p-2">{t('colError', lang)}</th>
+                    <th className="p-2">{t('colStatus', lang)}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -304,7 +308,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <td className="p-2 text-slate-600">{s.expectedMinFeretMm} mm</td>
                       <td className="p-2 font-bold text-slate-900">{s.measuredMinFeretMm} mm</td>
                       <td className="p-2 font-bold text-emerald-600">{s.errorPercent}%</td>
-                      <td className="p-2 font-bold text-emerald-600">PASS</td>
+                      <td className="p-2 font-bold text-emerald-600">{lang === 'fr' ? 'CONFORME' : 'PASS'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -319,10 +323,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="flex justify-between items-center">
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-purple-600" /> In-Browser AI Models & Neural Accelerator
+              <Cpu className="w-4 h-4 text-purple-600" /> {t('aiModelsTitle', lang)}
             </h3>
             <p className="text-xs text-slate-500">
-              Models are stored persistently in browser IndexedDB cache and run 100% offline
+              {t('aiModelsSubtitle', lang)}
             </p>
           </div>
 
@@ -331,7 +335,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               hasWebGpu ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'
             }`}
           >
-            WebGPU: {hasWebGpu ? 'Available (Hardware Accelerated)' : 'WASM / CPU Mode'}
+            {hasWebGpu ? t('webGpuAccel', lang) : t('webGpuWasm', lang)}
           </span>
         </div>
 
@@ -343,17 +347,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               <div>
                 <span className="font-bold text-slate-900 block">{m.name}</span>
-                <span className="text-[11px] text-slate-500">{m.framework} | Size: {m.sizeMb} MB</span>
+                <span className="text-[11px] text-slate-500">{m.framework} | {lang === 'fr' ? 'Taille' : 'Size'}: {m.sizeMb} MB</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 rounded font-bold text-emerald-700 bg-emerald-100">
-                  Ready Offline
+                  {t('readyOffline', lang)}
                 </span>
                 {!m.isFallback && (
                   <button
                     onClick={() => handleDeleteModel(m.id)}
-                    className="p-1 text-slate-400 hover:text-red-600"
-                    title="Delete model from cache"
+                    className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"
+                    title={lang === 'fr' ? 'Supprimer le modèle du cache' : 'Delete model from cache'}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -369,10 +373,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-blue-600" /> Google Gemini API Cloud Assistant (Optional)
+              <Sparkles className="w-4 h-4 text-blue-600" /> {t('geminiTitle', lang)}
             </h3>
             <p className="text-xs text-slate-500">
-              Optional cloud reasoning for automatic quality checks and bilingual geological reports
+              {t('geminiSubtitle', lang)}
             </p>
           </div>
 
@@ -390,13 +394,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {settings.enableGemini && (
           <div className="space-y-3 pt-2 text-xs border-t border-slate-100">
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900">
-              <span className="font-bold">Privacy Statement:</span> When enabled, muck pile photographs and computed
-              sizing numbers are sent to Google Gemini for scene assessment and natural language summary generation.
+              {t('geminiPrivacy', lang)}
             </div>
 
             <div>
               <label className="block text-slate-700 font-semibold mb-1">
-                Google AI Studio API Key:
+                {t('apiKeyLabel', lang)}
               </label>
               <input
                 type="password"
@@ -415,22 +418,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="flex justify-between items-center">
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Database className="w-4 h-4 text-slate-700" /> Device Storage & Backup
+              <Database className="w-4 h-4 text-slate-700" /> {t('storageTitle', lang)}
             </h3>
             <p className="text-xs text-slate-500">
-              Local IndexedDB usage: <span className="font-bold text-slate-800">{storageEstimateMb} MB</span>
+              {t('indexedDbUsage', lang)} <span className="font-bold text-slate-800">{storageEstimateMb} MB</span>
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={handleExportBackup}
-              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" /> Backup Project (JSON)
+              <Download className="w-3.5 h-3.5" /> {t('backupProjectBtn', lang)}
             </button>
             <label className="px-3.5 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
-              <Upload className="w-3.5 h-3.5 text-blue-600" /> Restore
+              <Upload className="w-3.5 h-3.5 text-blue-600" /> {t('restoreBtn', lang)}
               <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
             </label>
           </div>
@@ -443,12 +446,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
 
         <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
-          <span className="text-xs text-slate-500">Erase all project data, images, and cached databases:</span>
+          <span className="text-xs text-slate-500">{t('eraseWarning', lang)}</span>
           <button
             onClick={handleClearAllData}
-            className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg text-xs font-bold"
+            className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg text-xs font-bold cursor-pointer"
           >
-            Clear All Data
+            {t('clearAllDataBtn', lang)}
           </button>
         </div>
       </div>
