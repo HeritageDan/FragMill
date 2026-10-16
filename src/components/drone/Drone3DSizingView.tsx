@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Blast } from '../../types';
+import type { Blast, Project, Site } from '../../types';
 import type { DroneOrthomosaicData, MuckpileSector } from '../../types/advanced';
 import { generateDemoDroneSurvey, apply3DStereologicalCorrection } from '../../services/drone3d/droneSizing';
 import { Plane, Layers, Box, Compass, Info, Download, CheckCircle2 } from 'lucide-react';
+import { SendToReportButton } from '../report/SendToReportButton';
 
 interface Drone3DSizingViewProps {
   blast: Blast;
+  project?: Project;
+  site?: Site;
   lang?: 'en' | 'fr';
 }
 
-export const Drone3DSizingView: React.FC<Drone3DSizingViewProps> = ({ blast, lang = 'en' }) => {
+export const Drone3DSizingView: React.FC<Drone3DSizingViewProps> = ({ blast, project, site, lang = 'en' }) => {
   const isFrench = lang === 'fr';
   const [surveyData, setSurveyData] = useState<DroneOrthomosaicData | null>(null);
   const [selectedSectorId, setSelectedSectorId] = useState<string>('sec-middle');
@@ -145,24 +148,50 @@ export const Drone3DSizingView: React.FC<Drone3DSizingViewProps> = ({ blast, lan
           </div>
         </div>
 
-        {/* View mode toggle */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold">
-          <button
-            onClick={() => setViewMode('heatmap')}
-            className={`px-3 py-1.5 rounded-lg transition ${
-              viewMode === 'heatmap' ? 'bg-blue-600 text-white shadow' : 'text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            {isFrench ? 'Carte P80 Thermique' : 'P80 Heatmap'}
-          </button>
-          <button
-            onClick={() => setViewMode('mesh3d')}
-            className={`px-3 py-1.5 rounded-lg transition ${
-              viewMode === 'mesh3d' ? 'bg-blue-600 text-white shadow' : 'text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            {isFrench ? 'Modèle 3D Isométrique' : '3D Isometric Mesh'}
-          </button>
+        <div className="flex items-center flex-wrap gap-2">
+          {/* View mode toggle */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+            <button
+              onClick={() => setViewMode('heatmap')}
+              className={`px-3 py-1.5 rounded-lg transition ${
+                viewMode === 'heatmap' ? 'bg-blue-600 text-white shadow' : 'text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              {isFrench ? 'Carte P80' : 'P80 Heatmap'}
+            </button>
+            <button
+              onClick={() => setViewMode('mesh3d')}
+              className={`px-3 py-1.5 rounded-lg transition ${
+                viewMode === 'mesh3d' ? 'bg-blue-600 text-white shadow' : 'text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              {isFrench ? 'Modèle 3D' : '3D Mesh'}
+            </button>
+          </div>
+
+          <SendToReportButton
+            sectionKey="drone3d"
+            project={project}
+            site={site}
+            blast={blast}
+            lang={lang}
+            getPayload={() => ({
+              surveyName: surveyData.name,
+              flightAltitudeM: surveyData.metadata.flightAltitudeM,
+              gsdMmPerPx: surveyData.metadata.gsdMmPerPx,
+              cameraSensor: surveyData.metadata.cameraSensor,
+              crs: surveyData.metadata.crs,
+              totalVolumeM3: surveyData.totalVolumeM3,
+              averageP80Mm: surveyData.averageP80Mm,
+              activeSector: activeSector?.name,
+              activeP80Mm: activeSector?.p80Mm,
+              activeVolumeM3: activeSector?.volumeM3,
+              stereologyP80_3D: stereology?.p80_3D_mm,
+              sectorsCount: surveyData.sectors.length,
+            })}
+            summaryFr={`Photogrammétrie drone : ${surveyData.totalVolumeM3.toLocaleString()} m³ modélisés, P80 moyen ${surveyData.averageP80Mm} mm, altitude ${surveyData.metadata.flightAltitudeM}m.`}
+            summaryEn={`Drone survey: ${surveyData.totalVolumeM3.toLocaleString()} m³ modeled, mean P80 ${surveyData.averageP80Mm} mm, altitude ${surveyData.metadata.flightAltitudeM}m.`}
+          />
         </div>
       </div>
 

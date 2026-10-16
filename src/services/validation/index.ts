@@ -16,6 +16,16 @@ export interface ValidationMetricsResult {
   thresholdExceeded: boolean; // True if MAPE > threshold (default 15%)
 }
 
+export const DEFAULT_SAMPLE_TEMPLATE = `Aperture (mm)\tMass Retained (kg)
+300\t42.0
+200\t68.5
+125\t54.0
+75\t38.0
+37.5\t22.5
+19.0\t14.0
+9.5\t8.2
+4.75\t4.5`;
+
 // Compute cumulative passing curve and percentiles from sieve/screen data
 export function computeSieveDistribution(sieveData: SieveDataGroundTruth[]): {
   curve: Array<{ sizeMm: number; passingPercent: number }>;

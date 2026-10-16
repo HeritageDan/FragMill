@@ -20,7 +20,9 @@ import {
   Flame,
   Cpu,
   Layers,
+  FileText,
 } from 'lucide-react';
+import { useReportVault } from '../../context/ReportVaultContext';
 
 export type NavigationTab =
   | 'wizard'
@@ -50,6 +52,7 @@ interface AppHeaderProps {
   onUpdateSettings: (settings: AppSettings) => void;
   onNewBlast: () => void;
   onLoadDemoProject: () => void;
+  onOpenReportVault?: () => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -64,8 +67,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onUpdateSettings,
   onNewBlast,
   onLoadDemoProject,
+  onOpenReportVault,
 }) => {
   const isFrench = settings.language === 'fr';
+  const { stagedCount } = useReportVault();
 
   const toggleLanguage = () => {
     onUpdateSettings({
@@ -184,6 +189,23 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <PlusCircle className="w-4 h-4 text-emerald-400" />
             <span className="hidden sm:inline">{isFrench ? 'Nouveau Tir' : 'New Blast'}</span>
           </button>
+
+          {/* Custom Modular Report Vault Button */}
+          {onOpenReportVault && (
+            <button
+              onClick={onOpenReportVault}
+              className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition"
+              title={isFrench ? 'Ouvrir le registre et télécharger le Rapport Général PDF' : 'Open vault and download General PDF Report'}
+            >
+              <FileText className="w-3.5 h-3.5 text-white" />
+              <span className="hidden sm:inline">{isFrench ? 'Rapport Général' : 'General Report'}</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                stagedCount > 0 ? 'bg-emerald-500 text-white' : 'bg-white/20 text-white'
+              }`}>
+                {stagedCount}/11
+              </span>
+            </button>
+          )}
 
           {/* Theme Toggle */}
           <button

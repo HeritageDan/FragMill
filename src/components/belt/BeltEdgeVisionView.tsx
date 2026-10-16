@@ -18,12 +18,17 @@ import {
   Clock,
   Radio,
 } from 'lucide-react';
+import type { Blast, Project, Site } from '../../types';
+import { SendToReportButton } from '../report/SendToReportButton';
 
 interface BeltEdgeVisionViewProps {
+  blast?: Blast;
+  project?: Project;
+  site?: Site;
   lang?: 'en' | 'fr';
 }
 
-export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ lang = 'en' }) => {
+export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, project, site, lang = 'en' }) => {
   const isFrench = lang === 'fr';
   const [config, setConfig] = useState<BeltVisionConfig>(DEFAULT_BELT_CONFIG);
   const [isRunning, setIsRunning] = useState<boolean>(true);
@@ -181,6 +186,30 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ lang = '
             {isRunning ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
             <span>{isRunning ? (isFrench ? 'Pause Flux' : 'Pause Stream') : (isFrench ? 'Démarrer Flux' : 'Start Stream')}</span>
           </button>
+
+          <SendToReportButton
+            sectionKey="beltvision"
+            project={project}
+            site={site}
+            blast={blast}
+            lang={lang}
+            getPayload={() => ({
+              instantTph: stats?.instantTph || 245,
+              beltUtilizationPercent: stats?.beltUtilizationPercent || 78,
+              beltWidthM: config.beltWidthM,
+              beltSpeedMPerS: config.beltSpeedMPerS,
+              crusherGapeThresholdMm: config.crusherGapeThresholdMm,
+              p20Mm: stats?.p20Mm || 42,
+              p50Mm: stats?.p50Mm || 95,
+              p80Mm: stats?.p80Mm || 165,
+              topSizeMm: stats?.topSizeMm || 280,
+              totalRocksDetected: stats?.totalRocksDetected || 1420,
+              oversizeCount: stats?.oversizeCount || 2,
+              chokeEventsCount: chokeEvents.length,
+            })}
+            summaryFr={`Vision convoyeur : débit ${stats?.instantTph || 245} t/h, P80 ${stats?.p80Mm || 165} mm, seuil blocage ${config.crusherGapeThresholdMm} mm.`}
+            summaryEn={`Belt vision: throughput ${stats?.instantTph || 245} tph, P80 ${stats?.p80Mm || 165} mm, choke threshold ${config.crusherGapeThresholdMm} mm.`}
+          />
         </div>
       </div>
 

@@ -17,16 +17,22 @@ import {
   TrendingDown,
   Sliders,
 } from 'lucide-react';
+import type { Project, Site } from '../../types';
+import { SendToReportButton } from '../report/SendToReportButton';
 
 interface MineToMillViewProps {
   blasts: Blast[];
   onUpdateMillBatch: (blastId: string, millBatch: MillBatch) => void;
+  project?: Project;
+  site?: Site;
   lang?: 'en' | 'fr';
 }
 
 export const MineToMillView: React.FC<MineToMillViewProps> = ({
   blasts,
   onUpdateMillBatch,
+  project,
+  site,
   lang = 'en',
 }) => {
   const [selectedBlastId, setSelectedBlastId] = useState<string>(blasts[0]?.id || '');
@@ -180,6 +186,30 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
               </option>
             ))}
           </select>
+
+          <SendToReportButton
+            sectionKey="minetomill"
+            project={project}
+            site={site}
+            blast={selectedBlast}
+            lang={lang}
+            getPayload={() => ({
+              blastId: selectedBlast?.blastId,
+              drillingCostPerTon: econResult.evaluation.drillingCostPerTon,
+              blastingCostPerTon: econResult.evaluation.blastingCostPerTon,
+              crushingCostPerTon: econResult.evaluation.crushingCostPerTon,
+              millingCostPerTon: econResult.evaluation.millingCostPerTon,
+              totalCostPerTon: econResult.evaluation.totalCostPerTon,
+              optimalP80Mm: econResult.evaluation.optimalP80Mm,
+              potentialSavingsPerTon: econResult.evaluation.potentialSavingsPerTon,
+              carbonScope1Explosives: econResult.evaluation.carbonEmissions.scope1ExplosivesKgCo2ePerTon,
+              carbonScope1Diesel: econResult.evaluation.carbonEmissions.scope1DieselKgCo2ePerTon,
+              carbonScope2Electricity: econResult.evaluation.carbonEmissions.scope2ElectricityKgCo2ePerTon,
+              carbonTotalKgCo2ePerTon: econResult.evaluation.carbonEmissions.totalKgCo2ePerTon,
+            })}
+            summaryFr={`Optimisation mine-au-moulin (Tir ${selectedBlast?.blastId}) : coût global ${econResult.evaluation.totalCostPerTon.toFixed(2)} $/t, P80 optimal ${econResult.evaluation.optimalP80Mm} mm, économie +${econResult.evaluation.potentialSavingsPerTon.toFixed(2)} $/t.`}
+            summaryEn={`Mine-to-mill optimization (Blast ${selectedBlast?.blastId}): total cost $${econResult.evaluation.totalCostPerTon.toFixed(2)}/t, optimal P80 ${econResult.evaluation.optimalP80Mm} mm, savings +$${econResult.evaluation.potentialSavingsPerTon.toFixed(2)}/t.`}
+          />
         </div>
       </div>
 

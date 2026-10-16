@@ -14,13 +14,22 @@ import {
   Sparkles,
   ArrowRight,
 } from 'lucide-react';
+import type { Project, Site } from '../../types';
+import { SendToReportButton } from '../report/SendToReportButton';
 
 interface ComminutionDigitalTwinViewProps {
   blast: Blast;
+  project?: Project;
+  site?: Site;
   lang?: 'en' | 'fr';
 }
 
-export const ComminutionDigitalTwinView: React.FC<ComminutionDigitalTwinViewProps> = ({ blast, lang = 'en' }) => {
+export const ComminutionDigitalTwinView: React.FC<ComminutionDigitalTwinViewProps> = ({
+  blast,
+  project,
+  site,
+  lang = 'en',
+}) => {
   const isFrench = lang === 'fr';
 
   // State for circuit simulation
@@ -70,6 +79,31 @@ export const ComminutionDigitalTwinView: React.FC<ComminutionDigitalTwinViewProp
             </p>
           </div>
         </div>
+
+        <SendToReportButton
+          sectionKey="comminution"
+          project={project}
+          site={site}
+          blast={blast}
+          lang={lang}
+          getPayload={() => ({
+            f80Mm,
+            targetP80Mm: targetP80Microns / 1000,
+            bondWorkIndexKWhPerT: bondWi,
+            rockAxb,
+            plantOperatingHoursPerDay: operatingHours,
+            electricityCostPerKWhUSD: powerCostUSD,
+            specificEnergyBondKWhPerT: simResult.specificEnergyBondKWhPerT,
+            specificEnergyMorrellKWhPerT: simResult.specificEnergyMorrellKWhPerT,
+            totalSpecificEnergyKWhPerT: simResult.totalSpecificEnergyKWhPerT,
+            achievableThroughputTPH: simResult.achievableThroughputTPH,
+            dailyThroughputTonnes: simResult.dailyThroughputTonnes,
+            mineralLiberationPercent: simResult.mineralLiberationPercent,
+            totalComminutionCostPerTonneUSD: simResult.totalComminutionCostPerTonneUSD,
+          })}
+          summaryFr={`Jumeau broyage (Wi ${bondWi} kWh/t) : débit ${simResult.achievableThroughputTPH} t/h, énergie spécifique ${simResult.totalSpecificEnergyKWhPerT} kWh/t, libération or ${simResult.mineralLiberationPercent}%.`}
+          summaryEn={`Comminution twin (Wi ${bondWi} kWh/t): throughput ${simResult.achievableThroughputTPH} tph, specific energy ${simResult.totalSpecificEnergyKWhPerT} kWh/t, gold liberation ${simResult.mineralLiberationPercent}%.`}
+        />
       </div>
 
       {/* Main KPI Row */}

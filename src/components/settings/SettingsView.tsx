@@ -71,11 +71,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleDownloadA4Target = () => {
-    const blob = generatePrintableA4CalibrationSheet();
+    const blob = generatePrintableA4CalibrationSheet(lang);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'FragMill_A4_Calibration_Target.pdf';
+    a.download = lang === 'fr' ? 'FragMill_Mire_Etalonnage_A4.pdf' : 'FragMill_A4_Calibration_Target.pdf';
     a.click();
   };
 

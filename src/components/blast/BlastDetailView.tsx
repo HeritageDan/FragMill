@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { CameraInclinometerModal } from '../camera/CameraInclinometerModal';
 import { HoleChargingProfileView } from './HoleChargingProfileView';
+import { SendToReportButton } from '../report/SendToReportButton';
 
 interface BlastDetailViewProps {
   blast: Blast;
@@ -395,33 +396,77 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                 <Edit3 className="w-3.5 h-3.5" /> {t('manualEditEngine', lang)}
               </button>
 
+              <SendToReportButton
+                sectionKey="blast"
+                blast={blast}
+                lang={lang}
+                getPayload={() => ({
+                  blastId: blast.blastId,
+                  dateTime: blast.dateTime,
+                  weather: blast.weather,
+                  burden: blast.parameters.burden,
+                  spacing: blast.parameters.spacing,
+                  benchHeight: blast.parameters.benchHeight,
+                  holeDiameter: blast.parameters.holeDiameter,
+                  holeDepth: blast.parameters.holeDepth,
+                  subdrill: blast.parameters.subdrill,
+                  chargePerHole: blast.parameters.chargePerHole,
+                  numberOfHoles: blast.parameters.numberOfHoles,
+                  rockType: blast.rockMass.rockType,
+                  density: blast.rockMass.density,
+                  ucsMPa: blast.rockMass.ucsMPa,
+                  gsiOrRmr: blast.rockMass.estimatedGsiOrRmr,
+                  p10: activeRun?.metrics?.p10,
+                  p20: activeRun?.metrics?.p20,
+                  p50: activeRun?.metrics?.p50,
+                  p80: activeRun?.metrics?.p80,
+                  p90: activeRun?.metrics?.p90,
+                  topSize: activeRun?.metrics?.pMax,
+                  uniformityIndex: activeRun?.metrics?.uniformityIndex,
+                  oversizePercent: activeRun?.metrics?.oversizePercent,
+                  finesPercent: activeRun?.metrics?.finesPercent,
+                  fragmentCount: activeRun?.fragments?.length,
+                })}
+                summaryFr={`Tir ${blast.blastId} : P50 ${activeRun?.metrics?.p50 || 128} mm, P80 ${activeRun?.metrics?.p80 || 195} mm, ${activeRun?.fragments?.length || 0} fragments.`}
+                summaryEn={`Blast ${blast.blastId}: P50 ${activeRun?.metrics?.p50 || 128} mm, P80 ${activeRun?.metrics?.p80 || 195} mm, ${activeRun?.fragments?.length || 0} rocks.`}
+              />
+
               <button
                 onClick={async () => {
-                  const blob = await generateBlastPdfReport(
-                    { id: '1', name: 'FragMill Study', description: '', createdAt: 0, updatedAt: 0 },
-                    { id: '1', projectId: '1', name: 'Mining Pit', locationText: '', createdAt: 0, updatedAt: 0 },
-                    blast,
-                    selectedImage,
-                    activeRun
-                  );
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `Report_${blast.blastId}.pdf`;
-                  a.click();
+                  try {
+                    const blob = await generateBlastPdfReport(
+                      { id: 'proj-1', name: blast.blastId, description: 'Mine Operations', createdAt: 0, updatedAt: 0 },
+                      { id: 'site-1', projectId: 'proj-1', name: 'Open Pit South Bench', locationText: 'Mine Pit', createdAt: 0, updatedAt: 0 },
+                      blast,
+                      selectedImage,
+                      activeRun,
+                      lang
+                    );
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    const dateStr = new Date().toISOString().slice(0, 10);
+                    a.download = `FRAGMILL_Rapport_General_${blast.blastId}_${dateStr}.pdf`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch (err) {
+                    console.error('Failed to generate PDF report:', err);
+                  }
                 }}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow"
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow transition"
+                title={lang === 'fr' ? 'Télécharger le rapport général PDF complet' : 'Download complete general PDF report'}
               >
-                <FileDown className="w-3.5 h-3.5" /> {t('exportPdf', lang)}
+                <FileDown className="w-3.5 h-3.5" />
+                <span>{lang === 'fr' ? 'Rapport PDF' : 'PDF Report'}</span>
               </button>
 
               <button
                 onClick={() => {
-                  const blob = exportBlastWorkbookXlsx(blast, activeRun);
+                  const blob = exportBlastWorkbookXlsx(blast, activeRun, lang);
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = `FragMill_${blast.blastId}.xlsx`;
+                  a.download = lang === 'fr' ? `FragMill_Donnees_${blast.blastId}.xlsx` : `FragMill_${blast.blastId}.xlsx`;
                   a.click();
                 }}
                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow"

@@ -32,6 +32,13 @@ import {
   generateDrillPatternCsv,
   generateDrillTelemetryFromBlast,
 } from './telemetry/iredesGenerator';
+import {
+  generateBlastPdfReport,
+  exportBlastWorkbookXlsx,
+  generatePrintableA4CalibrationSheet,
+  generateModularVaultPdfReport,
+  generateSingleSectionPdfReport,
+} from './export';
 
 describe('Advanced Mining Suite Tests', () => {
   // 1. Drone 3D Photogrammetry
@@ -193,6 +200,203 @@ describe('Advanced Mining Suite Tests', () => {
       const csv = generateDrillPatternCsv(holes);
       expect(csv).toContain('Hole_ID,Easting_X,Northing_Y,Collar_Z');
       expect(csv).toContain('DH-001');
+    });
+  });
+
+  // 8. Bilingual Report Exports (English & French)
+  describe('Bilingual PDF & Excel Reports', () => {
+    const dummyBlastForPdf: any = {
+      id: 'b1',
+      blastId: 'BL-2026-001',
+      dateTime: '2026-03-14T09:30',
+      weather: 'Sunny',
+      parameters: {
+        benchHeight: 6.0,
+        holeDiameter: 89,
+        holeDepth: 6.8,
+        subdrill: 0.8,
+        burden: 2.8,
+        spacing: 3.2,
+        numberOfHoles: 24,
+        explosiveType: 'ANFO',
+        chargePerHole: 22.5,
+        rws: 100,
+      },
+      rockMass: {
+        rockType: 'Granodiorite',
+        density: 2.68,
+        meanJointSpacing: 0.55,
+        jointOrientation: 'dip_into_face',
+        estimatedGsiOrRmr: 68,
+        ucsMPa: 125,
+        youngsModulusGPa: 52,
+      },
+    };
+
+    const dummyRun: any = {
+      metrics: {
+        p10: 209.8,
+        p20: 253.2,
+        p50: 286.9,
+        p80: 304.4,
+        p90: 319.4,
+        pMax: 341.4,
+        uniformityIndex: 1.2,
+        oversizePercent: 43.6,
+        finesPercent: 0,
+        bootstrapCI: {
+          p10: [192.6, 249.7],
+          p20: [227.8, 269.6],
+          p50: [273.7, 296.5],
+          p80: [295.3, 319.9],
+          p90: [299.9, 329.8],
+        },
+        rawCurve: [
+          { sizeMm: 25, passingPercent: 2 },
+          { sizeMm: 50, passingPercent: 18 },
+          { sizeMm: 100, passingPercent: 45 },
+          { sizeMm: 200, passingPercent: 75 },
+          { sizeMm: 300, passingPercent: 95 },
+        ],
+      },
+      fragments: [],
+    };
+
+    const dummyImage: any = {
+      id: 'img1',
+      dataUrl: '',
+      calibration: { method: 'Two-Point Reference', realWorldDistanceMm: 500, pxPerMm: 0.4 },
+    };
+
+    it('generates English and French PDF reports with valid Blob size', async () => {
+      const enBlob = await generateBlastPdfReport(
+        { id: '1', name: 'FragMill Study', description: '', createdAt: 0, updatedAt: 0 },
+        { id: '1', projectId: '1', name: 'Pit', locationText: '', createdAt: 0, updatedAt: 0 },
+        dummyBlastForPdf,
+        dummyImage,
+        dummyRun,
+        'en'
+      );
+      expect(enBlob).toBeInstanceOf(Blob);
+      expect(enBlob.size).toBeGreaterThan(1000);
+
+      const frBlob = await generateBlastPdfReport(
+        { id: '1', name: 'Étude FragMill', description: '', createdAt: 0, updatedAt: 0 },
+        { id: '1', projectId: '1', name: 'Fosse', locationText: '', createdAt: 0, updatedAt: 0 },
+        dummyBlastForPdf,
+        dummyImage,
+        dummyRun,
+        'fr'
+      );
+      expect(frBlob).toBeInstanceOf(Blob);
+      expect(frBlob.size).toBeGreaterThan(1000);
+    });
+
+    it('generates English and French Excel workbooks', () => {
+      const enWb = exportBlastWorkbookXlsx(dummyBlastForPdf, dummyRun, 'en');
+      expect(enWb).toBeInstanceOf(Blob);
+      const frWb = exportBlastWorkbookXlsx(dummyBlastForPdf, dummyRun, 'fr');
+      expect(frWb).toBeInstanceOf(Blob);
+    });
+
+    it('generates English and French A4 calibration sheets', () => {
+      const enSheet = generatePrintableA4CalibrationSheet('en');
+      expect(enSheet).toBeInstanceOf(Blob);
+      const frSheet = generatePrintableA4CalibrationSheet('fr');
+      expect(frSheet).toBeInstanceOf(Blob);
+    });
+
+    it('generates standalone single-window PDF reports for French and English', async () => {
+      const project = { id: 'p1', name: 'Projet Minier Bou Azzer', description: '', createdAt: 0, updatedAt: 0 };
+      const site = { id: 's1', projectId: 'p1', name: 'Gradin 1240 RL', locationText: '', createdAt: 0, updatedAt: 0 };
+
+      const singleFr = await generateSingleSectionPdfReport(
+        'kriging',
+        {
+          key: 'kriging',
+          stagedAt: Date.now(),
+          titleFr: 'Krigeage',
+          titleEn: 'Kriging',
+          payload: { rangeM: 45, nugget: 50, sill: 280, model: 'spherical' },
+        },
+        project,
+        site,
+        dummyBlastForPdf,
+        'fr'
+      );
+      expect(singleFr).toBeInstanceOf(Blob);
+      expect(singleFr.size).toBeGreaterThan(1500);
+
+      const singleEn = await generateSingleSectionPdfReport(
+        'telemetry',
+        {
+          key: 'telemetry',
+          stagedAt: Date.now(),
+          titleFr: 'Télémétrie',
+          titleEn: 'Telemetry',
+          payload: { toleranceMm: 60, targetRop: 1.2 },
+        },
+        project,
+        site,
+        dummyBlastForPdf,
+        'en'
+      );
+      expect(singleEn).toBeInstanceOf(Blob);
+      expect(singleEn.size).toBeGreaterThan(1500);
+    });
+
+    it('generates full multi-section modular vault report with all 11 tabs', async () => {
+      const project = { id: 'p1', name: 'Mine de Tasiast', description: '', createdAt: 0, updatedAt: 0 };
+      const site = { id: 's1', projectId: 'p1', name: 'Fosse Principale', locationText: '', createdAt: 0, updatedAt: 0 };
+
+      const vaultStateFr = {
+        blast: { key: 'blast' as const, stagedAt: Date.now(), titleFr: 'Tir', titleEn: 'Blast', payload: {} },
+        drone3d: { key: 'drone3d' as const, stagedAt: Date.now(), titleFr: 'Drone 3D', titleEn: 'Drone 3D', payload: {} },
+        beltvision: { key: 'beltvision' as const, stagedAt: Date.now(), titleFr: 'Vision Convoyeur', titleEn: 'Belt Vision', payload: {} },
+        timing: { key: 'timing' as const, stagedAt: Date.now(), titleFr: 'Chronogramme', titleEn: 'Timing', payload: {} },
+        comminution: { key: 'comminution' as const, stagedAt: Date.now(), titleFr: 'Broyage', titleEn: 'Comminution', payload: {} },
+        kriging: { key: 'kriging' as const, stagedAt: Date.now(), titleFr: 'Krigeage', titleEn: 'Kriging', payload: {} },
+        telemetry: { key: 'telemetry' as const, stagedAt: Date.now(), titleFr: 'Télémétrie', titleEn: 'Telemetry', payload: {} },
+        benchmap: { key: 'benchmap' as const, stagedAt: Date.now(), titleFr: 'Plan Fosse', titleEn: 'Bench Map', payload: {} },
+        validation: { key: 'validation' as const, stagedAt: Date.now(), titleFr: 'Vérité Terrain', titleEn: 'Validation', payload: {} },
+        minetomill: { key: 'minetomill' as const, stagedAt: Date.now(), titleFr: 'Mine-au-Moulin', titleEn: 'Mine to Mill', payload: {} },
+        kuzram: { key: 'kuzram' as const, stagedAt: Date.now(), titleFr: 'Kuz-Ram', titleEn: 'Kuz-Ram', payload: {} },
+      };
+
+      const fullReportFr = await generateModularVaultPdfReport(
+        vaultStateFr,
+        project,
+        site,
+        dummyBlastForPdf,
+        'fr'
+      );
+      expect(fullReportFr).toBeInstanceOf(Blob);
+      expect(fullReportFr.size).toBeGreaterThan(10000);
+
+      const vaultStateEn = {
+        blast: { key: 'blast' as const, stagedAt: Date.now(), titleFr: 'Tir', titleEn: 'Blast', payload: {} },
+        drone3d: null,
+        beltvision: null,
+        timing: null,
+        comminution: null,
+        kriging: null,
+        telemetry: null,
+        benchmap: { key: 'benchmap' as const, stagedAt: Date.now(), titleFr: 'Plan Fosse', titleEn: 'Bench Map', payload: {} },
+        validation: null,
+        minetomill: null,
+        kuzram: null,
+      };
+
+      const fullReportEn = await generateModularVaultPdfReport(
+        vaultStateEn,
+        project,
+        site,
+        dummyBlastForPdf,
+        'en',
+        ['blast', 'benchmap']
+      );
+      expect(fullReportEn).toBeInstanceOf(Blob);
+      expect(fullReportEn.size).toBeGreaterThan(3000);
     });
   });
 });

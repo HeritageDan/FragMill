@@ -18,13 +18,17 @@ import {
   RefreshCw,
   Info,
 } from 'lucide-react';
+import type { Project, Site } from '../../types';
+import { SendToReportButton } from '../report/SendToReportButton';
 
 interface KuzRamViewProps {
   blasts: Blast[];
+  project?: Project;
+  site?: Site;
   lang?: 'en' | 'fr';
 }
 
-export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) => {
+export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, project, site, lang = 'en' }) => {
   const [selectedBlastId, setSelectedBlastId] = useState<string>(blasts[0]?.id || '');
   const [tables, setTables] = useState<KuzRamRockTables>(DEFAULT_ROCK_TABLES);
 
@@ -117,6 +121,29 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, lang = 'en' }) =
               </option>
             ))}
           </select>
+
+          <SendToReportButton
+            sectionKey="kuzram"
+            project={project}
+            site={site}
+            blast={selectedBlast}
+            lang={lang}
+            getPayload={() => ({
+              blastId: selectedBlast?.blastId,
+              rockFactorA: calculatedA,
+              uniformityIndexN: currentKuzRam.uniformityIndexN,
+              characteristicSizeXcMm: currentKuzRam.characteristicSizeXcMm,
+              predictedP50Mm: currentKuzRam.meanSizeX50Mm,
+              predictedP80Mm: currentKuzRam.p80Mm,
+              rmd: tables.rmd,
+              jf: tables.jf,
+              jfo: tables.jfo,
+              density: tables.density,
+              hf: tables.hf,
+            })}
+            summaryFr={`Modélisation Kuz-Ram (Tir ${selectedBlast?.blastId}) : facteur A = ${calculatedA}, indice n = ${currentKuzRam.uniformityIndexN.toFixed(2)}, P80 calculé = ${currentKuzRam.p80Mm.toFixed(1)} mm.`}
+            summaryEn={`Kuz-Ram predictor (Blast ${selectedBlast?.blastId}): factor A = ${calculatedA}, index n = ${currentKuzRam.uniformityIndexN.toFixed(2)}, predicted P80 = ${currentKuzRam.p80Mm.toFixed(1)} mm.`}
+          />
         </div>
       </div>
 

@@ -1,24 +1,81 @@
-import React, { useState } from 'react';
-import type { Blast } from '../../types';
-import { Map, Layers, Compass, TrendingUp, Calendar, Zap, AlertTriangle, CheckCircle2, ChevronRight } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import type { Blast, Project, Site } from '../../types';
+import {
+  Map,
+  Layers,
+  Compass,
+  TrendingUp,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  Sliders,
+  ShieldAlert,
+  HelpCircle,
+  Sparkles,
+  Grid,
+} from 'lucide-react';
 import { t } from '../../i18n';
+import { SendToReportButton } from '../report/SendToReportButton';
 
 interface BenchMapViewProps {
   blasts: Blast[];
   onSelectBlast: (blastId: string) => void;
+  project?: Project;
+  site?: Site;
   lang?: 'en' | 'fr';
 }
 
 export const BenchMapView: React.FC<BenchMapViewProps> = ({
   blasts,
   onSelectBlast,
+  project,
+  site,
   lang = 'en',
 }) => {
   const isFr = lang === 'fr';
+
   const [selectedElevation, setSelectedElevation] = useState<number | 'all'>('all');
   const [activeBlastId, setActiveBlastId] = useState<string>(blasts[0]?.id || '');
+  const [showExplanation, setShowExplanation] = useState<boolean>(false);
 
-  // Default coordinate layouts for blasts if not explicitly defined
+  // Interactive Pattern Geometry Overrides for Active Blast
+  const selectedBlast = blasts.find((b) => b.id === activeBlastId) || blasts[0];
+  const [burdenM, setBurdenM] = useState<number>(selectedBlast?.parameters.burden || 2.4);
+  const [spacingM, setSpacingM] = useState<number>(selectedBlast?.parameters.spacing || 2.8);
+  const [benchHeightM, setBenchHeightM] = useState<number>(selectedBlast?.parameters.benchHeight || 6.0);
+  const [numberOfHoles, setNumberOfHoles] = useState<number>(selectedBlast?.parameters.numberOfHoles || 30);
+  const [patternType, setPatternType] = useState<'staggered' | 'rectangular'>('staggered');
+  const [clearanceRadiusM, setClearanceRadiusM] = useState<number>(300);
+
+  // Sync geometry when active blast changes
+  const handleSelectBlastBlock = (blastId: string) => {
+    setActiveBlastId(blastId);
+    const b = blasts.find((x) => x.id === blastId);
+    if (b) {
+      setBurdenM(b.parameters.burden || 2.4);
+      setSpacingM(b.parameters.spacing || 2.8);
+      setBenchHeightM(b.parameters.benchHeight || 6.0);
+      setNumberOfHoles(b.parameters.numberOfHoles || 30);
+    }
+  };
+
+  // Live calculations
+  const blastedVolumeM3 = useMemo(() => {
+    return Number((burdenM * spacingM * benchHeightM * numberOfHoles).toFixed(1));
+  }, [burdenM, spacingM, benchHeightM, numberOfHoles]);
+
+  const blastedTonnageT = useMemo(() => {
+    const density = selectedBlast?.rockMass.density || 2.68;
+    return Number((blastedVolumeM3 * density).toFixed(0));
+  }, [blastedVolumeM3, selectedBlast]);
+
+  const livePowderFactor = useMemo(() => {
+    const chargePerHole = selectedBlast?.parameters.chargePerHole || 22.0;
+    const holeVol = burdenM * spacingM * benchHeightM;
+    return Number((chargePerHole / Math.max(0.1, holeVol)).toFixed(2));
+  }, [burdenM, spacingM, benchHeightM, selectedBlast]);
+
+  // Default coordinate layouts for blasts on the pit bench SVG
   const blastLayouts: Record<string, { x: number; y: number; w: number; h: number; bench: number }> = {
     'blast-bl-2026-001': { x: 120, y: 130, w: 110, h: 75, bench: 1240 },
     'blast-bl-2026-002': { x: 260, y: 135, w: 125, h: 80, bench: 1240 },
@@ -39,65 +96,295 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
     return b.images[0]?.segmentationRuns?.[0]?.metrics?.oversizePercent || (b.blastId === 'BL-2026-001' ? 18.5 : b.blastId === 'BL-2026-002' ? 9.2 : 3.8);
   };
 
-  const getPowderFactor = (b: Blast): number => {
-    const vol = b.parameters.burden * b.parameters.spacing * b.parameters.benchHeight;
-    return Number((b.parameters.chargePerHole / Math.max(0.1, vol)).toFixed(2));
-  };
-
-  // Color coding by fragmentation P80
   const getP80Color = (p80: number) => {
     if (p80 <= 180) return { fill: '#10B981', border: '#059669', badge: 'bg-emerald-100 text-emerald-800', label: isFr ? 'Optimal (<180mm)' : 'Optimal (<180mm)' };
     if (p80 <= 240) return { fill: '#0EA5E9', border: '#0284C7', badge: 'bg-sky-100 text-sky-800', label: isFr ? 'Nominal (180-240mm)' : 'Nominal (180-240mm)' };
     return { fill: '#F43F5E', border: '#E11D48', badge: 'bg-rose-100 text-rose-800', label: isFr ? 'Hors-gabarit (>240mm)' : 'Oversize (>240mm)' };
   };
 
-  const selectedBlast = blasts.find((b) => b.id === activeBlastId) || blasts[0];
   const activeP80 = selectedBlast ? getP80(selectedBlast) : 200;
   const activeStatus = getP80Color(activeP80);
 
   // Time series trend data
-  const trendData = blasts.map((b, idx) => ({
+  const trendData = blasts.map((b) => ({
     blastId: b.blastId,
     p80: getP80(b),
-    powderFactor: getPowderFactor(b),
+    powderFactor: (b.parameters.chargePerHole / Math.max(0.1, b.parameters.burden * b.parameters.spacing * b.parameters.benchHeight)).toFixed(2),
     date: b.dateTime.slice(5, 10),
   }));
+
+  // Find center of selected blast for drawing the circular flyrock safety buffer
+  const activeLayout = blastLayouts[selectedBlast?.id || ''] || { x: 260, y: 135, w: 125, h: 80, bench: 1240 };
+  const centerX = activeLayout.x + activeLayout.w / 2;
+  const centerY = activeLayout.y + activeLayout.h / 2;
+  // Scaled SVG radius: 300m = ~90px on SVG
+  const svgSafetyRadius = (clearanceRadiusM / 300) * 85;
 
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="flex flex-wrap justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-xs gap-3">
+      <div className="flex flex-wrap justify-between items-center bg-white p-5 rounded-2xl border border-slate-200 shadow-xs gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/30">
             <Map className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-black text-slate-900">
-              {isFr ? 'Plan Spatial des Gradins & Réconciliation Temporelle' : 'Open-Pit Bench Map & Spatial Reconciliation'}
-            </h2>
-            <p className="text-xs text-slate-500">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-black text-slate-900">
+                {isFr ? 'Plan Spatial des Gradins & Réconciliation Fosse' : 'Open-Pit Bench Map & Spatial Blast Reconciliation'}
+              </h2>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">
+                {selectedElevation === 'all' ? (isFr ? 'Fosse Complète' : 'All Pit') : `Gradin ${selectedElevation} RL`}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
               {isFr
-                ? 'Visualisation spatiale de la granulométrie P80 sur la fosse et suivi chronologique de la maille'
-                : 'Interactive spatial fragmentation heatmap across pit benches and multi-blast trend analytics'}
+                ? 'Visualisation cartographique des polygones de tir, géométrie du patron et suivi spatial de la granulométrie P80'
+                : 'Interactive spatial fragmentation heatmap across pit benches, blast geometry adjustment and multi-blast trend tracking'}
             </p>
           </div>
         </div>
 
-        {/* Bench Elevation Filter */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+        {/* Global Controls & Actions */}
+        <div className="flex items-center flex-wrap gap-2">
+          {/* Bench Elevation Filter */}
+          <div className="flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5 text-blue-600" />
-            {isFr ? 'Gradin / Niveau :' : 'Bench Level:'}
-          </span>
-          <select
-            value={selectedElevation}
-            onChange={(e) => setSelectedElevation(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-            className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 bg-white"
+            <select
+              value={selectedElevation}
+              onChange={(e) => setSelectedElevation(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+              className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-slate-50"
+            >
+              <option value="all">{isFr ? 'Tous les Gradins (Fosse Complète)' : 'All Benches (Full Pit)'}</option>
+              <option value={1260}>{isFr ? 'Gradin 1260 RL (Crête Rampe)' : 'Bench 1260 RL (Crest)'}</option>
+              <option value={1240}>{isFr ? 'Gradin 1240 RL (Supérieur)' : 'Bench 1240 RL (Upper)'}</option>
+              <option value={1220}>{isFr ? 'Gradin 1220 RL (Front Actif)' : 'Bench 1220 RL (Active Face)'}</option>
+            </select>
+          </div>
+
+          {/* Educational Principles Button */}
+          <button
+            onClick={() => setShowExplanation(!showExplanation)}
+            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
+            title={isFr ? 'Comprendre le plan de fosse' : 'How does the bench map work?'}
           >
-            <option value="all">{isFr ? 'Tous les Gradins (Fosse Complète)' : 'All Benches (Full Pit)'}</option>
-            <option value={1240}>{isFr ? 'Gradin 1240 RL (Supérieur)' : 'Bench 1240 RL (Upper)'}</option>
-            <option value={1220}>{isFr ? 'Gradin 1220 RL (Intermédiaire)' : 'Bench 1220 RL (Mid)'}</option>
-          </select>
+            <HelpCircle className="w-4 h-4 text-blue-600" />
+            <span className="hidden sm:inline">{isFr ? 'Guide Fosse' : 'Bench Guide'}</span>
+          </button>
+
+          {/* Send to Report Button */}
+          <SendToReportButton
+            sectionKey="benchmap"
+            project={project}
+            site={site}
+            blast={selectedBlast}
+            lang={lang}
+            getPayload={() => ({
+              activeBlastId: selectedBlast?.blastId,
+              selectedElevation,
+              burdenM,
+              spacingM,
+              benchHeightM,
+              numberOfHoles,
+              patternType,
+              clearanceRadiusM,
+              blastedVolumeM3,
+              blastedTonnageT,
+              livePowderFactor,
+              activeP80,
+              historicalMeanP80: 207,
+            })}
+            summaryFr={`Plan fosse (Gradin ${activeLayout.bench} RL, maille ${burdenM}m×${spacingM}m) : ${blastedVolumeM3} m³ (${blastedTonnageT} t), dosage ${livePowderFactor} kg/m³, périmètre sécurité ${clearanceRadiusM}m.`}
+            summaryEn={`Pit bench map (Bench ${activeLayout.bench} RL, pattern ${burdenM}m×${spacingM}m): ${blastedVolumeM3} m³ (${blastedTonnageT} t), powder factor ${livePowderFactor} kg/m³, safety perimeter ${clearanceRadiusM}m.`}
+          />
+        </div>
+      </div>
+
+      {/* Educational Guide Box (collapsible) */}
+      {showExplanation && (
+        <div className="bg-gradient-to-r from-blue-50 to-sky-50 p-5 rounded-2xl border border-blue-200 shadow-xs space-y-3 animate-in fade-in">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black text-blue-950 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-blue-600" />
+              {isFr
+                ? 'Fonctionnement du Plan Spatial des Gradins & Réconciliation'
+                : 'How the Pit Bench Map & Spatial Reconciliation Work'}
+            </h3>
+            <button
+              onClick={() => setShowExplanation(false)}
+              className="text-xs font-bold text-blue-700 hover:text-blue-900"
+            >
+              ✕ {isFr ? 'Masquer' : 'Dismiss'}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-blue-900 leading-relaxed">
+            <div className="p-3 bg-white/80 rounded-xl border border-blue-100">
+              <span className="font-extrabold block text-blue-950 mb-1">
+                1. {isFr ? 'Cartographie des Polygones de Tir' : 'Blast Polygon Mapping'}
+              </span>
+              <p>
+                {isFr
+                  ? 'Chaque gradin (ex : 1240 RL) représente un niveau d’exploitation. Les polygones de tir positionnent exactement les volumes abattus par rapport aux fronts libres et aux rampes d’accès de la fosse.'
+                  : 'Each bench elevation (e.g. 1240 RL) represents an open-pit mining slice. Blast polygons track exact spatial locations of blasted blocks relative to free faces and access ramps.'}
+              </p>
+            </div>
+            <div className="p-3 bg-white/80 rounded-xl border border-blue-100">
+              <span className="font-extrabold block text-blue-950 mb-1">
+                2. {isFr ? 'Périmètre de Sécurité des Projections' : 'Flyrock Clearance Perimeter'}
+              </span>
+              <p>
+                {isFr
+                  ? 'Le cercle de sécurité (paramétrable de 100m à 600m) délimite la zone d’évacuation obligatoire des personnes et des engins mobiles avant le tir pour prévenir tout accident de projection de roche.'
+                  : 'The dynamic clearance perimeter (slider from 100m to 600m) defines the mandatory exclusion zone for personnel and mobile mining equipment prior to blast detonation.'}
+              </p>
+            </div>
+            <div className="p-3 bg-white/80 rounded-xl border border-blue-100">
+              <span className="font-extrabold block text-blue-950 mb-1">
+                3. {isFr ? 'Réconciliation Mine-to-Mill' : 'Mine-to-Mill Reconciliation'}
+              </span>
+              <p>
+                {isFr
+                  ? 'En comparant le P80 observé sur différents gradins, les ingénieurs identifient les zones dures nécessitant un resserrement de maille et évitent d’engorger le concasseur primaire avec des gros blocs.'
+                  : 'By tracking P80 across different benches, mining engineers detect hard geological zones requiring tighter patterns to avoid starving or choking primary crushing.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Pattern Geometry Bar */}
+      <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 shadow-md space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-blue-400" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              {isFr ? 'Paramètres Géométriques du Gradin Actif' : 'Active Bench Geometry & Pattern Controls'} ({selectedBlast?.blastId})
+            </h3>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-slate-400 font-semibold">{isFr ? 'Disposition :' : 'Pattern:'}</span>
+            <div className="flex bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+              <button
+                onClick={() => setPatternType('staggered')}
+                className={`px-2 py-1 rounded-md font-bold text-xs ${patternType === 'staggered' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              >
+                {isFr ? 'Quinconce' : 'Staggered'}
+              </button>
+              <button
+                onClick={() => setPatternType('rectangular')}
+                className={`px-2 py-1 rounded-md font-bold text-xs ${patternType === 'rectangular' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              >
+                {isFr ? 'Carré / En ligne' : 'Square'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Sliders Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+          {/* Burden Slider */}
+          <div className="space-y-1">
+            <div className="flex justify-between text-slate-400">
+              <span>{isFr ? 'Banquette (Burden B)' : 'Burden (B)'}</span>
+              <strong className="text-blue-400">{burdenM} m</strong>
+            </div>
+            <input
+              type="range"
+              min="1.8"
+              max="4.5"
+              step="0.1"
+              value={burdenM}
+              onChange={(e) => setBurdenM(parseFloat(e.target.value))}
+              className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+            <span className="text-[10px] text-slate-500">
+              {isFr ? 'Distance au front libre' : 'Distance to free face'}
+            </span>
+          </div>
+
+          {/* Spacing Slider */}
+          <div className="space-y-1">
+            <div className="flex justify-between text-slate-400">
+              <span>{isFr ? 'Espacement (Spacing S)' : 'Spacing (S)'}</span>
+              <strong className="text-blue-400">{spacingM} m</strong>
+            </div>
+            <input
+              type="range"
+              min="2.0"
+              max="5.5"
+              step="0.1"
+              value={spacingM}
+              onChange={(e) => setSpacingM(parseFloat(e.target.value))}
+              className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+            <span className="text-[10px] text-slate-500">
+              {isFr ? 'Distance entre trous d’une même ligne' : 'Distance between adjacent holes'}
+            </span>
+          </div>
+
+          {/* Bench Height */}
+          <div className="space-y-1">
+            <div className="flex justify-between text-slate-400">
+              <span>{isFr ? 'Hauteur Gradin (H)' : 'Bench Height (H)'}</span>
+              <strong className="text-blue-400">{benchHeightM} m</strong>
+            </div>
+            <input
+              type="range"
+              min="4.0"
+              max="14.0"
+              step="0.5"
+              value={benchHeightM}
+              onChange={(e) => setBenchHeightM(parseFloat(e.target.value))}
+              className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+            <span className="text-[10px] text-slate-500">
+              {isFr ? 'Dénivelé vertical du gradin' : 'Vertical bench step height'}
+            </span>
+          </div>
+
+          {/* Flyrock Safety Perimeter Radius */}
+          <div className="space-y-1">
+            <div className="flex justify-between text-slate-400">
+              <span className="flex items-center gap-1 text-amber-300">
+                <ShieldAlert className="w-3.5 h-3.5" />
+                {isFr ? 'Rayon Évacuation Sécurité' : 'Safety Exclusion Radius'}
+              </span>
+              <strong className="text-amber-400">{clearanceRadiusM} m</strong>
+            </div>
+            <input
+              type="range"
+              min="100"
+              max="600"
+              step="25"
+              value={clearanceRadiusM}
+              onChange={(e) => setClearanceRadiusM(parseInt(e.target.value))}
+              className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+            />
+            <span className="text-[10px] text-slate-500">
+              {isFr ? 'Périmètre rouge visible sur le plan' : 'Red safety perimeter on map'}
+            </span>
+          </div>
+        </div>
+
+        {/* Live Metrics Summary Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-800 text-xs">
+          <div className="p-2.5 bg-slate-800/80 rounded-xl">
+            <span className="text-slate-400 text-[10px] block">{isFr ? 'Volume Abattu Prévu' : 'Estimated Volume'}</span>
+            <strong className="text-white text-sm">{blastedVolumeM3} m³</strong>
+          </div>
+          <div className="p-2.5 bg-slate-800/80 rounded-xl">
+            <span className="text-slate-400 text-[10px] block">{isFr ? 'Tonnage Massif Prévu' : 'Estimated Tonnage'}</span>
+            <strong className="text-white text-sm">{blastedTonnageT} tonnes</strong>
+          </div>
+          <div className="p-2.5 bg-slate-800/80 rounded-xl">
+            <span className="text-slate-400 text-[10px] block">{isFr ? 'Dosage Explosif Résultant' : 'Powder Factor'}</span>
+            <strong className="text-emerald-400 text-sm">{livePowderFactor} kg/m³</strong>
+          </div>
+          <div className="p-2.5 bg-slate-800/80 rounded-xl">
+            <span className="text-slate-400 text-[10px] block">{isFr ? 'Ratio Espacement / Banquette' : 'S/B Ratio'}</span>
+            <strong className="text-blue-400 text-sm">{(spacingM / burdenM).toFixed(2)}</strong>
+          </div>
         </div>
       </div>
 
@@ -156,6 +443,28 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
                 <text x="-4" y="-18" fill="#FFFFFF" fontSize="9" fontWeight="bold">N</text>
               </g>
 
+              {/* Dynamic Animated Safety Flyrock Buffer Circle */}
+              <circle
+                cx={centerX}
+                cy={centerY}
+                r={svgSafetyRadius}
+                fill="none"
+                stroke="#EF4444"
+                strokeWidth="1.5"
+                strokeDasharray="6 4"
+                opacity="0.75"
+              />
+              <text
+                x={centerX}
+                y={centerY - svgSafetyRadius - 4}
+                textAnchor="middle"
+                fill="#F87171"
+                fontSize="9"
+                fontWeight="bold"
+              >
+                ⚠ {isFr ? `Périmètre d’Évacuation (${clearanceRadiusM}m)` : `Exclusion Perimeter (${clearanceRadiusM}m)`}
+              </text>
+
               {/* Render blast polygons */}
               {blasts.map((b, idx) => {
                 const layout = blastLayouts[b.id] || {
@@ -177,7 +486,7 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
                 return (
                   <g
                     key={b.id}
-                    onClick={() => setActiveBlastId(b.id)}
+                    onClick={() => handleSelectBlastBlock(b.id)}
                     className="cursor-pointer transition-transform hover:opacity-90"
                   >
                     {/* Blast Block Rectangle */}
@@ -234,7 +543,7 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
                       fill="#E2E8F0"
                       fontSize="9"
                     >
-                      PF: {getPowderFactor(b)} kg/m³
+                      {isSelected ? `PF: ${livePowderFactor} kg/m³` : `PF: ${(b.parameters.chargePerHole / Math.max(0.1, b.parameters.burden * b.parameters.spacing * b.parameters.benchHeight)).toFixed(2)} kg/m³`}
                     </text>
                   </g>
                 );
@@ -244,8 +553,8 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
 
           <p className="text-xs text-slate-500 italic">
             {isFr
-              ? '💡 Cliquez sur un tir dans le plan pour inspecter ses paramètres géotechniques et sa distribution.'
-              : '💡 Click any blast block on the bench map to inspect its fragmentation metrics and powder factor.'}
+              ? '💡 Cliquez sur n’importe quel tir dans le plan pour charger ses paramètres et ajuster sa géométrie en temps réel.'
+              : '💡 Click any blast block on the bench map to load its geometry and tweak burden, spacing or safety radius live.'}
           </p>
         </div>
 
@@ -280,7 +589,7 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-slate-500 block text-[10px]">{t('powderFactor', lang)}</span>
-                  <span className="text-base font-bold text-slate-900">{getPowderFactor(selectedBlast)} kg/m³</span>
+                  <span className="text-base font-bold text-slate-900">{livePowderFactor} kg/m³</span>
                 </div>
                 <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
                   <span className="text-amber-700 block text-[10px] font-bold">{t('oversizePercent', lang)}</span>
@@ -309,22 +618,18 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
             {/* Micro SVG Trend Chart */}
             <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50">
               <svg viewBox="0 0 340 130" className="w-full h-auto">
-                {/* Optimal Band (140 to 200 mm) */}
                 <rect x="35" y="35" width="280" height="35" fill="#10B981" fillOpacity="0.15" rx="3" />
                 <text x="40" y="55" fill="#059669" fontSize="8" fontWeight="bold">
                   {isFr ? 'Zone Cible Optimale (140 - 200 mm)' : 'Target Optimal Range (140 - 200 mm)'}
                 </text>
 
-                {/* Y Axis line */}
                 <line x1="35" y1="10" x2="35" y2="105" stroke="#CBD5E1" strokeWidth="1" />
                 <line x1="35" y1="105" x2="320" y2="105" stroke="#CBD5E1" strokeWidth="1" />
 
-                {/* Y Axis ticks */}
                 <text x="8" y="25" fill="#94A3B8" fontSize="8">300mm</text>
                 <text x="8" y="65" fill="#94A3B8" fontSize="8">180mm</text>
                 <text x="8" y="105" fill="#94A3B8" fontSize="8">60mm</text>
 
-                {/* Plot points and polyline */}
                 {trendData.length >= 2 && (
                   <polyline
                     fill="none"

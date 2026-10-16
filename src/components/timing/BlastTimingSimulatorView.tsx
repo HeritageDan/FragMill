@@ -19,13 +19,22 @@ import {
   Waves,
   Zap,
 } from 'lucide-react';
+import type { Project, Site } from '../../types';
+import { SendToReportButton } from '../report/SendToReportButton';
 
 interface BlastTimingSimulatorViewProps {
   blast: Blast;
+  project?: Project;
+  site?: Site;
   lang?: 'en' | 'fr';
 }
 
-export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> = ({ blast, lang = 'en' }) => {
+export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> = ({
+  blast,
+  project,
+  site,
+  lang = 'en',
+}) => {
   const isFrench = lang === 'fr';
 
   const [patternType, setPatternType] = useState<InitiationPatternType>('v_echelon');
@@ -192,8 +201,8 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
           </div>
         </div>
 
-        {/* Pattern Selector */}
-        <div className="flex items-center gap-2">
+        {/* Pattern Selector & Report Actions */}
+        <div className="flex items-center flex-wrap gap-2">
           <select
             value={patternType}
             onChange={(e) => setPatternType(e.target.value as any)}
@@ -205,6 +214,29 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
             <option value="center_lift">{isFrench ? 'Soulèvement Central' : 'Center Lift'}</option>
             <option value="electronic_custom">{isFrench ? 'Électronique Séquentiel (8ms)' : 'Electronic (8ms Sequential)'}</option>
           </select>
+
+          <SendToReportButton
+            sectionKey="timing"
+            project={project}
+            site={site}
+            blast={blast}
+            lang={lang}
+            getPayload={() => ({
+              patternType,
+              surfaceDelayMs,
+              inHoleDelayMs,
+              totalDurationMs: holes.length > 0 ? Math.max(...holes.map((h) => h.firingTimeMs)) : 0,
+              maxChargePerDelayKg: chargeKg,
+              distanceToStructureM,
+              estimatedPPVMmS: ppvEstimate.estimatedPPVMmS,
+              safeLimitMmS: ppvEstimate.safeLimitMmS,
+              isCompliant: ppvEstimate.isCompliant,
+              criticalUnderburdenCount,
+              totalHoles: holes.length,
+            })}
+            summaryFr={`Chronogramme 3D (${patternType}, ${surfaceDelayMs}/${inHoleDelayMs}ms) : VPP prédite ${ppvEstimate.estimatedPPVMmS} mm/s à ${distanceToStructureM}m (limite ${ppvEstimate.safeLimitMmS} mm/s, ${ppvEstimate.isCompliant ? 'conforme' : 'attention'}).`}
+            summaryEn={`3D Timing simulation (${patternType}, ${surfaceDelayMs}/${inHoleDelayMs}ms): predicted PPV ${ppvEstimate.estimatedPPVMmS} mm/s at ${distanceToStructureM}m (${ppvEstimate.isCompliant ? 'compliant' : 'warning'}).`}
+          />
         </div>
       </div>
 

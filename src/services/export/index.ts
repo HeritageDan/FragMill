@@ -9,7 +9,10 @@ import type {
   Project,
   Site,
 } from '../../types';
-import { db } from '../../db';
+import type { Language } from '../../i18n';
+import type { ReportVaultState } from '../../types/reportVault';
+import { generateModularVaultPdfReport, generateSingleSectionPdfReport } from './modularReport';
+import { db, getSettings } from '../../db';
 import { simulateComminutionCircuit, generateEconomicTradeoffCurve } from '../comminution/bondMorrellEngine';
 import { evaluateMineToMillEconomics, DEFAULT_ECONOMIC_PARAMS } from '../economics';
 import { computeKuzRam, calculateRockFactorA, DEFAULT_ROCK_TABLES } from '../kuzram';
@@ -17,684 +20,170 @@ import { generateDemoDroneSurvey, apply3DStereologicalCorrection } from '../dron
 import { calculateUSBMPPV, generateFaceProfile } from '../timing/initiationSimulator';
 import { generateDrillTelemetryFromBlast } from '../telemetry/iredesGenerator';
 
-// Generate Comprehensive Multi-Page Engineering Blast PDF Report
+// Generate Comprehensive Multi-Page Engineering Blast PDF Report (Bilingual: EN / FR)
 export async function generateBlastPdfReport(
   project: Project,
   site: Site,
   blast: Blast,
-  image: ImageRecord,
-  run: SegmentationRun
+  image?: ImageRecord,
+  run?: SegmentationRun,
+  lang?: Language
 ): Promise<Blob> {
+  let activeLang: Language = lang || 'en';
+  if (!lang) {
+    try {
+      const appSettings = await getSettings();
+      if (appSettings?.language) {
+        activeLang = appSettings.language;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Ensure blast has image & run associated if provided
+  const targetBlast = { ...blast };
+  if (image) {
+    const targetImage = { ...image };
+    if (run) {
+      targetImage.segmentationRuns = [run, ...(targetImage.segmentationRuns || []).filter((r) => r.id !== run.id)];
+    }
+    targetBlast.images = [targetImage, ...(targetBlast.images || []).filter((i) => i.id !== targetImage.id)];
+  }
+
+  const activeImg = targetBlast.images?.[0];
+  const activeRun = run || activeImg?.segmentationRuns?.[0];
+  const metrics = activeRun?.metrics;
+
+  const blastPayload: any = {
+    blastId: targetBlast.blastId,
+    dateTime: targetBlast.dateTime,
+    weather: targetBlast.weather,
+    burden: targetBlast.parameters.burden,
+    spacing: targetBlast.parameters.spacing,
+    benchHeight: targetBlast.parameters.benchHeight,
+    holeDiameter: targetBlast.parameters.holeDiameter,
+    holeDepth: targetBlast.parameters.holeDepth,
+    subdrill: targetBlast.parameters.subdrill,
+    chargePerHole: targetBlast.parameters.chargePerHole,
+    numberOfHoles: targetBlast.parameters.numberOfHoles,
+    rockType: targetBlast.rockMass.rockType,
+    density: targetBlast.rockMass.density,
+    ucsMPa: targetBlast.rockMass.ucsMPa,
+    gsiOrRmr: targetBlast.rockMass.estimatedGsiOrRmr,
+    p10: metrics?.p10,
+    p20: metrics?.p20,
+    p50: metrics?.p50,
+    p80: metrics?.p80,
+    p90: metrics?.p90,
+    topSize: metrics?.pMax,
+    uniformityIndex: metrics?.uniformityIndex,
+    oversizePercent: metrics?.oversizePercent,
+    finesPercent: metrics?.finesPercent,
+    fragmentCount: activeRun?.fragments?.length || targetBlast.images?.[0]?.segmentationRuns?.[0]?.fragments?.length,
+  };
+
+  const initialVaultState: ReportVaultState = {
+    blast: {
+      key: 'blast',
+      stagedAt: Date.now(),
+      titleFr: '1. Tir & Images : Massif & Granulométrie',
+      titleEn: '1. Blast Records & Optical Sizing',
+      summaryTextFr: `Tir ${targetBlast.blastId} : P50 ${metrics?.p50 || 128} mm, P80 ${metrics?.p80 || 195} mm`,
+      summaryTextEn: `Blast ${targetBlast.blastId}: P50 ${metrics?.p50 || 128} mm, P80 ${metrics?.p80 || 195} mm`,
+      payload: blastPayload,
+    },
+    drone3d: null,
+    beltvision: null,
+    timing: null,
+    comminution: null,
+    kriging: null,
+    telemetry: null,
+    benchmap: null,
+    validation: null,
+    minetomill: null,
+    kuzram: null,
+  };
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('fragmill_report_vault_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          Object.assign(initialVaultState, parsed);
+          initialVaultState.blast = {
+            key: 'blast',
+            stagedAt: Date.now(),
+            titleFr: '1. Tir & Images : Massif & Granulométrie',
+            titleEn: '1. Blast Records & Optical Sizing',
+            summaryTextFr: `Tir ${targetBlast.blastId} : P50 ${metrics?.p50 || 128} mm, P80 ${metrics?.p80 || 195} mm`,
+            summaryTextEn: `Blast ${targetBlast.blastId}: P50 ${metrics?.p50 || 128} mm, P80 ${metrics?.p80 || 195} mm`,
+            payload: blastPayload,
+          };
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return generateModularVaultPdfReport(initialVaultState, project, site, targetBlast, activeLang);
+}
+
+// Generate Printable 1:1 A4 Calibration Target Sheet
+export function generatePrintableA4CalibrationSheet(lang: Language = 'en'): Blob {
+  const isFr = lang === 'fr';
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4',
   });
 
-  const totalPages = 6;
-
-  // Helper for Top Banner Header
-  const drawHeader = (title: string, subTitle: string) => {
-    doc.setFillColor(31, 56, 100); // Deep Navy #1F3864
-    doc.rect(0, 0, 210, 20, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(13);
-    doc.setFont('helvetica', 'bold');
-    doc.text(title, 14, 11);
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'normal');
-    doc.text(subTitle, 14, 17);
-  };
-
-  // Helper for Footer
-  const drawFooter = (pageNum: number) => {
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(148, 163, 184);
-    doc.text(
-      `FRAGMILL MINING SUITE • Complete Engineering & Results Vault • Page ${pageNum} of ${totalPages}`,
-      105,
-      291,
-      { align: 'center' }
-    );
-    doc.setDrawColor(226, 232, 240);
-    doc.line(14, 287, 196, 287);
-  };
-
-  // Helper for Styled Tables with Robust Multi-line Word-Wrapping and Auto-Row-Height
-  const drawTable = (
-    headers: string[],
-    rows: (string | number)[][],
-    widths: number[],
-    startY: number,
-    title?: string
-  ): number => {
-    let curY = startY;
-    if (title) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9.5);
-      doc.setTextColor(31, 56, 100);
-      doc.text(title, 14, curY);
-      curY += 5.0;
-    }
-
-    const tableX = 14;
-    const totalTableWidth = widths.reduce((sum, w) => sum + w, 0); // 182 mm
-    const cellPadding = 1.8; // mm
-
-    // Compute Multi-line Headers
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    const headerLines = headers.map((h, i) => {
-      const maxW = Math.max(8, widths[i] - cellPadding * 2);
-      return doc.splitTextToSize(String(h), maxW) as string[];
-    });
-    const maxHeaderLines = Math.max(1, ...headerLines.map((l) => l.length));
-    const headerLineHeight = 3.2;
-    const headerHeight = Math.max(6.5, maxHeaderLines * headerLineHeight + 2.5);
-
-    // Header Background Rect
-    doc.setFillColor(31, 56, 100); // Deep Navy #1F3864
-    doc.rect(tableX, curY, totalTableWidth, headerHeight, 'F');
-    doc.setTextColor(255, 255, 255);
-
-    // Render Header Text
-    let curX = tableX;
-    headers.forEach((_, idx) => {
-      const lines = headerLines[idx];
-      lines.forEach((lineText: string, lineIdx: number) => {
-        doc.text(lineText, curX + cellPadding, curY + 4.2 + lineIdx * headerLineHeight);
-      });
-      curX += widths[idx];
-    });
-
-    curY += headerHeight;
-
-    // Process Data Rows
-    doc.setFontSize(7.5);
-    rows.forEach((row, rIdx) => {
-      const cellLines = row.map((cellVal, cIdx) => {
-        const str = String(cellVal ?? '');
-        const maxW = Math.max(8, widths[cIdx] - cellPadding * 2);
-        return doc.splitTextToSize(str, maxW) as string[];
-      });
-
-      const maxCellLines = Math.max(1, ...cellLines.map((l) => l.length));
-      const rowLineHeight = 3.2;
-      const rowHeight = Math.max(5.2, maxCellLines * rowLineHeight + 2.2);
-
-      // Alternating row background shading
-      if (rIdx % 2 === 1) {
-        doc.setFillColor(248, 250, 252); // Slate-50
-        doc.rect(tableX, curY, totalTableWidth, rowHeight, 'F');
-      }
-
-      // Draw light bottom border for rows
-      doc.setDrawColor(241, 245, 249);
-      doc.line(tableX, curY + rowHeight, tableX + totalTableWidth, curY + rowHeight);
-
-      // Render cell text
-      let cX = tableX;
-      row.forEach((_, cIdx) => {
-        doc.setTextColor(cIdx === 0 ? 30 : 51, cIdx === 0 ? 41 : 65, cIdx === 0 ? 59 : 85);
-        if (cIdx === 0) doc.setFont('helvetica', 'bold');
-        else doc.setFont('helvetica', 'normal');
-
-        const lines = cellLines[cIdx];
-        lines.forEach((lineText: string, lineIdx: number) => {
-          doc.text(lineText, cX + cellPadding, curY + 3.6 + lineIdx * rowLineHeight);
-        });
-        cX += widths[cIdx];
-      });
-
-      curY += rowHeight;
-    });
-
-    return curY + 4.5;
-  };
-
-  // Pre-calculate Advanced System Models
-  const holeVol = (blast.parameters.burden || 2.4) * (blast.parameters.spacing || 2.8) * (blast.parameters.benchHeight || 6.0);
-  const powderFactor = (blast.parameters.chargePerHole || 22.0) / Math.max(0.1, holeVol);
-  const rockA = calculateRockFactorA(DEFAULT_ROCK_TABLES);
-  const kuzRam = computeKuzRam(blast.parameters, blast.rockMass, rockA);
-
-  const activeP80 = run.metrics.p80 || (blast.blastId === 'BL-2026-001' ? 285 : blast.blastId === 'BL-2026-002' ? 195 : 142);
-  const econResult = evaluateMineToMillEconomics(blast, activeP80, blast.millBatch, DEFAULT_ECONOMIC_PARAMS);
-
-  const comminutionParams = {
-    f80Mm: activeP80,
-    targetP80Mm: 0.075,
-    bondWorkIndexKWhPerT: 14.5,
-    rockAxb: 42.0,
-    plantOperatingHoursPerDay: 20,
-    electricityCostPerKWhUSD: 0.14,
-    explosiveCostPerKgUSD: 1.85,
-    targetDailyThroughputTonnes: 500,
-  };
-  const comminutionSim = simulateComminutionCircuit(comminutionParams);
-  const tradeoffCurve = generateEconomicTradeoffCurve(comminutionParams);
-  const droneSurvey = generateDemoDroneSurvey(blast.blastId);
-  const drillHoles = generateDrillTelemetryFromBlast(blast);
-  const ppvEstimate = calculateUSBMPPV(350, blast.parameters.chargePerHole || 24);
-
-  // Comminution Throughput Benefit Formatting
-  const deltaTph = comminutionSim.achievableThroughputTPH - 25.6;
-  const deltaPct = ((Math.abs(deltaTph) / 25.6) * 100).toFixed(1);
-  const tphBenefitText = deltaTph >= 0
-    ? `+${deltaTph.toFixed(1)} t/h (+${deltaPct}% throughput expansion)`
-    : `${deltaTph.toFixed(1)} t/h (-${deltaPct}% coarse feed limit)`;
-
-  // =========================================================================
-  // PAGE 1: EXECUTIVE BLAST SUMMARY, FIELD GEOMETRY, ROCK MASS & PHOTO SIZING
-  // =========================================================================
-  drawHeader(
-    'FRAGMILL : BLAST FRAGMENTATION & COMMINUTION REPORT',
-    `Project: ${project.name} | Site: ${site.name} | Blast ID: ${blast.blastId} | Date: ${blast.dateTime}`
+  // Top Banner Header
+  doc.setFillColor(31, 56, 100); // Deep Navy #1F3864
+  doc.rect(0, 0, 210, 20, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text(
+    isFr ? 'FRAGMILL : MIRE D\'ÉTALONNAGE OPTIQUE & PROTOCOLE TERRAIN' : 'FRAGMILL : OPTICAL SCALE CALIBRATION TARGET & PROTOCOL',
+    14,
+    11
+  );
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.text(
+    isFr ? 'Échelle Imprimable 1:1 pour Étalonnage Haute Précision' : '1:1 Printable Field Scale Target for High-Precision Calibration',
+    14,
+    17
   );
 
   let y = 28;
-  doc.setTextColor(30, 41, 59);
-  doc.setFontSize(9.5);
-  doc.setFont('helvetica', 'bold');
-  doc.text('1. BLAST DESIGN GEOMETRY & ROCK MASS GEOTECHNICAL METADATA', 14, y);
-  y += 5.5;
-
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  const col1 = 14;
-  const col2 = 106;
+  doc.setTextColor(51, 65, 85);
+  doc.text(
+    isFr
+      ? 'Cette page contient une échelle métrique certifiée. Imprimez à 100% (sans mise à l\'échelle) et placez-la sur le tas d\'abattage.'
+      : 'This page provides a certified metric field scale. Print at 100% scale (no fit-to-page) and position directly on the muck pile.',
+    14,
+    y
+  );
 
-  doc.text(`Date & Time: ${blast.dateTime}`, col1, y, { maxWidth: 88 });
-  doc.text(`Weather: ${blast.weather}`, col2, y, { maxWidth: 88 });
-  y += 4.5;
-  doc.text(`Bench Height: ${blast.parameters.benchHeight} m (Subdrill: ${blast.parameters.subdrill || 0.8} m)`, col1, y, { maxWidth: 88 });
-  doc.text(`Rock Type: ${blast.rockMass.rockType} (Density: ${blast.rockMass.density} t/m³)`, col2, y, { maxWidth: 88 });
-  y += 4.5;
-  doc.text(`Hole Diameter: ${blast.parameters.holeDiameter} mm (Depth: ${blast.parameters.holeDepth} m)`, col1, y, { maxWidth: 88 });
-  doc.text(`Joint Spacing: ${blast.rockMass.meanJointSpacing} m | Orientation: ${blast.rockMass.jointOrientation}`, col2, y, { maxWidth: 88 });
-  y += 4.5;
-  doc.text(`Burden x Spacing: ${blast.parameters.burden} m x ${blast.parameters.spacing} m (${blast.parameters.numberOfHoles} holes)`, col1, y, { maxWidth: 88 });
-  doc.text(`GSI / RMR: ${blast.rockMass.estimatedGsiOrRmr} | UCS: ${blast.rockMass.ucsMPa} MPa | E: ${blast.rockMass.youngsModulusGPa} GPa`, col2, y, { maxWidth: 88 });
-  y += 4.5;
-  doc.text(`Explosive: ${blast.parameters.explosiveType} (${blast.parameters.chargePerHole} kg/hole)`, col1, y, { maxWidth: 88 });
-  doc.text(`Powder Factor: ${powderFactor.toFixed(2)} kg/m³ | RWS: ${blast.parameters.rws} | Rock Factor A: ${rockA.toFixed(2)}`, col2, y, { maxWidth: 88 });
-  y += 7;
-
-  // Annotated Image Display
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.text('2. CALIBRATED MUCK PILE PHOTOGRAPHY & SEGMENTATION OVERLAY', 14, y);
-  y += 4;
-
-  const imgDataUrl = run.stepPreviews?.overlay || image.dataUrl;
-  if (imgDataUrl) {
-    try {
-      doc.addImage(imgDataUrl, 'JPEG', 14, y, 182, 94);
-    } catch {
-      doc.setFillColor(241, 245, 249);
-      doc.rect(14, y, 182, 94, 'F');
-      doc.text('[Muck pile fragmentation image]', 80, y + 45);
+  // 100 mm Scale Bar
+  doc.text(isFr ? 'Mire Haute Précision 100 mm :' : '100 mm Precision Scale Bar:', 14, 38);
+  doc.setFillColor(15, 23, 42); // Black
+  doc.rect(14, 42, 100, 10, 'F');
+  doc.setFillColor(255, 255, 255);
+  for (let i = 0; i < 10; i++) {
+    if (i % 2 === 0) {
+      doc.rect(14 + i * 10, 42, 10, 10, 'F');
     }
-  }
-  y += 98;
-
-  // Scale calibration info
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(71, 85, 105);
-  doc.text(
-    `Scale Calibration: ${image.calibration?.method || 'Two-Point Reference'} (${image.calibration?.realWorldDistanceMm || 500} mm) | Optical Resolution: ${
-      image.calibration?.pxPerMm?.toFixed(3) || '0.400'
-    } px/mm | Identified Fragments: ${run.fragments.length}`,
-    14,
-    y
-  );
-  y += 6;
-
-  // Key Percentiles Structured KPI Box (No Text Overlap)
-  doc.setFillColor(214, 228, 240); // Light blue #D6E4F0
-  doc.roundedRect(14, y, 182, 34, 2, 2, 'F');
-  doc.setTextColor(31, 56, 100);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.text('3. KEY FRAGMENTATION PERCENTILES & COMMINUTION SIZING SUMMARY', 18, y + 6);
-
-  const m = run.metrics;
-  const colX = [18, 62, 106, 150];
-
-  // Metric Headers
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(71, 85, 105);
-  doc.text('P10 (Fine Cut)', colX[0], y + 11.5);
-  doc.text('P20 (Passing 20%)', colX[1], y + 11.5);
-  doc.text('P50 (Median Size)', colX[2], y + 11.5);
-  doc.text('P80 (Mill Feed)', colX[3], y + 11.5);
-
-  // Large Bold Metric Values
-  doc.setFontSize(9.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(31, 56, 100);
-  doc.text(`${m.p10} mm`, colX[0], y + 16.5);
-  doc.text(`${m.p20} mm`, colX[1], y + 16.5);
-  doc.text(`${m.p50} mm`, colX[2], y + 16.5);
-  doc.text(`${m.p80} mm`, colX[3], y + 16.5);
-
-  // 95% Confidence Intervals
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(100, 116, 139);
-  doc.text(`95% CI: [${m.bootstrapCI.p10[0]} - ${m.bootstrapCI.p10[1]}]`, colX[0], y + 20.5);
-  doc.text(`95% CI: [${m.bootstrapCI.p20[0]} - ${m.bootstrapCI.p20[1]}]`, colX[1], y + 20.5);
-  doc.text(`95% CI: [${m.bootstrapCI.p50[0]} - ${m.bootstrapCI.p50[1]}]`, colX[2], y + 20.5);
-  doc.text(`95% CI: [${m.bootstrapCI.p80[0]} - ${m.bootstrapCI.p80[1]}]`, colX[3], y + 20.5);
-
-  // Subtle Divider Line
-  doc.setDrawColor(186, 215, 238);
-  doc.line(18, y + 23.5, 192, y + 23.5);
-
-  // Bottom Summary Badges
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(30, 41, 59);
-  doc.text(`Uniformity Index n: ${m.uniformityIndex}`, colX[0], y + 29);
-  doc.text(`Top Size (Pmax): ${m.pMax} mm`, colX[1], y + 29);
-  doc.text(`Oversize (>300 mm): ${m.oversizePercent}%`, colX[2], y + 29);
-  doc.text(`Fines (<25 mm): ${m.finesPercent}%`, colX[3], y + 29);
-
-  drawFooter(1);
-
-  // =========================================================================
-  // PAGE 2: STATISTICAL MODELS & PARTICLE SIZE DISTRIBUTIONS
-  // =========================================================================
-  doc.addPage();
-  drawHeader(
-    'FRAGMILL : STATISTICAL MODELS & PARTICLE SIZE DISTRIBUTIONS',
-    `Blast ID: ${blast.blastId} | Non-Linear Regression & Statistical Confidence Bounds`
-  );
-
-  y = 28;
-  y = drawTable(
-    ['Distribution Model', 'Primary Parameters', 'Shape / Undulation', 'Goodness-of-Fit (R²)', 'RMSE (%)'],
-    [
-      ['Swebrec 3-Parameter', `xMax = ${m.swebrecFit?.xMax || 500} mm, x50 = ${m.swebrecFit?.x50 || m.p50} mm`, `b = ${m.swebrecFit?.b || 1.85}`, `${m.swebrecFit?.r2 || 0.991}`, `${m.swebrecFit?.rmse || 2.14}%`],
-      ['Rosin-Rammler (Weibull)', `xc = ${m.rosinRammlerFit?.xc || 208} mm`, `n = ${m.rosinRammlerFit?.n || 1.35}`, `${m.rosinRammlerFit?.r2 || 0.984}`, `${m.rosinRammlerFit?.rmse || 3.22}%`],
-      ['Kuz-Ram Empirical Predictor', `Rock Factor A = ${rockA.toFixed(2)}, Q = ${blast.parameters.chargePerHole} kg`, `Uniformity n = ${kuzRam.uniformityIndexN}`, 'Theoretical', 'Baseline'],
-    ],
-    [44, 52, 36, 28, 22],
-    y,
-    '4. NON-LINEAR REGRESSION CURVE FITTING & MATHEMATICAL MODELS'
-  );
-
-  // Sieve distribution curve table - sample standard representative apertures spanning fines to oversize
-  const targetApertures = [15, 25, 50, 75, 100, 150, 200, 250, 300, 400];
-  let sieveCurveRows: (string | number)[][] = [];
-
-  if (m.rawCurve && m.rawCurve.length > 0) {
-    const sampled: { sizeMm: number; passingPercent: number }[] = [];
-    targetApertures.forEach((target) => {
-      let closest = m.rawCurve[0];
-      let minDiff = Math.abs(closest.sizeMm - target);
-      for (const pt of m.rawCurve) {
-        const diff = Math.abs(pt.sizeMm - target);
-        if (diff < minDiff) {
-          minDiff = diff;
-          closest = pt;
-        }
-      }
-      if (!sampled.some((s) => Math.abs(s.sizeMm - closest.sizeMm) < 2)) {
-        sampled.push(closest);
-      }
-    });
-
-    sampled.sort((a, b) => a.sizeMm - b.sizeMm);
-    sieveCurveRows = sampled.map((c) => [
-      `${c.sizeMm.toFixed(1)} mm`,
-      `${c.passingPercent.toFixed(1)}%`,
-      c.sizeMm <= 25 ? 'Fines fraction' : c.sizeMm >= 300 ? 'Oversize Boulder' : 'Standard Mill Feed',
-    ]);
-  }
-
-  if (sieveCurveRows.length === 0) {
-    sieveCurveRows = [
-      ['15.0 mm', '2.5%', 'Fines fraction'],
-      ['25.0 mm', `${m.finesPercent}%`, 'Fines cutoff limit'],
-      ['50.0 mm', '18.4%', 'Optimal mill feed'],
-      ['75.0 mm', '32.1%', 'Standard mill feed'],
-      ['100.0 mm', '45.0%', 'Crusher product'],
-      ['150.0 mm', '62.5%', 'Standard mill feed'],
-      ['200.0 mm', '76.8%', 'SAG mill feed'],
-      ['250.0 mm', '87.2%', 'Coarse feed'],
-      ['300.0 mm', `${(100 - m.oversizePercent).toFixed(1)}%`, 'Primary crusher limit'],
-      ['400.0 mm', '100.0%', 'Top size boulder'],
-    ];
-  }
-
-  y = drawTable(
-    ['Screen Aperture / Particle Size', 'Cumulative Mass Passing (%)', 'Comminution Classification'],
-    sieveCurveRows,
-    [55, 55, 72],
-    y,
-    '5. PARTICLE SIZE DISTRIBUTION (PSD) CUMULATIVE SIEVE PASSING'
-  );
-
-  // 95% Bootstrap Confidence Intervals Table
-  y = drawTable(
-    ['Percentile Metric', 'Estimated Size (mm)', '95% Confidence Interval (Lower - Upper)', 'Statistical Reliability'],
-    [
-      ['P10 (Fine Cut)', `${m.p10} mm`, `[${m.bootstrapCI.p10[0]} mm - ${m.bootstrapCI.p10[1]} mm]`, 'High Confidence (N=3000 Resamples)'],
-      ['P20 (Passing 20%)', `${m.p20} mm`, `[${m.bootstrapCI.p20[0]} mm - ${m.bootstrapCI.p20[1]} mm]`, 'High Confidence'],
-      ['P50 (Median Size)', `${m.p50} mm`, `[${m.bootstrapCI.p50[0]} mm - ${m.bootstrapCI.p50[1]} mm]`, 'Maximum Statistical Weight'],
-      ['P80 (Grinding Feed)', `${m.p80} mm`, `[${m.bootstrapCI.p80[0]} mm - ${m.bootstrapCI.p80[1]} mm]`, 'High Confidence (Mill Design Basis)'],
-      ['P90 (Coarse Cut)', `${m.p90} mm`, `[${m.bootstrapCI.p90[0]} mm - ${m.bootstrapCI.p90[1]} mm]`, 'Moderate (Boulder Edge Sensitivity)'],
-    ],
-    [38, 32, 58, 54],
-    y,
-    '6. STATISTICAL 95% BOOTSTRAP CONFIDENCE INTERVALS'
-  );
-
-  // Fragment Morphology Analysis
-  const frags = run.fragments || [];
-  const meanAspect = frags.length > 0 ? (frags.reduce((s, f) => s + f.aspectRatio, 0) / frags.length).toFixed(2) : '1.38';
-  const meanSolidity = frags.length > 0 ? (frags.reduce((s, f) => s + f.solidity, 0) / frags.length).toFixed(2) : '0.91';
-  y = drawTable(
-    ['Morphological Shape Descriptor', 'Measured Muckpile Value', 'Standard Reference Range', 'Geotechnical Implications'],
-    [
-      ['Mean Aspect Ratio (Length / Width)', `${meanAspect}`, '1.20 - 1.50 (Standard Cubic)', 'Low elongation indicates clean inter-joint shear failure'],
-      ['Mean Particle Solidity / Roundness', `${meanSolidity}`, '0.85 - 0.95 (Equant Angular)', 'High angularity confirms explosive detonation fracturing'],
-      ['Total Sampled Fragment Count', `${frags.length} fragments`, 'Minimum 35 required for ISO compliance', 'Statistically representative photographic station'],
-    ],
-    [52, 32, 46, 52],
-    y,
-    '7. ROCK FRAGMENT MORPHOMETRICS & GEOMETRIC SHAPE FACTORS'
-  );
-
-  drawFooter(2);
-
-  // =========================================================================
-  // PAGE 3: THREE-DECK HOLE CHARGING & DRILL RIG QA/QC AUDIT
-  // =========================================================================
-  doc.addPage();
-  drawHeader(
-    'FRAGMILL : THREE-DECK HOLE CHARGING & DRILL RIG QA/QC AUDIT',
-    `Blast ID: ${blast.blastId} | Explosive Loading Profile, Fault Decking & Collar Deviations`
-  );
-
-  y = 28;
-  const p = blast.parameters;
-  const holeDepth = p.holeDepth || 6.8;
-  const toeLength = p.bottomChargeLength || 2.0;
-  const colLength = p.columnChargeLength || 2.4;
-  const stemLength = p.stemmingLength || 2.0;
-
-  y = drawTable(
-    ['Blasthole Column Zone', 'Design Length (m)', 'Explosive Mass / Material', 'Linear Density', 'Functional Geotechnical Purpose'],
-    [
-      ['Deck 1: Bottom Toe Primer Charge', `${toeLength.toFixed(1)} m`, `${(p.chargePerHole * 0.45).toFixed(1)} kg Dynamite/Emulsion`, '4.20 kg/m', 'High VOD to cleanly shear toe, preventing floor humps'],
-      ['Deck 2: Column Bulk Charge', `${colLength.toFixed(1)} m`, `${(p.chargePerHole * 0.55).toFixed(1)} kg ANFO / Blend`, '3.62 kg/m', 'Heave and fragmentation across main rock mass body'],
-      ['Deck 3: Crushed Aggregate Stemming', `${stemLength.toFixed(1)} m`, 'Angular gravel (d ~ d_hole / 8)', '-', `Confinement ratio = ${(stemLength / (p.burden || 2.4)).toFixed(2)}x Burden (Prevents blowout)`],
-      ['Fault Decking Inert Air-Plug', '0.80 m (Optional)', 'Inert drill cuttings / air bag', '-', 'Placed across mud seams to save 15-20% explosive & halt flyrock'],
-    ],
-    [42, 24, 40, 22, 54],
-    y,
-    '8. THREE-DECK BLASTHOLE EXPLOSIVE LOADING PROFILE & CONFINEMENT'
-  );
-
-  // Drill Rig Collar Deviation Table
-  const compliantCount = drillHoles.filter((h) => (h.collarDeviationMm || 0) <= 60).length;
-  const maxCollarDev = Math.max(...drillHoles.map((h) => h.collarDeviationMm || 0));
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(31, 56, 100);
-  doc.text(
-    `QA/QC Compliance: ${compliantCount} / ${drillHoles.length} holes within tolerance (< 60 mm) | Maximum Collar Error: ${maxCollarDev} mm`,
-    14,
-    y
-  );
-  y += 5.5;
-
-  const sampleHoles = drillHoles.slice(0, 9).map((h) => [
-    h.holeId,
-    `(${h.plannedX.toFixed(1)}, ${h.plannedY.toFixed(1)})`,
-    `(${h.actualX?.toFixed(1) || '-'}, ${h.actualY?.toFixed(1) || '-'})`,
-    `${h.plannedDepthM.toFixed(1)} m`,
-    `${h.actualDepthM?.toFixed(1) || '-'} m`,
-    `${h.collarDeviationMm || 0} mm`,
-    `${h.penetrationRateMPerMin || 1.10} m/min`,
-    (h.collarDeviationMm || 0) <= 60 ? 'PASS (Accurate)' : 'WARNING (Drift)',
-  ]);
-
-  y = drawTable(
-    ['Hole ID', 'Planned (X, Y)', 'Drilled (X, Y)', 'Plan Depth', 'Drill Depth', 'Collar Dev.', 'Penetration', 'QA/QC Status'],
-    sampleHoles,
-    [18, 24, 24, 18, 18, 20, 24, 36],
-    y,
-    '9. DRILL RIG TELEMETRY & IREDES AS-BUILT COLLAR DEVIATION AUDIT'
-  );
-
-  drawFooter(3);
-
-  // =========================================================================
-  // PAGE 4: COMMINUTION DIGITAL TWIN & MINERAL RECOVERY
-  // =========================================================================
-  doc.addPage();
-  drawHeader(
-    'FRAGMILL : COMMINUTION DIGITAL TWIN & PLANT RECOVERY',
-    `Blast ID: ${blast.blastId} | Bond Work Index Energy Modeling & SAG/Ball Mill Capacity`
-  );
-
-  y = 28;
-  y = drawTable(
-    ['Comminution Energy Parameter', 'Baseline Feed (F80=185mm)', 'Optimized Blast Feed', 'Net Operational Benefit'],
-    [
-      ['Bond Ball Mill Work Index (Wi)', '14.50 kWh/tonne', '14.50 kWh/tonne', 'Granodiorite rock mass hardness benchmark'],
-      ['Rock Breakage Hardness (Axb)', '42.0', '46.2 (+10% Micro-fissured)', 'Blast shockwaves induce intra-granular micro-cracks'],
-      ['Target Final Grind Size (P80)', '75 µm (0.075 mm)', '75 µm (0.075 mm)', 'Optimal gold/sulfide mineral liberation size'],
-      ['Primary Crushing Specific Energy', '1.65 kWh/tonne', `${comminutionSim.crushingSpecificEnergyKWhPerT} kWh/tonne`, 'Jaw crusher runs without bridging or choke stalls'],
-      ['Ball Mill Grinding Specific Energy', '14.20 kWh/tonne', `${comminutionSim.grindingSpecificEnergyKWhPerT} kWh/tonne`, 'Direct electrical comminution power reduction'],
-      ['TOTAL SPECIFIC COMMINUTION ENERGY', '15.85 kWh/tonne', `${comminutionSim.totalSpecificEnergyKWhPerT} kWh/tonne`, `Net energy reduction: ${(15.85 - comminutionSim.totalSpecificEnergyKWhPerT).toFixed(2)} kWh/t saved`],
-      ['Achievable Grinding Throughput', '25.6 t/h (512 t/day)', `${comminutionSim.achievableThroughputTPH} t/h (${comminutionSim.dailyThroughputTonnes} t/d)`, tphBenefitText],
-      ['Grinding Media Steel Ball Wear', '0.665 kg/tonne', `${comminutionSim.grindingMediaWearKgPerT} kg/tonne`, 'Reduces consumable grinding media wear costs'],
-      ['Mineral Gold Liberation Efficiency', '92.0%', `${comminutionSim.mineralLiberationPercent}%`, 'High cyanide leaching kinetics response'],
-      ['Projected Plant Gold Recovery', '88.6%', `${comminutionSim.estimatedGoldRecoveryPercent}%`, 'Maximum metallurgical recovery without slime losses'],
-    ],
-    [54, 36, 40, 52],
-    y,
-    '10. BOND COMMINUTION DIGITAL TWIN & POWER PREDICTION'
-  );
-
-  // Economic Tradeoff Table
-  const tradeoffRows = tradeoffCurve.map((row) => [
-    `${row.powderFactorKgPerM3} kg/m³`,
-    `${row.blastP80Mm} mm`,
-    `$${row.drillBlastCostPerTUSD} / t`,
-    `$${row.millingEnergyCostPerTUSD} / t`,
-    `$${row.totalCircuitCostPerTUSD} / t${row.powderFactorKgPerM3 === 0.65 ? ' *' : ''}`,
-    `${row.throughputTPH} t/h`,
-    row.powderFactorKgPerM3 === 0.65 ? 'GLOBAL OPTIMUM (*)' : row.powderFactorKgPerM3 < 0.55 ? 'Under-Blasted' : 'High Throughput',
-  ]);
-
-  y = drawTable(
-    ['Powder Factor', 'Blast F80', 'D&B Cost ($/t)', 'Milling Cost ($/t)', 'Total Cost ($/t)', 'Throughput', 'Optimization Status'],
-    tradeoffRows,
-    [25, 21, 25, 25, 27, 21, 38],
-    y,
-    '11. MINE-TO-MILL FULL ECONOMIC TRADE-OFF CURVE DATASET'
-  );
-
-  drawFooter(4);
-
-  // =========================================================================
-  // PAGE 5: MINE-TO-MILL ECONOMICS & CARBON ACCOUNTING
-  // =========================================================================
-  doc.addPage();
-  drawHeader(
-    'FRAGMILL : MINE-TO-MILL ECONOMICS & CARBON ACCOUNTING',
-    `Blast ID: ${blast.blastId} | Granular Unit Cost Breakdown & Scope 1/2 GHG Ledger`
-  );
-
-  y = 28;
-  const ev = econResult.evaluation;
-  y = drawTable(
-    ['Operational Process Stage', 'Unit Cost ($/tonne)', '% of Total Cost', 'Industry Benchmark', 'Optimization Lever'],
-    [
-      ['1. Production Blasthole Drilling', `$${ev.drillingCostPerTon} / t`, `${((ev.drillingCostPerTon / ev.totalCostPerTon) * 100).toFixed(1)}%`, '$0.80 - $1.20 / t', 'Pattern geometry optimization'],
-      ['2. Explosives & Firing Accessories', `$${ev.blastingCostPerTon} / t`, `${((ev.blastingCostPerTon / ev.totalCostPerTon) * 100).toFixed(1)}%`, '$0.50 - $0.90 / t', 'Fault air decking & energy distribution'],
-      ['3. Secondary Boulder Breaking (BRH)', `$${ev.secondaryBreakingCostPerTon} / t`, `${((ev.secondaryBreakingCostPerTon / ev.totalCostPerTon) * 100).toFixed(1)}%`, '$0.05 - $0.25 / t', 'Tightening burden eliminates boulders'],
-      ['4. Primary Crushing Energy', `$${ev.crushingCostPerTon} / t`, `${((ev.crushingCostPerTon / ev.totalCostPerTon) * 100).toFixed(1)}%`, '$0.20 - $0.40 / t', 'Finer muckpile prevents throat choking'],
-      ['5. Tumbling Mill Grinding Power', `$${ev.millingCostPerTon} / t`, `${((ev.millingCostPerTon / ev.totalCostPerTon) * 100).toFixed(1)}%`, '$3.20 - $5.50 / t', 'Blast micro-fissuring cuts power draw'],
-      ['TOTAL MINE-TO-MILL OPERATING COST', `$${ev.totalCostPerTon} / tonne`, '100.0%', '$5.00 - $7.50 / t', `Optimal Sweet-Spot P80: ${econResult.sweetSpotP80Mm} mm`],
-      ['Annual Cost Savings Potential (100kt/yr)', `$${econResult.annualSavingsPotential100kt.toLocaleString()} / year`, 'Direct Profit Margin', '-', 'Targeting economic sweet-spot P80'],
-    ],
-    [54, 30, 26, 32, 40],
-    y,
-    '12. GRANULAR PROCESS OPERATIONAL COST BREAKDOWN PER METRIC TONNE'
-  );
-
-  // Carbon Accounting Ledger
-  const c = ev.carbonEmissions;
-  y = drawTable(
-    ['Greenhouse Gas Emission Source', 'Emission Factor', 'Carbon Intensity', 'Scope Classification', 'Mitigation Opportunity'],
-    [
-      ['Explosives Detonation Chemistry', '0.18 kg CO2e / kg ANFO', `${c.scope1ExplosivesKgCo2ePerTon} kg CO2e / t`, 'Scope 1 (Direct Pit)', 'Stoichiometric fuel oil balance'],
-      ['Diesel Excavation & Haul Fleet', '2.68 kg CO2e / L fuel', `${c.scope1DieselKgCo2ePerTon} kg CO2e / t`, 'Scope 1 (Direct Pit)', 'Eliminating boulder handling idle time'],
-      ['Primary Crushing Electrical Power', '0.52 kg CO2e / kWh grid', `${(c.scope2ElectricityKgCo2ePerTon * 0.15).toFixed(2)} kg CO2e / t`, 'Scope 2 (Indirect Power)', 'Optimizing crusher feed choke level'],
-      ['SAG & Ball Mill Grinding Electrical Power', '0.52 kg CO2e / kWh grid', `${(c.scope2ElectricityKgCo2ePerTon * 0.85).toFixed(2)} kg CO2e / t`, 'Scope 2 (Indirect Power)', 'Finer blast feed saves ~2.5 kg CO2e/t'],
-      ['TOTAL FRAGMENTATION CARBON INTENSITY', 'Comprehensive Lifecycle', `${c.totalKgCo2ePerTon} kg CO2e / tonne`, 'Scope 1 + Scope 2', 'Net -26.3% carbon footprint reduction'],
-      ['Net Carbon Abatement per 100,000 t Ore', '350 - 550 t CO2e saved', 'Equivalent to 110 cars', 'Global ESG Metric', 'Certified carbon credit eligibility'],
-    ],
-    [52, 34, 30, 30, 36],
-    y,
-    '13. SCOPE 1 & SCOPE 2 GREENHOUSE GAS CARBON ACCOUNTING LEDGER'
-  );
-
-  drawFooter(5);
-
-  // =========================================================================
-  // PAGE 6: ADVANCED PIT SYSTEMS & VERIFICATION
-  // =========================================================================
-  doc.addPage();
-  drawHeader(
-    'FRAGMILL : ADVANCED PIT SYSTEMS & VERIFICATION',
-    `Blast ID: ${blast.blastId} | 3D Wavefront, Drone Photogrammetry, Belt Vision & Ground Truth`
-  );
-
-  y = 28;
-  // USBM Ground Vibration Table
-  y = drawTable(
-    ['Distance to Structure', 'Max Charge per Delay', 'Scaled Distance', 'Predicted PPV', 'USBM Safe Limit', 'Compliance Status'],
-    [
-      ['50 m (Pit Office)', `${blast.parameters.chargePerHole} kg`, '10.2 m/kg^0.5', '42.5 mm/s', '50.0 mm/s', 'WARNING: High Ground Shock'],
-      ['150 m (Workshop)', `${blast.parameters.chargePerHole} kg`, '30.6 m/kg^0.5', '8.4 mm/s', '25.0 mm/s', 'PASS: Structurally Safe'],
-      ['350 m (Village Clinic)', `${blast.parameters.chargePerHole} kg`, '71.4 m/kg^0.5', `${ppvEstimate.estimatedPPVMmS} mm/s`, `${ppvEstimate.safeLimitMmS} mm/s`, 'PASS: Fully Compliant (Safe)'],
-      ['500 m (Residential)', `${blast.parameters.chargePerHole} kg`, '102.1 m/kg^0.5', '1.1 mm/s', '5.0 mm/s', 'PASS: Fully Compliant'],
-    ],
-    [36, 28, 28, 26, 26, 38],
-    y,
-    '14. 3D BLAST TIMING & USBM GROUND VIBRATION (PPV) COMPLIANCE'
-  );
-
-  // Drone 3D Photogrammetry & Belt Edge Vision
-  const droneSectors = droneSurvey.sectors.map((s) => [
-    s.name,
-    `${s.volumeM3} m³`,
-    `${s.p50Mm} mm`,
-    `${s.p80Mm} mm`,
-    `${s.topSizeMm} mm`,
-    `${s.oversizePercent}%`,
-  ]);
-
-  y = drawTable(
-    ['UAV Drone Muckpile Sector', 'Sector Volume', 'P50 (2D)', 'P80 (2D)', 'Top Size', 'Oversize (>600mm)'],
-    droneSectors,
-    [52, 26, 26, 26, 26, 26],
-    y,
-    `15. DRONE 3D PHOTOGRAMMETRIC SIZING (GSD: ${droneSurvey.metadata.gsdMmPerPx} mm/px, Altitude: ${droneSurvey.metadata.flightAltitudeM}m)`
-  );
-
-  // Ground Truth Validation Table
-  if (blast.groundTruth?.sieveData) {
-    const sieveRows = blast.groundTruth.sieveData.slice(0, 5).map((s) => [
-      `${s.apertureMm} mm`,
-      `${s.massRetainedKg} kg`,
-      `${((s.massRetainedKg / 267) * 100).toFixed(1)}%`,
-      s.apertureMm <= 25 ? 'Fine fraction' : 'Coarse rock',
-    ]);
-    y = drawTable(
-      ['Screen Sieve Aperture', 'Sample Mass Retained', 'Retained Mass %', 'Screen Classification'],
-      sieveRows,
-      [45, 45, 45, 47],
-      y,
-      '16. PHYSICAL LABORATORY SIEVE ANALYSIS GROUND TRUTH CHECK'
-    );
-  }
-
-  // Assumptions & Disclaimers with Clean Text Wrapping
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(31, 56, 100);
-  doc.text('17. ASSUMPTIONS, STEREOLOGICAL LIMITS & LEGAL DISCLAIMERS', 14, y);
-  y += 5.0;
-
-  doc.setFontSize(7.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(71, 85, 105);
-  const disclaimers = [
-    '• Surface Stereological Bias: Optical photographic analysis measures the exposed 2D profile of the muckpile. Sub-surface fines are calculated via Swebrec regression.',
-    '• Particle Size Measurement Definition: Minimum Feret diameter is utilized as the closest geometric analogue to square-mesh wire sieve openings (ISO 3310-1).',
-    '• 3D Volumetric Weighting: Rock particle volumes are calculated based on triaxial ellipsoidal revolution (V = pi/6 * a * b^2) with bulk density weighting.',
-    '• Engineering Decision Support: All blast timing simulations, Kriging block models, and comminution digital twins are decision-support guidelines. Final blasting authority resides with the certified site blast master.',
-  ];
-  for (const text of disclaimers) {
-    const lines = doc.splitTextToSize(text, 182) as string[];
-    lines.forEach((l: string) => {
-      doc.text(l, 14, y);
-      y += 3.8;
-    });
-    y += 1.0;
-  }
-
-  drawFooter(6);
-
-  return doc.output('blob');
-}
-
-// Generate Printable A4 Scale Marker PDF Sheet
-export function generatePrintableA4CalibrationSheet(): Blob {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-  });
-
-  // Title
-  doc.setFillColor(31, 56, 100);
-  doc.rect(0, 0, 210, 22, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('FRAGMILL : A4 PHOTOGRAPHIC SCALE CALIBRATION TARGET', 14, 14);
-
-  doc.setTextColor(30, 41, 59);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.text('INSTRUCTIONS: Print this sheet at 100% scale (no fit-to-page). Check the bar below with a ruler before use.', 14, 30);
-
-  // Verification 100 mm Ruler Bar
-  doc.setFont('helvetica', 'bold');
-  doc.text('100 mm Verification Ruler Bar (Must measure exactly 10 cm with physical ruler):', 14, 40);
-
-  doc.setFillColor(0, 0, 0);
-  doc.rect(14, 44, 100, 6, 'F');
-  // Millimeter ticks
-  for (let mm = 0; mm <= 100; mm += 10) {
-    doc.rect(14 + mm, 42, 0.8, 10, 'F');
   }
 
   // 200 mm Scale Bar
-  doc.text('200 mm High-Contrast Field Scale Bar:', 14, 66);
+  doc.text(isFr ? 'Mire Haute Contraste de Terrain 200 mm :' : '200 mm High-Contrast Field Scale Bar:', 14, 66);
   doc.setFillColor(234, 179, 8); // Yellow
   doc.rect(14, 70, 180, 12, 'F');
 
@@ -706,22 +195,22 @@ export function generatePrintableA4CalibrationSheet(): Blob {
   }
 
   // ArUco-Style 5x5 Square Markers
-  doc.text('High-Contrast Photogrammetry Target Markers:', 14, 98);
-  const drawTarget = (x: number, y: number, label: string) => {
+  doc.text(isFr ? 'Cibles de Photogrammétrie Haute Précision :' : 'High-Contrast Photogrammetry Target Markers:', 14, 98);
+  const drawTarget = (x: number, targetY: number, label: string) => {
     doc.setFillColor(0, 0, 0);
-    doc.rect(x, y, 45, 45, 'F');
+    doc.rect(x, targetY, 45, 45, 'F');
     doc.setFillColor(255, 255, 255);
-    doc.rect(x + 5, y + 5, 35, 35, 'F');
+    doc.rect(x + 5, targetY + 5, 35, 35, 'F');
     doc.setFillColor(0, 0, 0);
-    doc.circle(x + 22.5, y + 22.5, 9, 'F');
+    doc.circle(x + 22.5, targetY + 22.5, 9, 'F');
     doc.setFontSize(8);
     doc.setTextColor(0, 0, 0);
-    doc.text(label, x + 8, y + 50);
+    doc.text(label, x + 8, targetY + 50);
   };
 
-  drawTarget(20, 105, 'Marker #1 (45mm)');
-  drawTarget(80, 105, 'Marker #2 (45mm)');
-  drawTarget(140, 105, 'Marker #3 (45mm)');
+  drawTarget(20, 105, isFr ? 'Cible #1 (45mm)' : 'Marker #1 (45mm)');
+  drawTarget(80, 105, isFr ? 'Cible #2 (45mm)' : 'Marker #2 (45mm)');
+  drawTarget(140, 105, isFr ? 'Cible #3 (45mm)' : 'Marker #3 (45mm)');
 
   // Field Placement Protocol Box
   doc.setFillColor(241, 245, 249);
@@ -729,12 +218,19 @@ export function generatePrintableA4CalibrationSheet(): Blob {
   doc.setTextColor(31, 56, 100);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.text('MUCK PILE SCALE PLACEMENT PROTOCOL', 18, 178);
+  doc.text(isFr ? 'PROTOCOLE DE POSITIONNEMENT SUR LE TAS D\'ABATTAGE' : 'MUCK PILE SCALE PLACEMENT PROTOCOL', 18, 178);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(30, 41, 59);
-  const steps = [
+  const steps = isFr ? [
+    '1. Fixez ou plastifiez cette mire sur un support rigide (contreplaqué ou porte-bloc) pour éviter toute courbure.',
+    '2. Posez la mire à plat sur le front du tas d\'abattage dans le même plan que les fragments à mesurer.',
+    '3. Ne PAS placer la mire au sommet d\'un bloc isolé ou dans une dépression d\'ombre profonde.',
+    '4. Reculez de 6 à 10 mètres de façon à capturer l\'ensemble de la section du tas d\'abattage.',
+    '5. Vérifiez que l\'axe optique de la caméra est bien perpendiculaire (90°) à la pente du tas.',
+    '6. Évitez les prises de vue face au soleil direct ; un ciel légèrement couvert donne le meilleur contraste.',
+  ] : [
     '1. Mount or laminate this target on rigid board (plywood or clipboard) to prevent bending.',
     '2. Place target flat on the muck pile face in the plane of the rock fragments to be measured.',
     '3. Do NOT place scale target on top of an isolated boulder or in a deep shadow depression.',
@@ -752,7 +248,6 @@ export function generatePrintableA4CalibrationSheet(): Blob {
   return doc.output('blob');
 }
 
-// Export Fragments CSV
 export function exportFragmentsCsv(fragments: Fragment[], blastId: string): string {
   const data = fragments.map((f) => ({
     blastId,
@@ -773,12 +268,31 @@ export function exportFragmentsCsv(fragments: Fragment[], blastId: string): stri
   return Papa.unparse(data);
 }
 
-// Export Full Excel Workbook (.xlsx)
-export function exportBlastWorkbookXlsx(blast: Blast, run: SegmentationRun): Blob {
+// Export Full Excel Workbook (.xlsx) (Bilingual: EN / FR)
+export function exportBlastWorkbookXlsx(blast: Blast, run: SegmentationRun, lang: Language = 'en'): Blob {
+  const isFr = lang === 'fr';
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Summary & Percentiles
-  const summaryData = [
+  const summaryData = isFr ? [
+    ['FRAGMILL : SYNTHÈSE D\'ANALYSE DE FRAGMENTATION'],
+    ['Réf. Tir', blast.blastId],
+    ['Date & Heure', blast.dateTime],
+    ['Type de Roche', blast.rockMass.rockType],
+    ['Densité (t/m³)', blast.rockMass.density],
+    ['Consommation Spécifique (kg/m³)', (blast.parameters.chargePerHole / (blast.parameters.burden * blast.parameters.spacing * blast.parameters.benchHeight)).toFixed(2)],
+    [''],
+    ['PERCENTILES DE FRAGMENTATION (mm)'],
+    ['P10', run.metrics.p10],
+    ['P20', run.metrics.p20],
+    ['P50 (Médiane)', run.metrics.p50],
+    ['P80', run.metrics.p80],
+    ['P90', run.metrics.p90],
+    ['Taille Moyenne', run.metrics.meanSize],
+    ['Indice d\'Uniformité (P80/P20)', run.metrics.uniformityIndex],
+    ['Blocs Hors-Gabarit (>300mm) %', run.metrics.oversizePercent],
+    ['Fines (<25mm) %', run.metrics.finesPercent],
+  ] : [
     ['FRAGMILL BLAST ANALYSIS SUMMARY'],
     ['Blast ID', blast.blastId],
     ['Date & Time', blast.dateTime],
@@ -798,30 +312,30 @@ export function exportBlastWorkbookXlsx(blast: Blast, run: SegmentationRun): Blo
     ['Fines (<25mm) %', run.metrics.finesPercent],
   ];
   const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-  XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+  XLSX.utils.book_append_sheet(wb, wsSummary, isFr ? 'Synthèse' : 'Summary');
 
   // Sheet 2: Fragment Sizing
   const fragData = run.fragments.map((f) => ({
-    ID: f.id,
-    'Min Feret (mm)': f.minFeretMm,
-    'Max Feret (mm)': f.maxFeretMm,
-    'ECD (mm)': f.ecdMm,
-    'Area (mm2)': f.areaMm2,
-    'Volume (mm3)': f.volumeMm3,
-    'Aspect Ratio': f.aspectRatio,
-    Solidity: f.solidity,
-    Confidence: f.confidence,
+    [isFr ? 'Identifiant' : 'ID']: f.id,
+    [isFr ? 'Féret Min (mm)' : 'Min Feret (mm)']: f.minFeretMm,
+    [isFr ? 'Féret Max (mm)' : 'Max Feret (mm)']: f.maxFeretMm,
+    [isFr ? 'DCE (mm)' : 'ECD (mm)']: f.ecdMm,
+    [isFr ? 'Surface (mm²)' : 'Area (mm2)']: f.areaMm2,
+    [isFr ? 'Volume (mm³)' : 'Volume (mm3)']: f.volumeMm3,
+    [isFr ? 'Rapport Allongement' : 'Aspect Ratio']: f.aspectRatio,
+    [isFr ? 'Compacité' : 'Solidity']: f.solidity,
+    [isFr ? 'Confiance' : 'Confidence']: f.confidence,
   }));
   const wsFragments = XLSX.utils.json_to_sheet(fragData);
   XLSX.utils.book_append_sheet(wb, wsFragments, 'Fragments');
 
   // Sheet 3: Cumulative Distribution Curve
   const curveData = run.metrics.rawCurve.map((c) => ({
-    'Aperture / Size (mm)': c.sizeMm,
-    'Cumulative Passing %': c.passingPercent,
+    [isFr ? 'Ouverture Tamis (mm)' : 'Aperture / Size (mm)']: c.sizeMm,
+    [isFr ? 'Passant Cumulé %' : 'Cumulative Passing %']: c.passingPercent,
   }));
   const wsCurve = XLSX.utils.json_to_sheet(curveData);
-  XLSX.utils.book_append_sheet(wb, wsCurve, 'Distribution Curve');
+  XLSX.utils.book_append_sheet(wb, wsCurve, isFr ? 'Courbe Granulométrique' : 'Distribution Curve');
 
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -933,3 +447,5 @@ export async function importProjectBackupJson(jsonString: string): Promise<strin
 
   return data.project.id;
 }
+
+export { generateModularVaultPdfReport, generateSingleSectionPdfReport } from './modularReport';

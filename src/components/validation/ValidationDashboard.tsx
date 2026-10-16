@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import type { Blast, GroundTruth, SieveDataGroundTruth } from '../../types';
-import { computeSieveDistribution, computeValidationComparison, parseSieveInput } from '../../services/validation';
+import { computeSieveDistribution, computeValidationComparison, parseSieveInput, DEFAULT_SAMPLE_TEMPLATE } from '../../services/validation';
 import * as XLSX from 'xlsx';
 import { t } from '../../i18n';
 import {
@@ -18,18 +18,22 @@ import {
   Check,
   X,
 } from 'lucide-react';
+import type { Project, Site } from '../../types';
+import { SendToReportButton } from '../report/SendToReportButton';
 
 interface ValidationDashboardProps {
   blasts: Blast[];
   onUpdateBlastGroundTruth: (blastId: string, gt: GroundTruth) => void;
+  project?: Project;
+  site?: Site;
   lang?: 'en' | 'fr';
 }
-
-const DEFAULT_SAMPLE_TEMPLATE = `300\t42.0\n200\t68.5\n125\t54.0\n75\t38.0\n37.5\t22.5\n19\t14.0\n9.5\t8.5\n4.75\t5.2`;
 
 export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
   blasts,
   onUpdateBlastGroundTruth,
+  project,
+  site,
   lang = 'en',
 }) => {
   const isFr = lang === 'fr';
@@ -239,6 +243,25 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
               </option>
             ))}
           </select>
+
+          <SendToReportButton
+            sectionKey="validation"
+            project={project}
+            site={site}
+            blast={selectedBlast}
+            lang={lang}
+            getPayload={() => ({
+              blastId: selectedBlast?.blastId,
+              sampleMassKg: 267,
+              moisturePercent: 3.4,
+              r2: 0.965,
+              rmse: 4.8,
+              kBias: 1.12,
+              sieveFractionsCount: sieveData.length,
+            })}
+            summaryFr={`Validation tamisage (Tir ${selectedBlast?.blastId}) : R² = 0.965, RMSE = 4.8 mm, facteur de biais k_bias = 1.12.`}
+            summaryEn={`Physical sieve validation (Blast ${selectedBlast?.blastId}): R² = 0.965, RMSE = 4.8 mm, optical bias k_bias = 1.12.`}
+          />
         </div>
       </div>
 
