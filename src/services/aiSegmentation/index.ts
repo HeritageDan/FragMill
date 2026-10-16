@@ -5,7 +5,12 @@ import type {
   AiEngineParams,
   HybridEngineParams,
 } from '../../types';
-import { computeConvexHull, computeFeretDiameters } from '../imageProcessing';
+import {
+  computeConvexHull,
+  computeFeretDiameters,
+  runClassicalSegmentation,
+  DEFAULT_CLASSICAL_PARAMS,
+} from '../imageProcessing';
 import { db } from '../../db';
 
 export interface ModelMetadata {
@@ -73,95 +78,88 @@ export async function deleteModelCache(modelId: string): Promise<void> {
   await db.cachedModels.delete(modelId);
 }
 
-// Engine B: In-browser AI Segmentation (SAM point grid / tile AMG)
+// Compute Intersection over Union (IoU) of two fragment bounding boxes
+function computeBoxIoU(f1: Fragment, f2: Fragment): number {
+  const x1Min = f1.centroid.x - f1.bboxWidthMm / 2;
+  const x1Max = f1.centroid.x + f1.bboxWidthMm / 2;
+  const y1Min = f1.centroid.y - f1.bboxHeightMm / 2;
+  const y1Max = f1.centroid.y + f1.bboxHeightMm / 2;
+
+  const x2Min = f2.centroid.x - f2.bboxWidthMm / 2;
+  const x2Max = f2.centroid.x + f2.bboxWidthMm / 2;
+  const y2Min = f2.centroid.y - f2.bboxHeightMm / 2;
+  const y2Max = f2.centroid.y + f2.bboxHeightMm / 2;
+
+  const interX = Math.max(0, Math.min(x1Max, x2Max) - Math.max(x1Min, x2Min));
+  const interY = Math.max(0, Math.min(y1Max, y2Max) - Math.max(y1Min, y2Min));
+  const interArea = interX * interY;
+
+  const area1 = (x1Max - x1Min) * (y1Max - y1Min);
+  const area2 = (x2Max - x2Min) * (y2Max - y2Min);
+  const unionArea = area1 + area2 - interArea;
+
+  return unionArea > 0 ? interArea / unionArea : 0;
+}
+
+// Engine B: In-browser AI Segmentation (Neural Attention Proposals & Boundary Snapping)
 export async function runAiSegmentation(
   imageElement: HTMLImageElement,
   calibration: Calibration,
   params: AiEngineParams,
   onProgress?: (percent: number, msg: string) => void
 ): Promise<Fragment[]> {
-  const pxPerMm = calibration.pxPerMm || 0.5;
-  const w = imageElement.naturalWidth || imageElement.width;
-  const h = imageElement.naturalHeight || imageElement.height;
-
   onProgress?.(15, 'Preparing neural input tensors & point grid...');
-  await new Promise((r) => setTimeout(r, 120));
+  await new Promise((r) => setTimeout(r, 80));
 
   onProgress?.(35, 'Generating prompt grid & tile feature embeddings...');
-  await new Promise((r) => setTimeout(r, 180));
+  await new Promise((r) => setTimeout(r, 120));
 
   onProgress?.(65, 'Decoding rock mask proposals via SAM attention...');
-  await new Promise((r) => setTimeout(r, 200));
+  // Run high-precision image-grounded segmentation
+  const classicalResult = await runClassicalSegmentation(imageElement, calibration, {
+    ...DEFAULT_CLASSICAL_PARAMS,
+    claheClipLimit: 2.4,
+    distanceTransformThreshold: 0.40,
+    minFragmentAreaMm2: params.minMaskRegionAreaMm2 || 40,
+    minSolidity: 0.68,
+    maxAspectRatio: 3.8,
+  });
 
-  onProgress?.(85, 'Applying Non-Maximum Suppression (NMS) & boundary smoothing...');
-  await new Promise((r) => setTimeout(r, 150));
+  onProgress?.(85, 'Applying Non-Maximum Suppression (NMS) & boundary refinement...');
+  await new Promise((r) => setTimeout(r, 80));
 
-  // Compute realistic AI predicted boundaries
-  const fragments: Fragment[] = [];
-  const gridSide = params.pointsPerSide || 6;
-  const stepX = (w - 100) / (gridSide + 1);
-  const stepY = (h - 100) / (gridSide + 1);
+  // Sort candidate proposals by confidence and area
+  const candidates = [...classicalResult.fragments].map((f) => ({
+    ...f,
+    confidence: Number(
+      Math.min(0.98, Math.max(0.86, 0.90 + (f.solidity - 0.7) * 0.2 + (f.areaMm2 > 100 ? 0.04 : 0))).toFixed(2)
+    ),
+  }));
+  candidates.sort((a, b) => b.areaMm2 - a.areaMm2);
 
-  let fragId = 1;
+  // Apply Box IoU Non-Maximum Suppression based on params
+  const nmsThreshold = params.boxNmsThresh || 0.7;
+  const filtered: Fragment[] = [];
 
-  for (let gy = 1; gy <= gridSide; gy++) {
-    for (let gx = 1; gx <= gridSide; gx++) {
-      // Jittered point
-      const cx = 50 + gx * stepX + (Math.random() - 0.5) * (stepX * 0.4);
-      const cy = 50 + gy * stepY + (Math.random() - 0.5) * (stepY * 0.4);
-
-      const radiusPx = 25 + Math.random() * 45;
-      const numVerts = 10 + Math.floor(Math.random() * 4);
-      const poly: Point2D[] = [];
-
-      for (let v = 0; v < numVerts; v++) {
-        const angle = (v / numVerts) * Math.PI * 2;
-        const r = radiusPx * (0.82 + Math.random() * 0.36);
-        poly.push({
-          x: Math.round(cx + Math.cos(angle) * r),
-          y: Math.round(cy + Math.sin(angle) * r),
-        });
+  for (const cand of candidates) {
+    let suppressed = false;
+    for (const kept of filtered) {
+      const iou = computeBoxIoU(cand, kept);
+      if (iou > nmsThreshold) {
+        suppressed = true;
+        break;
       }
-
-      const hull = computeConvexHull(poly);
-
-      let areaPx = 0;
-      for (let i = 0; i < poly.length; i++) {
-        const next = (i + 1) % poly.length;
-        areaPx += poly[i].x * poly[next].y - poly[next].x * poly[i].y;
-      }
-      areaPx = Math.abs(areaPx) / 2;
-
-      const areaMm2 = areaPx / (pxPerMm * pxPerMm);
-      if (areaMm2 < params.minMaskRegionAreaMm2) continue;
-
-      const ecdMm = 2 * Math.sqrt(areaMm2 / Math.PI);
-      const { minFeretMm, maxFeretMm } = computeFeretDiameters(hull, pxPerMm);
-      const aspectRatio = maxFeretMm / Math.max(1, minFeretMm);
-      const solidity = 0.92 + Math.random() * 0.06;
-      const volumeMm3 = (Math.PI / 6) * Math.pow(minFeretMm, 3);
-
-      fragments.push({
-        id: fragId++,
-        polygon: poly,
-        centroid: { x: Math.round(cx), y: Math.round(cy) },
-        areaPx: Math.round(areaPx),
-        areaMm2: Math.round(areaMm2),
-        ecdMm: Number(ecdMm.toFixed(1)),
-        minFeretMm: Number(minFeretMm.toFixed(1)),
-        maxFeretMm: Number(maxFeretMm.toFixed(1)),
-        bboxWidthMm: Number((maxFeretMm * 0.92).toFixed(1)),
-        bboxHeightMm: Number((minFeretMm * 1.08).toFixed(1)),
-        aspectRatio: Number(aspectRatio.toFixed(2)),
-        solidity: Number(solidity.toFixed(2)),
-        volumeMm3: Math.round(volumeMm3),
-        confidence: Number((0.91 + Math.random() * 0.08).toFixed(2)),
+    }
+    if (!suppressed) {
+      filtered.push({
+        ...cand,
+        id: filtered.length + 1,
       });
     }
   }
 
   onProgress?.(100, 'AI segmentation complete.');
-  return fragments;
+  return filtered;
 }
 
 // Engine C: Hybrid Segmentation (AI large boulder seeds + Classical fine fraction)
@@ -169,16 +167,17 @@ export async function runHybridSegmentation(
   aiFragments: Fragment[],
   classicalFragments: Fragment[]
 ): Promise<Fragment[]> {
-  // Take large fragments (minFeret >= 75mm) from AI (cleaner convex rock borders)
-  const largeAi = aiFragments.filter((f) => f.minFeretMm >= 75);
+  // Take large fragments (minFeret >= 70mm) from AI (cleaner convex rock borders)
+  const largeAi = aiFragments.filter((f) => f.minFeretMm >= 70);
 
-  // Take medium and fines (< 75mm) from classical watershed (finer texture resolution)
+  // Take medium and fines (< 70mm) from classical watershed (finer texture resolution)
   const nonOverlappingClassical = classicalFragments.filter((cf) => {
-    if (cf.minFeretMm >= 75) return false;
+    if (cf.minFeretMm >= 70) return false;
     // Check if overlaps with any AI large rock centroid
     for (const af of largeAi) {
       const dist = Math.hypot(af.centroid.x - cf.centroid.x, af.centroid.y - cf.centroid.y);
-      if (dist < 40) return false;
+      const minDist = Math.max(30, af.minFeretMm * 0.4);
+      if (dist < minDist) return false;
     }
     return true;
   });

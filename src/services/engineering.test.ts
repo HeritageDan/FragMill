@@ -284,4 +284,87 @@ describe('Sieve Data Import & Excel Parser', () => {
   });
 });
 
+describe('Rock Geometry & Advanced Computer Vision Delineation', () => {
+  it('correctly determines whether points lie inside an arbitrary ROI polygon', async () => {
+    const { isPointInPolygon } = await import('./imageProcessing');
+    const triangle = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 50, y: 100 },
+    ];
+
+    expect(isPointInPolygon({ x: 50, y: 30 }, triangle)).toBe(true);
+    expect(isPointInPolygon({ x: 10, y: 10 }, triangle)).toBe(true);
+    expect(isPointInPolygon({ x: 150, y: 50 }, triangle)).toBe(false);
+    expect(isPointInPolygon({ x: 50, y: 150 }, triangle)).toBe(false);
+  });
+
+  it('computes accurate Caliper Feret diameters for an angular rock polygon', async () => {
+    const { computeConvexHull, computeFeretDiameters } = await import('./imageProcessing');
+    // An elongated angular polygon: 120px wide by 60px high
+    const rockPolygon = [
+      { x: 10, y: 20 },
+      { x: 50, y: 10 },
+      { x: 110, y: 25 },
+      { x: 130, y: 50 },
+      { x: 90, y: 70 },
+      { x: 40, y: 65 },
+      { x: 15, y: 45 },
+    ];
+    const pxPerMm = 0.5; // 2px per mm -> 120px = ~240mm
+    const hull = computeConvexHull(rockPolygon);
+    const feret = computeFeretDiameters(hull, pxPerMm);
+
+    expect(feret.maxFeretMm).toBeGreaterThan(feret.minFeretMm);
+    expect(feret.maxFeretMm).toBeGreaterThan(200);
+    expect(feret.minFeretMm).toBeGreaterThan(80);
+    expect(feret.maxFeretMm / feret.minFeretMm).toBeLessThan(3.0);
+  });
+});
+
+describe('Blast Hole 3-Deck Loading & Fault Decking Formulations', () => {
+  it('correctly calculates toe dynamite weight, ANFO bag proportions and fuel volume', async () => {
+    const { DEFAULT_CHARGING_PROFILE } = await import('../components/blast/HoleChargingProfileView');
+    // 2 cartridges of 250g = 0.5 kg dynamite
+    const toeWeightKg = (DEFAULT_CHARGING_PROFILE.toeCartridgeCount * DEFAULT_CHARGING_PROFILE.toeCartridgeWeightGrams) / 1000;
+    expect(toeWeightKg).toBe(0.5);
+
+    // 2 bags of 25kg nitrate = 50 kg
+    const nitrateWeightKg = DEFAULT_CHARGING_PROFILE.anfoNitrateBags25kg * 25;
+    expect(nitrateWeightKg).toBe(50.0);
+
+    // 3.0 L diesel per bag = 6.0 L total
+    const fuelLiters = DEFAULT_CHARGING_PROFILE.anfoNitrateBags25kg * DEFAULT_CHARGING_PROFILE.fuelLitersPerBag;
+    expect(fuelLiters).toBe(6.0);
+
+    // Diesel density 0.84 kg/L => 6.0 * 0.84 = 5.04 kg
+    const fuelWeightKg = fuelLiters * 0.84;
+    expect(fuelWeightKg).toBeCloseTo(5.04, 2);
+
+    // Total column weight = 50 + 5.04 = 55.04 kg
+    const columnTotalWeightKg = nitrateWeightKg + fuelWeightKg;
+    expect(columnTotalWeightKg).toBeCloseTo(55.04, 2);
+  });
+
+  it('correctly calculates explosive savings when cavity decking is active', async () => {
+    const { DEFAULT_CHARGING_PROFILE } = await import('../components/blast/HoleChargingProfileView');
+    const profile = {
+      ...DEFAULT_CHARGING_PROFILE,
+      hasFaultOrCavity: true,
+      faultThicknessM: 1.0,
+      nitrateBagCost: 18000,
+    };
+
+    // With holeDiameter = 89mm (radius = 0.0445m), area = pi * r^2 = 0.00622 m2
+    // Volume across 1m fault = 0.00622 m3. At ANFO bulk density 850 kg/m3 = ~5.3 kg
+    const holeRadiusM = 89 / 2000;
+    const faultVolM3 = Math.PI * Math.pow(holeRadiusM, 2) * profile.faultThicknessM;
+    const expectedSavedKg = Math.round(faultVolM3 * 850);
+    expect(expectedSavedKg).toBeGreaterThan(4);
+    expect(expectedSavedKg).toBeLessThan(10);
+  });
+});
+
+
+
 

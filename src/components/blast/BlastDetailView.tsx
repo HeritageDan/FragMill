@@ -38,8 +38,13 @@ import {
   Plus,
   Minus,
   Grid,
+  Tag,
+  Maximize2,
+  Box,
+  Eye,
 } from 'lucide-react';
 import { CameraInclinometerModal } from '../camera/CameraInclinometerModal';
+import { HoleChargingProfileView } from './HoleChargingProfileView';
 
 interface BlastDetailViewProps {
   blast: Blast;
@@ -60,6 +65,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   onSaveRun,
   lang = 'en',
 }) => {
+  const isFrench = lang === 'fr';
   const [selectedImageId, setSelectedImageId] = useState<string>(
     blast.images[0]?.id || ''
   );
@@ -70,6 +76,9 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   const [showInclinometer, setShowInclinometer] = useState(false);
   const [activeStepTab, setActiveStepTab] = useState<'overlay' | 'grayscale' | 'clahe' | 'threshold' | 'distance' | 'markers' | 'depthMap'>('overlay');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
+  const [showMinMaxSizing, setShowMinMaxSizing] = useState(true);
+  const [selectedFragmentId, setSelectedFragmentId] = useState<number | null>(null);
+  const [fragmentFilter, setFragmentFilter] = useState<'all' | 'fines' | 'nominal' | 'oversize'>('all');
 
   const handleInclinometerCapture = async (dataUrl: string) => {
     const img = new Image();
@@ -144,6 +153,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
         numberOfHoles,
         chargePerHole,
         explosiveType,
+        chargingProfile: blast.parameters.chargingProfile,
       },
       rockMass: {
         ...blast.rockMass,
@@ -662,7 +672,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
             <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-md">
               {/* Step Previews Tab Bar */}
               {activeRun?.stepPreviews && (
-                <div className="flex bg-slate-900 border-b border-slate-800 px-2 py-1.5 overflow-x-auto text-[11px] gap-1">
+                <div className="flex flex-wrap items-center bg-slate-900 border-b border-slate-800 px-2 py-1.5 overflow-x-auto text-[11px] gap-1">
                   {(['overlay', 'grayscale', 'clahe', 'threshold', 'distance', 'markers', 'depthMap'] as const).map((tab) => {
                     const labelMap: Record<string, string> = {
                       overlay: t('tabOverlay', lang),
@@ -685,6 +695,23 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                       </button>
                     );
                   })}
+
+                  {/* Sizing Badges Toggle Button */}
+                  {activeStepTab === 'overlay' && activeRun?.stepPreviews?.overlayWithSizing && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMinMaxSizing(!showMinMaxSizing)}
+                      className={`ml-auto px-2.5 py-1 rounded font-bold text-xs flex items-center gap-1.5 transition ${
+                        showMinMaxSizing
+                          ? 'bg-amber-500 text-slate-950 shadow-xs'
+                          : 'bg-slate-800 text-slate-300 hover:text-white'
+                      }`}
+                      title={isFrench ? 'Afficher ou masquer les tailles Min et Max de chaque bloc sur la photo' : 'Toggle Min & Max dimensions on each stone'}
+                    >
+                      <Ruler className="w-3.5 h-3.5" />
+                      <span>{isFrench ? 'Tailles Min / Max (mm)' : 'Min/Max Sizing (mm)'}</span>
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -692,7 +719,9 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                 {selectedImage && (
                   <img
                     src={
-                      activeRun?.stepPreviews && activeRun.stepPreviews[activeStepTab]
+                      activeStepTab === 'overlay' && showMinMaxSizing && activeRun?.stepPreviews?.overlayWithSizing
+                        ? activeRun.stepPreviews.overlayWithSizing
+                        : activeRun?.stepPreviews && activeRun.stepPreviews[activeStepTab]
                         ? activeRun.stepPreviews[activeStepTab]
                         : selectedImage.dataUrl
                     }
@@ -795,6 +824,136 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
             )}
           </div>
         </div>
+
+        {/* Granulometry Details Table: Min & Max Sizes for Every Rock Fragment */}
+        {activeRun && activeRun.fragments && activeRun.fragments.length > 0 && (
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                  <Tag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
+                    <span>{isFrench ? 'Tableau Détaillé des Fragments & Granulats' : 'Individual Fragment Min & Max Sizing Table'}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                      {activeRun.fragments.length} {isFrench ? 'blocs mesurés' : 'rocks measured'}
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    {isFrench
+                      ? 'Taille minimale (calibre crible passant) et longueur maximale (calibre d’encombrement) pour chaque morceau'
+                      : 'Minimum passing aperture (Min Feret) and maximum length for each segmented rock fragment'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Filter Tabs: All, Fines (<25mm), Nominal (25-250mm), Oversize (>300mm) */}
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+                {(['all', 'fines', 'nominal', 'oversize'] as const).map((filter) => {
+                  const count = activeRun.fragments.filter((f: Fragment) => {
+                    if (filter === 'fines') return f.minFeretMm < settings.finesThresholdMm;
+                    if (filter === 'oversize') return f.maxFeretMm > settings.oversizeThresholdMm;
+                    if (filter === 'nominal') return f.minFeretMm >= settings.finesThresholdMm && f.maxFeretMm <= settings.oversizeThresholdMm;
+                    return true;
+                  }).length;
+
+                  const label =
+                    filter === 'all'
+                      ? (isFrench ? `Tous (${count})` : `All (${count})`)
+                      : filter === 'fines'
+                      ? (isFrench ? `Fines <${settings.finesThresholdMm}mm (${count})` : `Fines <${settings.finesThresholdMm}mm (${count})`)
+                      : filter === 'nominal'
+                      ? (isFrench ? `Nominal (${count})` : `Nominal (${count})`)
+                      : (isFrench ? `Gros >${settings.oversizeThresholdMm}mm (${count})` : `Oversize >${settings.oversizeThresholdMm}mm (${count})`);
+
+                  return (
+                    <button
+                      key={filter}
+                      type="button"
+                      onClick={() => setFragmentFilter(filter)}
+                      className={`px-2.5 py-1 rounded-lg transition text-[11px] ${
+                        fragmentFilter === filter
+                          ? 'bg-blue-600 text-white font-bold shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Scrollable Table of Individual Rock Fragments */}
+            <div className="overflow-x-auto max-h-72 overflow-y-auto border border-slate-200 rounded-xl">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 sticky top-0 shadow-xs">
+                  <tr>
+                    <th className="py-2 px-3">#ID</th>
+                    <th className="py-2 px-3 text-blue-700">{isFrench ? 'Taille Min (d_min)' : 'Min Size (d_min)'}</th>
+                    <th className="py-2 px-3 text-purple-700">{isFrench ? 'Taille Max (d_max)' : 'Max Size (d_max)'}</th>
+                    <th className="py-2 px-3">{isFrench ? 'Diamètre Équiv. (ECD)' : 'Equiv. Diam. (ECD)'}</th>
+                    <th className="py-2 px-3">{isFrench ? 'Épaisseur 3D' : '3D Thickness'}</th>
+                    <th className="py-2 px-3">{isFrench ? 'Volume Estimé' : 'Estimated Volume'}</th>
+                    <th className="py-2 px-3">{isFrench ? 'Élongation' : 'Aspect Ratio'}</th>
+                    <th className="py-2 px-3">{isFrench ? 'Classification' : 'Category'}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                  {activeRun.fragments
+                    .filter((f: Fragment) => {
+                      if (fragmentFilter === 'fines') return f.minFeretMm < settings.finesThresholdMm;
+                      if (fragmentFilter === 'oversize') return f.maxFeretMm > settings.oversizeThresholdMm;
+                      if (fragmentFilter === 'nominal') return f.minFeretMm >= settings.finesThresholdMm && f.maxFeretMm <= settings.oversizeThresholdMm;
+                      return true;
+                    })
+                    .slice(0, 100)
+                    .map((f: Fragment) => {
+                      const isFines = f.minFeretMm < settings.finesThresholdMm;
+                      const isOversize = f.maxFeretMm > settings.oversizeThresholdMm;
+                      return (
+                        <tr
+                          key={f.id}
+                          className={`hover:bg-blue-50/70 transition cursor-pointer ${
+                            selectedFragmentId === f.id ? 'bg-blue-100 font-bold' : ''
+                          }`}
+                          onClick={() => setSelectedFragmentId(f.id === selectedFragmentId ? null : f.id)}
+                        >
+                          <td className="py-1.5 px-3 font-bold text-slate-800">#{f.id}</td>
+                          <td className="py-1.5 px-3 font-extrabold text-blue-700">{f.minFeretMm} mm</td>
+                          <td className="py-1.5 px-3 font-extrabold text-purple-700">{f.maxFeretMm} mm</td>
+                          <td className="py-1.5 px-3 text-slate-700">{f.ecdMm} mm</td>
+                          <td className="py-1.5 px-3 text-slate-600">{f.thicknessMm ? `${f.thicknessMm} mm` : '-'}</td>
+                          <td className="py-1.5 px-3 text-slate-600">
+                            {f.trueVolume3DMm3
+                              ? `${(f.trueVolume3DMm3 / 1000).toFixed(1)} cm³`
+                              : `${(f.volumeMm3 / 1000).toFixed(1)} cm³`}
+                          </td>
+                          <td className="py-1.5 px-3 text-slate-600">{f.aspectRatio.toFixed(2)}</td>
+                          <td className="py-1.5 px-3 font-sans">
+                            {isFines ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
+                                {isFrench ? 'Fine' : 'Fine'}
+                              </span>
+                            ) : isOversize ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">
+                                {isFrench ? 'Hors-gabarit' : 'Oversize'}
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                {isFrench ? 'Nominal' : 'Nominal'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
       )}
 
@@ -1011,6 +1170,31 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
               className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
             />
           </div>
+        </div>
+
+        {/* 3-Deck Hole Charging Profile, Fault Decking & Cost Minimization System */}
+        <div className="mt-4 pt-4 border-t border-slate-200">
+          <HoleChargingProfileView
+            parameters={blast.parameters}
+            onUpdateParameters={(updatedParams) => {
+              setChargePerHole(updatedParams.chargePerHole);
+              setStemmingLength(updatedParams.stemmingLength);
+              const updatedBlast: Blast = {
+                ...blast,
+                parameters: updatedParams,
+                updatedAt: Date.now(),
+              };
+              onUpdateBlast(updatedBlast);
+            }}
+            benchHeight={benchHeight}
+            subdrill={subdrill}
+            holeDiameter={holeDiameter}
+            burden={burden}
+            spacing={spacing}
+            numberOfHoles={numberOfHoles - excludedHoles.length}
+            density={density}
+            lang={lang}
+          />
         </div>
 
         {/* Interactive Drill & Blast Pattern Hole Management */}

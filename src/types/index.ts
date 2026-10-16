@@ -51,6 +51,48 @@ export interface BlastParameters {
   initiationSequenceNotes: string;
   waterInHoles: boolean;
   drillingDeviationEstimate: number; // m
+  chargingProfile?: HoleChargingProfile;
+}
+
+export interface HoleChargingProfile {
+  // 1. Charge de pied (Toe Charge: Dynamite / Booster)
+  toeExplosiveType: 'dynamite' | 'emulsion_cartridge' | 'pentolite_booster';
+  toeCartridgeWeightGrams: number; // e.g. 250g or 500g per cartridge
+  toeCartridgeCount: number; // e.g. 2 or 3 cartridges
+  toeChargeWeightKg: number; // calculated: (toeCartridgeCount * toeCartridgeWeightGrams) / 1000
+  toeChargeLengthM: number;
+  toeUnitCost: number; // unit cost per cartridge or kg
+
+  // 2. Charge de colonne (Column Charge: ANFO / Nitrate-Gasoil)
+  columnExplosiveType: 'anfo_bulk' | 'emulsion_matrix' | 'heavy_anfo';
+  anfoNitrateBags25kg: number; // number of 25kg bags (e.g. 1, 2, 3 bags)
+  anfoNitrateWeightKg: number; // bags * 25
+  fuelLitersPerBag: number; // liters of diesel per 25kg bag (standard: 3.0 L/bag)
+  fuelTotalLiters: number; // bags * fuelLitersPerBag
+  fuelTotalKg: number; // fuelTotalLiters * 0.84 (diesel density)
+  columnTotalWeightKg: number; // anfoNitrateWeightKg + fuelTotalKg
+  columnChargeLengthM: number;
+  nitrateBagCost: number; // cost per 25kg bag
+  fuelLiterCost: number; // cost per liter of diesel
+
+  // 3. Bourrage (Stemming)
+  stemmingLengthM: number;
+  stemmingMaterial: 'crushed_aggregate_0_10' | 'drill_cuttings' | 'clay_soil';
+  hasFlyrockRisk: boolean;
+
+  // 4. Failles géologiques / Fissures / Cavités (Faults & Voids Mitigation)
+  hasFaultOrCavity: boolean;
+  faultDepthM: number;
+  faultThicknessM: number;
+  faultMitigationStrategy: 'decking_plug' | 'plastic_liner' | 'reduced_charge';
+  deckingMaterial: 'air_deck_plug' | 'wood_spacer' | 'inert_stemming';
+  explosiveSavedKg: number;
+  costSaved: number;
+
+  // 5. Statistiques du patron
+  totalHoleLengthM: number;
+  averagePatternHoleLengthM: number;
+  subdrillM: number;
 }
 
 export interface RockMass {
@@ -273,6 +315,7 @@ export interface SegmentationRun {
     markers?: string;
     depthMap?: string;
     overlay?: string;
+    overlayWithSizing?: string;
   };
 }
 

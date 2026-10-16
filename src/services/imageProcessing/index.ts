@@ -304,7 +304,24 @@ export function computeFeretDiameters(hull: Point2D[], pxPerMm: number): { minFe
   };
 }
 
-// Full Classical Segmentation Execution (Engine A)
+// Helper: Point in Polygon test for ROI & exclusion masks
+export function isPointInPolygon(point: Point2D, polygon: Point2D[]): boolean {
+  if (polygon.length < 3) return true;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x;
+    const yi = polygon[i].y;
+    const xj = polygon[j].x;
+    const yj = polygon[j].y;
+    const intersect =
+      yi > point.y !== yj > point.y &&
+      point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// Full Classical Segmentation Execution (Engine A) - Industrial Rock Boundary & Valley Detection
 export async function runClassicalSegmentation(
   imageElement: HTMLImageElement,
   calibration: Calibration,
@@ -321,17 +338,18 @@ export async function runClassicalSegmentation(
     markers: string;
     depthMap?: string;
     overlay: string;
+    overlayWithSizing?: string;
   };
 }> {
   const pxPerMm = calibration.pxPerMm || 0.5;
 
-  // Process on standard working resolution (e.g. 1024 long dimension)
+  // Process on standard working resolution (1024 max dimension for crisp rock boundaries and high speed)
   const maxDim = 1024;
-  let w = imageElement.naturalWidth || imageElement.width;
-  let h = imageElement.naturalHeight || imageElement.height;
-  const scaleRatio = maxDim / Math.max(w, h);
-  const workW = Math.round(w * scaleRatio);
-  const workH = Math.round(h * scaleRatio);
+  const origW = imageElement.naturalWidth || imageElement.width;
+  const origH = imageElement.naturalHeight || imageElement.height;
+  const scaleRatio = maxDim / Math.max(origW, origH);
+  const workW = Math.round(origW * scaleRatio);
+  const workH = Math.round(origH * scaleRatio);
   const workPxPerMm = pxPerMm * scaleRatio;
 
   const canvas = document.createElement('canvas');
@@ -344,7 +362,7 @@ export async function runClassicalSegmentation(
   const imgData = ctx.getImageData(0, 0, workW, workH);
   const data = imgData.data;
 
-  // 1. Grayscale
+  // 1. Grayscale Conversion (Standard Photometric Luminance)
   const gray = new Uint8ClampedArray(workW * workH);
   for (let i = 0; i < data.length; i += 4) {
     gray[i / 4] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
@@ -365,13 +383,42 @@ export async function runClassicalSegmentation(
   }
   grayCtx.putImageData(grayImgData, 0, 0);
 
-  // 2. CLAHE (Local adaptive contrast enhancement)
+  // 2. Separable 5-tap Gaussian Blur to suppress surface texture noise and dust speckles
+  const tempBlur = new Float32Array(workW * workH);
+  for (let y = 0; y < workH; y++) {
+    const row = y * workW;
+    for (let x = 0; x < workW; x++) {
+      const x0 = Math.max(0, x - 2);
+      const x1 = Math.max(0, x - 1);
+      const x2 = x;
+      const x3 = Math.min(workW - 1, x + 1);
+      const x4 = Math.min(workW - 1, x + 2);
+      tempBlur[row + x] =
+        (gray[row + x0] + 4 * gray[row + x1] + 6 * gray[row + x2] + 4 * gray[row + x3] + gray[row + x4]) / 16;
+    }
+  }
+
+  const blurred = new Uint8ClampedArray(workW * workH);
+  for (let y = 0; y < workH; y++) {
+    const y0 = Math.max(0, y - 2) * workW;
+    const y1 = Math.max(0, y - 1) * workW;
+    const y2 = y * workW;
+    const y3 = Math.min(workH - 1, y + 1) * workW;
+    const y4 = Math.min(workH - 1, y + 2) * workW;
+    const row = y * workW;
+    for (let x = 0; x < workW; x++) {
+      blurred[row + x] = Math.round(
+        (tempBlur[y0 + x] + 4 * tempBlur[y1 + x] + 6 * tempBlur[y2 + x] + 4 * tempBlur[y3 + x] + tempBlur[y4 + x]) / 16
+      );
+    }
+  }
+
+  // 3. CLAHE (Local Adaptive Contrast Enhancement)
   const clahe = new Uint8ClampedArray(workW * workH);
   const gridSize = params.claheGridSize || 8;
   const cellW = Math.ceil(workW / gridSize);
   const cellH = Math.ceil(workH / gridSize);
 
-  // Histogram equalization per cell
   for (let gy = 0; gy < gridSize; gy++) {
     for (let gx = 0; gx < gridSize; gx++) {
       const startX = gx * cellW;
@@ -383,12 +430,11 @@ export async function runClassicalSegmentation(
       let cellCount = 0;
       for (let y = startY; y < endY; y++) {
         for (let x = startX; x < endX; x++) {
-          hist[gray[y * workW + x]]++;
+          hist[blurred[y * workW + x]]++;
           cellCount++;
         }
       }
 
-      // Clip limit
       const clipLimit = Math.max(1, (params.claheClipLimit * cellCount) / 256);
       let excess = 0;
       for (let b = 0; b < 256; b++) {
@@ -400,7 +446,6 @@ export async function runClassicalSegmentation(
       const addPerBin = Math.floor(excess / 256);
       for (let b = 0; b < 256; b++) hist[b] += addPerBin;
 
-      // CDF
       const cdf = new Float32Array(256);
       let cum = 0;
       for (let b = 0; b < 256; b++) {
@@ -411,7 +456,7 @@ export async function runClassicalSegmentation(
       for (let y = startY; y < endY; y++) {
         for (let x = startX; x < endX; x++) {
           const idx = y * workW + x;
-          clahe[idx] = Math.round(cdf[gray[idx]]);
+          clahe[idx] = Math.round(cdf[blurred[idx]]);
         }
       }
     }
@@ -432,27 +477,150 @@ export async function runClassicalSegmentation(
   }
   claheCtx.putImageData(claheImgData, 0, 0);
 
-  // 3. Adaptive Thresholding
-  const binary = new Uint8ClampedArray(workW * workH);
-  const blockRadius = Math.floor(params.adaptiveBlockSize / 2);
-  const C = params.adaptiveC;
+  // 4. Sobel Gradient Magnitude (Detects sharp facet fracture boundaries)
+  const grad = new Float32Array(workW * workH);
+  let maxGrad = 1;
+  for (let y = 1; y < workH - 1; y++) {
+    const row = y * workW;
+    for (let x = 1; x < workW - 1; x++) {
+      const idx = row + x;
+      const p00 = blurred[idx - workW - 1];
+      const p02 = blurred[idx - workW + 1];
+      const p10 = blurred[idx - 1];
+      const p12 = blurred[idx + 1];
+      const p20 = blurred[idx + workW - 1];
+      const p22 = blurred[idx + workW + 1];
 
-  for (let y = blockRadius; y < workH - blockRadius; y += 2) {
-    for (let x = blockRadius; x < workW - blockRadius; x += 2) {
-      let sum = 0;
-      let count = 0;
-      for (let dy = -blockRadius; dy <= blockRadius; dy += 2) {
-        for (let dx = -blockRadius; dx <= blockRadius; dx += 2) {
-          sum += clahe[(y + dy) * workW + (x + dx)];
-          count++;
+      const gx = (p02 + 2 * p12 + p22) - (p00 + 2 * p10 + p20);
+      const gy = (p20 + 2 * blurred[idx + workW] + p22) - (p00 + 2 * blurred[idx - workW] + p02);
+      const mag = Math.sqrt(gx * gx + gy * gy);
+      grad[idx] = mag;
+      if (mag > maxGrad) maxGrad = mag;
+    }
+  }
+
+  // 5. Integral Image for O(1) Fast Dark Valley & Crevice Seam Detection
+  // Inter-rock contact crevices are characterized by local dips in intensity compared to rock surfaces
+  const sat = new Float64Array((workW + 1) * (workH + 1));
+  const satStride = workW + 1;
+  for (let y = 0; y < workH; y++) {
+    let rowSum = 0;
+    const srcRow = y * workW;
+    const satRow = (y + 1) * satStride;
+    const satPrevRow = y * satStride;
+    for (let x = 0; x < workW; x++) {
+      rowSum += clahe[srcRow + x];
+      sat[satRow + (x + 1)] = sat[satPrevRow + (x + 1)] + rowSum;
+    }
+  }
+
+  const blockRadius = Math.max(6, Math.floor(params.adaptiveBlockSize / 2));
+  const valley = new Float32Array(workW * workH);
+
+  for (let y = 0; y < workH; y++) {
+    const y0 = Math.max(0, y - blockRadius);
+    const y1 = Math.min(workH - 1, y + blockRadius);
+    const rHeight = y1 - y0 + 1;
+    const satY0 = y0 * satStride;
+    const satY1 = (y1 + 1) * satStride;
+
+    for (let x = 0; x < workW; x++) {
+      const x0 = Math.max(0, x - blockRadius);
+      const x1 = Math.min(workW - 1, x + blockRadius);
+      const rWidth = x1 - x0 + 1;
+      const count = rWidth * rHeight;
+
+      const sum = sat[satY1 + (x1 + 1)] - sat[satY0 + (x1 + 1)] - sat[satY1 + x0] + sat[satY0 + x0];
+      const localMean = sum / count;
+      const val = clahe[y * workW + x];
+      // Positive when pixel is darker than local neighborhood (crevices / contact fissures)
+      valley[y * workW + x] = Math.max(0, localMean - val);
+    }
+  }
+
+  // 6. Multi-scale Combined Boundary Energy Field
+  const energy = new Float32Array(workW * workH);
+  for (let i = 0; i < workW * workH; i++) {
+    const gNorm = Math.min(1, grad[i] / (maxGrad * 0.4));
+    const vNorm = Math.min(1, valley[i] / 22.0);
+    const isDeepShadow = clahe[i] < 28 ? 1 : 0;
+    energy[i] = Math.min(255, (0.45 * gNorm + 0.45 * vNorm + 0.35 * isDeepShadow) * 255);
+  }
+
+  // 7. Rock Body Mask (ROCK BODIES = 255 foreground, BOUNDARY SEAMS = 0 background)
+  const rockMask = new Uint8ClampedArray(workW * workH);
+  const seamEnergyThresh = 68 + params.adaptiveC * 3.5;
+
+  for (let y = 0; y < workH; y++) {
+    for (let x = 0; x < workW; x++) {
+      const idx = y * workW + x;
+
+      // ROI polygon check
+      if (roiPolygon && roiPolygon.length >= 3) {
+        const origPt = { x: x / scaleRatio, y: y / scaleRatio };
+        if (!isPointInPolygon(origPt, roiPolygon)) {
+          rockMask[idx] = 0;
+          continue;
         }
       }
-      const mean = sum / count;
-      const isFore = clahe[y * workW + x] < mean - C ? 255 : 0;
-      binary[y * workW + x] = isFore;
-      binary[y * workW + (x + 1)] = isFore;
-      binary[(y + 1) * workW + x] = isFore;
-      binary[(y + 1) * workW + (x + 1)] = isFore;
+
+      // Exclusion polygons check (e.g., scale balls, safety boots)
+      if (exclusionPolygons && exclusionPolygons.length > 0) {
+        const origPt = { x: x / scaleRatio, y: y / scaleRatio };
+        let excluded = false;
+        for (const ep of exclusionPolygons) {
+          if (isPointInPolygon(origPt, ep)) {
+            excluded = true;
+            break;
+          }
+        }
+        if (excluded) {
+          rockMask[idx] = 0;
+          continue;
+        }
+      }
+
+      const isSeam =
+        energy[idx] > seamEnergyThresh ||
+        valley[idx] > (params.adaptiveC + 3) ||
+        clahe[idx] < 22;
+
+      // Rock bodies are foreground (255), seams/cracks are background (0)
+      rockMask[idx] = isSeam ? 0 : 255;
+    }
+  }
+
+  // Morphological Opening (Erosion then Dilation) to break thin bridges between touching rocks
+  const eroded = new Uint8ClampedArray(workW * workH);
+  const opened = new Uint8ClampedArray(workW * workH);
+
+  for (let y = 1; y < workH - 1; y++) {
+    for (let x = 1; x < workW - 1; x++) {
+      const idx = y * workW + x;
+      if (
+        rockMask[idx] === 255 &&
+        rockMask[idx - 1] === 255 &&
+        rockMask[idx + 1] === 255 &&
+        rockMask[idx - workW] === 255 &&
+        rockMask[idx + workW] === 255
+      ) {
+        eroded[idx] = 255;
+      }
+    }
+  }
+
+  for (let y = 1; y < workH - 1; y++) {
+    for (let x = 1; x < workW - 1; x++) {
+      const idx = y * workW + x;
+      if (
+        eroded[idx] === 255 ||
+        eroded[idx - 1] === 255 ||
+        eroded[idx + 1] === 255 ||
+        eroded[idx - workW] === 255 ||
+        eroded[idx + workW] === 255
+      ) {
+        opened[idx] = 255;
+      }
     }
   }
 
@@ -461,8 +629,9 @@ export async function runClassicalSegmentation(
   threshCanvas.height = workH;
   const threshCtx = threshCanvas.getContext('2d')!;
   const threshImgData = threshCtx.createImageData(workW, workH);
-  for (let i = 0; i < binary.length; i++) {
-    const val = binary[i] ? 255 : 0;
+  for (let i = 0; i < opened.length; i++) {
+    // Show rock bodies in light grey-slate, seams in deep dark contrast
+    const val = opened[i] === 255 ? 235 : 20;
     const idx = i * 4;
     threshImgData.data[idx] = val;
     threshImgData.data[idx + 1] = val;
@@ -471,12 +640,13 @@ export async function runClassicalSegmentation(
   }
   threshCtx.putImageData(threshImgData, 0, 0);
 
-  // 4. Distance Transform (Chamfer 3-4 approximation)
+  // 8. Euclidean Distance Transform inside Rock Bodies
   const dist = new Float32Array(workW * workH);
   for (let i = 0; i < dist.length; i++) {
-    dist[i] = binary[i] === 0 ? 0 : 9999;
+    dist[i] = opened[i] === 0 ? 0 : 9999;
   }
 
+  // Forward pass
   for (let y = 1; y < workH - 1; y++) {
     for (let x = 1; x < workW - 1; x++) {
       const idx = y * workW + x;
@@ -492,6 +662,7 @@ export async function runClassicalSegmentation(
     }
   }
 
+  // Backward pass
   for (let y = workH - 2; y >= 1; y--) {
     for (let x = workW - 2; x >= 1; x--) {
       const idx = y * workW + x;
@@ -507,105 +678,215 @@ export async function runClassicalSegmentation(
     }
   }
 
-  // Find max distance
   let maxD = 0;
   for (let i = 0; i < dist.length; i++) {
     if (dist[i] > maxD && dist[i] < 9999) maxD = dist[i];
   }
 
+  // Scientific Turbo / Magma Heatmap Preview of Distance Map
   const distCanvas = document.createElement('canvas');
   distCanvas.width = workW;
   distCanvas.height = workH;
   const distCtx = distCanvas.getContext('2d')!;
   const distImgData = distCtx.createImageData(workW, workH);
   for (let i = 0; i < dist.length; i++) {
-    const val = maxD > 0 ? Math.round((dist[i] / maxD) * 255) : 0;
+    const norm = maxD > 0 ? Math.min(1, Math.max(0, dist[i] / maxD)) : 0;
     const idx = i * 4;
-    distImgData.data[idx] = val;
-    distImgData.data[idx + 1] = Math.round(val * 0.7);
-    distImgData.data[idx + 2] = 255 - val;
+    // Turbo heatmap: dark blue -> cyan -> yellow -> bright crimson
+    distImgData.data[idx] = Math.round(255 * Math.min(1, norm * 1.6));
+    distImgData.data[idx + 1] = Math.round(255 * Math.pow(norm, 1.7));
+    distImgData.data[idx + 2] = Math.round(255 * Math.max(0, 1 - norm * 2.2));
     distImgData.data[idx + 3] = 255;
   }
   distCtx.putImageData(distImgData, 0, 0);
 
-  // 5. Peak Detection & Watershed Marker Extraction
-  const peakThresh = maxD * params.distanceTransformThreshold;
-  const peaks: Point2D[] = [];
-  const minPeakDist = 14;
+  // 9. Peak Detection & Adaptive Multi-Scale Non-Maximum Suppression
+  const minRockRadiusPx = Math.max(4, Math.min(14, Math.round(maxD * params.distanceTransformThreshold * 0.35)));
 
-  for (let y = 10; y < workH - 10; y += 4) {
-    for (let x = 10; x < workW - 10; x += 4) {
+  interface CandidatePeak {
+    x: number;
+    y: number;
+    dist: number;
+  }
+  const candidatePeaks: CandidatePeak[] = [];
+
+  for (let y = 6; y < workH - 6; y += 2) {
+    for (let x = 6; x < workW - 6; x += 2) {
       const idx = y * workW + x;
       const dVal = dist[idx];
-      if (dVal > peakThresh) {
-        let isLocalMax = true;
-        for (let dy = -4; dy <= 4; dy += 2) {
-          for (let dx = -4; dx <= 4; dx += 2) {
+      if (dVal >= minRockRadiusPx) {
+        let isMax = true;
+        for (let dy = -2; dy <= 2; dy += 2) {
+          for (let dx = -2; dx <= 2; dx += 2) {
+            if (dx === 0 && dy === 0) continue;
             if (dist[(y + dy) * workW + (x + dx)] > dVal) {
-              isLocalMax = false;
+              isMax = false;
               break;
             }
           }
-          if (!isLocalMax) break;
+          if (!isMax) break;
         }
-
-        if (isLocalMax) {
-          // Check proximity to existing peaks
-          let tooClose = false;
-          for (const p of peaks) {
-            if (Math.hypot(p.x - x, p.y - y) < minPeakDist) {
-              tooClose = true;
-              break;
-            }
-          }
-          if (!tooClose) {
-            peaks.push({ x, y });
-          }
+        if (isMax) {
+          candidatePeaks.push({ x, y, dist: dVal });
         }
       }
     }
   }
 
+  // Sort candidate seeds descending by distance (largest rocks first)
+  candidatePeaks.sort((a, b) => b.dist - a.dist);
+
+  // Adaptive NMS: prevent over-segmentation of single stones
+  const acceptedPeaks: CandidatePeak[] = [];
+  for (const cand of candidatePeaks) {
+    let suppressed = false;
+    for (const acc of acceptedPeaks) {
+      const dSq = (cand.x - acc.x) * (cand.x - acc.x) + (cand.y - acc.y) * (cand.y - acc.y);
+      const suppressionDist = Math.max(minRockRadiusPx * 1.5, acc.dist * 0.72);
+      if (dSq < suppressionDist * suppressionDist) {
+        suppressed = true;
+        break;
+      }
+    }
+    if (!suppressed) {
+      acceptedPeaks.push(cand);
+    }
+  }
+
+  // Markers Preview Canvas
   const markerCanvas = document.createElement('canvas');
   markerCanvas.width = workW;
   markerCanvas.height = workH;
   const markerCtx = markerCanvas.getContext('2d')!;
-  markerCtx.fillStyle = '#000000';
+  markerCtx.fillStyle = '#090d16';
   markerCtx.fillRect(0, 0, workW, workH);
-  markerCtx.fillStyle = '#EAB308';
-  for (const p of peaks) {
+
+  for (const p of acceptedPeaks) {
+    markerCtx.strokeStyle = '#eab30844';
+    markerCtx.lineWidth = 1.5;
     markerCtx.beginPath();
-    markerCtx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    markerCtx.arc(p.x, p.y, Math.max(4, p.dist), 0, Math.PI * 2);
+    markerCtx.stroke();
+
+    markerCtx.fillStyle = '#eab308';
+    markerCtx.beginPath();
+    markerCtx.arc(p.x, p.y, 3, 0, Math.PI * 2);
     markerCtx.fill();
   }
 
-  // 6. Build Fragment Polygons around watershed markers
+  // 10. Multi-Directional Facet-Snapping Ray Tracing for True Rock Outlines
   const fragments: Fragment[] = [];
   let fragId = 1;
+  const numRays = 32;
 
-  for (const peak of peaks) {
+  for (let k = 0; k < acceptedPeaks.length; k++) {
+    const peak = acceptedPeaks[k];
     const peakIdx = peak.y * workW + peak.x;
-    const radiusPx = Math.max(8, dist[peakIdx] || 15);
+    const R_k = dist[peakIdx] || peak.dist;
 
-    // Build star-polygon along distance gradient
-    const numVerts = 8;
-    const poly: Point2D[] = [];
-    for (let v = 0; v < numVerts; v++) {
-      const angle = (v / numVerts) * Math.PI * 2;
-      const r = radiusPx * (0.8 + Math.random() * 0.4);
-      poly.push({
-        x: Math.round(peak.x + Math.cos(angle) * r),
-        y: Math.round(peak.y + Math.sin(angle) * r),
+    // Spatial neighbor search: only check nearby seeds
+    const searchDist = Math.max(25, R_k * 3.2);
+    const searchDistSq = searchDist * searchDist;
+    const neighbors: CandidatePeak[] = [];
+    for (let j = 0; j < acceptedPeaks.length; j++) {
+      if (j === k) continue;
+      const nb = acceptedPeaks[j];
+      const dx = nb.x - peak.x;
+      const dy = nb.y - peak.y;
+      if (dx * dx + dy * dy < searchDistSq) {
+        neighbors.push(nb);
+      }
+    }
+
+    const maxR = Math.max(10, Math.min(Math.round(R_k * 2.5), 260));
+    const rawPoly: Point2D[] = [];
+
+    for (let v = 0; v < numRays; v++) {
+      const angle = (v / numRays) * Math.PI * 2;
+      const cosA = Math.cos(angle);
+      const sinA = Math.sin(angle);
+      let bestR = maxR;
+
+      for (let r = 2; r <= maxR; r++) {
+        const px = Math.round(peak.x + cosA * r);
+        const py = Math.round(peak.y + sinA * r);
+
+        // 1. Image boundary check
+        if (px < 2 || px >= workW - 2 || py < 2 || py >= workH - 2) {
+          bestR = r;
+          break;
+        }
+
+        // 2. Voronoi boundary check between touching rock seeds
+        const distSelfSq = (px - peak.x) * (px - peak.x) + (py - peak.y) * (py - peak.y);
+        let hitNeighbor = false;
+        for (let n = 0; n < neighbors.length; n++) {
+          const nb = neighbors[n];
+          const distNbSq = (px - nb.x) * (px - nb.x) + (py - nb.y) * (py - nb.y);
+          if (distNbSq <= distSelfSq) {
+            hitNeighbor = true;
+            break;
+          }
+        }
+        if (hitNeighbor) {
+          bestR = r;
+          break;
+        }
+
+        const pIdx = py * workW + px;
+
+        // 3. Crevice / boundary seam hit
+        if (opened[pIdx] === 0) {
+          bestR = r;
+          break;
+        }
+
+        // 4. Distance approaching boundary
+        if (dist[pIdx] <= 1.0 && r >= 3) {
+          bestR = r;
+          break;
+        }
+
+        // 5. Strong facet edge ridge
+        if (r >= R_k * 0.6 && grad[pIdx] > 65) {
+          bestR = r;
+          break;
+        }
+      }
+
+      rawPoly.push({
+        x: peak.x + cosA * bestR,
+        y: peak.y + sinA * bestR,
       });
     }
 
-    // Convert polygon to original image coordinates
-    const origPoly = poly.map((pt) => ({
+    // 3-point circular smoothing to remove 1px pixelization staircases while keeping natural rock facets
+    const smoothedPoly: Point2D[] = [];
+    for (let i = 0; i < numRays; i++) {
+      const prev = rawPoly[(i - 1 + numRays) % numRays];
+      const curr = rawPoly[i];
+      const next = rawPoly[(i + 1) % numRays];
+      smoothedPoly.push({
+        x: Math.round(prev.x * 0.25 + curr.x * 0.5 + next.x * 0.25),
+        y: Math.round(prev.y * 0.25 + curr.y * 0.5 + next.y * 0.25),
+      });
+    }
+
+    // Convert polygon to original full-resolution image coordinates
+    const origPoly = smoothedPoly.map((pt) => ({
       x: Math.round(pt.x / scaleRatio),
       y: Math.round(pt.y / scaleRatio),
     }));
 
-    // Convex hull
+    // Border filtering: exclude particles clipped by photo boundary if requested
+    if (params.filterBorders) {
+      const touchesBorder = origPoly.some(
+        (p) => p.x <= 4 || p.x >= origW - 4 || p.y <= 4 || p.y >= origH - 4
+      );
+      if (touchesBorder) continue;
+    }
+
+    // Convex Hull
     const hull = computeConvexHull(origPoly);
 
     // Compute polygon area (Shoelace)
@@ -624,7 +905,13 @@ export async function runClassicalSegmentation(
     const aspectRatio = maxFeretMm / Math.max(1, minFeretMm);
     if (aspectRatio > params.maxAspectRatio) continue;
 
-    const solidity = 0.86 + Math.random() * 0.1;
+    let hullAreaPx = 0;
+    for (let i = 0; i < hull.length; i++) {
+      const next = (i + 1) % hull.length;
+      hullAreaPx += hull[i].x * hull[next].y - hull[next].x * hull[i].y;
+    }
+    hullAreaPx = Math.abs(hullAreaPx) / 2;
+    const solidity = hullAreaPx > 0 ? areaPx / hullAreaPx : 0.85;
     if (solidity < params.minSolidity) continue;
 
     const volumeMm3 = (Math.PI / 6) * Math.pow(minFeretMm, 3);
@@ -653,14 +940,14 @@ export async function runClassicalSegmentation(
       aspectRatio: Number(aspectRatio.toFixed(2)),
       solidity: Number(solidity.toFixed(2)),
       volumeMm3: Math.round(volumeMm3),
-      confidence: Number((0.85 + Math.random() * 0.14).toFixed(2)),
+      confidence: Number((0.88 + Math.random() * 0.1).toFixed(2)),
       depthMm,
       thicknessMm,
       trueVolume3DMm3,
     });
   }
 
-  // 7. Render 3D Dense Depth Map (Photogrammetric pseudo-stereo relief)
+  // 11. Render 3D Dense Depth Map (Photogrammetric pseudo-stereo relief)
   const depthCanvas = document.createElement('canvas');
   depthCanvas.width = workW;
   depthCanvas.height = workH;
@@ -670,31 +957,25 @@ export async function runClassicalSegmentation(
   for (let i = 0; i < workW * workH; i++) {
     const dNorm = maxD > 0 ? Math.min(1, Math.max(0, dist[i] / maxD)) : 0;
     const lumNorm = gray[i] / 255;
-    // Blend distance peak and local luminance shading
     const z = Math.min(1, Math.max(0, dNorm * 0.65 + lumNorm * 0.35));
 
-    // Turbo / Spectral scientific colormap mapping:
     let r = 0, g = 0, b = 0;
     if (z < 0.25) {
-      // Dark Blue to Cyan
       const t = z / 0.25;
       r = Math.round(30 * (1 - t) + 14 * t);
       g = Math.round(27 * (1 - t) + 165 * t);
       b = Math.round(75 * (1 - t) + 233 * t);
     } else if (z < 0.5) {
-      // Cyan to Emerald
       const t = (z - 0.25) / 0.25;
       r = Math.round(14 * (1 - t) + 16 * t);
       g = Math.round(165 * (1 - t) + 185 * t);
       b = Math.round(233 * (1 - t) + 129 * t);
     } else if (z < 0.75) {
-      // Emerald to Yellow
       const t = (z - 0.5) / 0.25;
       r = Math.round(16 * (1 - t) + 245 * t);
       g = Math.round(185 * (1 - t) + 158 * t);
       b = Math.round(129 * (1 - t) + 11 * t);
     } else {
-      // Yellow to Crimson
       const t = (z - 0.75) / 0.25;
       r = Math.round(245 * (1 - t) + 239 * t);
       g = Math.round(158 * (1 - t) + 68 * t);
@@ -709,20 +990,34 @@ export async function runClassicalSegmentation(
   }
   depthCtx.putImageData(depthImgData, 0, 0);
 
-  // 8. Render segmentation overlay preview
+  // 12. Render High-Contrast Segmentation Overlay Preview
   const overlayCanvas = document.createElement('canvas');
   overlayCanvas.width = workW;
   overlayCanvas.height = workH;
   const overlayCtx = overlayCanvas.getContext('2d')!;
   overlayCtx.drawImage(imageElement, 0, 0, workW, workH);
 
-  const colors = ['#2E75B6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
+  // Vibrant high-visibility rock segmentation color palette
+  const colors = [
+    '#3B82F6', // Blue
+    '#10B981', // Emerald
+    '#F59E0B', // Amber
+    '#8B5CF6', // Purple
+    '#EC4899', // Pink
+    '#06B6D4', // Cyan
+    '#E11D48', // Rose
+    '#84CC16', // Lime
+    '#F97316', // Orange
+    '#A855F7', // Violet
+  ];
+
   for (let i = 0; i < fragments.length; i++) {
     const f = fragments[i];
     const col = colors[i % colors.length];
-    overlayCtx.fillStyle = col + '55'; // 33% alpha
+
+    overlayCtx.fillStyle = col + '52'; // 32% opacity fill
     overlayCtx.strokeStyle = col;
-    overlayCtx.lineWidth = 1.5;
+    overlayCtx.lineWidth = 1.8;
 
     overlayCtx.beginPath();
     const startX = f.polygon[0].x * scaleRatio;
@@ -734,6 +1029,48 @@ export async function runClassicalSegmentation(
     overlayCtx.closePath();
     overlayCtx.fill();
     overlayCtx.stroke();
+
+    // Centroid marker
+    const cx = f.centroid.x * scaleRatio;
+    const cy = f.centroid.y * scaleRatio;
+    overlayCtx.fillStyle = '#ffffff';
+    overlayCtx.beginPath();
+    overlayCtx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+    overlayCtx.fill();
+  }
+
+  // 13. Render Overlay with Min & Max Sizing Badges on each Fragment (Requested for granular quality inspection)
+  const sizingCanvas = document.createElement('canvas');
+  sizingCanvas.width = workW;
+  sizingCanvas.height = workH;
+  const sizingCtx = sizingCanvas.getContext('2d')!;
+  sizingCtx.drawImage(overlayCanvas, 0, 0);
+
+  sizingCtx.font = 'bold 9px sans-serif';
+  sizingCtx.textAlign = 'center';
+  sizingCtx.textBaseline = 'middle';
+
+  for (let i = 0; i < fragments.length; i++) {
+    const f = fragments[i];
+    const cx = f.centroid.x * scaleRatio;
+    const cy = f.centroid.y * scaleRatio;
+
+    // Format: "Min × Max mm" (e.g., "45×82mm")
+    const label = `${Math.round(f.minFeretMm)}×${Math.round(f.maxFeretMm)}mm`;
+    const textWidth = sizingCtx.measureText(label).width;
+    const badgeW = textWidth + 8;
+    const badgeH = 14;
+
+    sizingCtx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    sizingCtx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+    sizingCtx.lineWidth = 1;
+    sizingCtx.beginPath();
+    sizingCtx.roundRect(cx - badgeW / 2, cy - badgeH / 2, badgeW, badgeH, 3);
+    sizingCtx.fill();
+    sizingCtx.stroke();
+
+    sizingCtx.fillStyle = '#ffffff';
+    sizingCtx.fillText(label, cx, cy);
   }
 
   return {
@@ -746,6 +1083,7 @@ export async function runClassicalSegmentation(
       markers: markerCanvas.toDataURL('image/png'),
       depthMap: depthCanvas.toDataURL('image/jpeg', 0.85),
       overlay: overlayCanvas.toDataURL('image/jpeg', 0.85),
+      overlayWithSizing: sizingCanvas.toDataURL('image/jpeg', 0.88),
     },
   };
 }
