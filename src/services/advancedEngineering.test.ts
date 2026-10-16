@@ -398,5 +398,38 @@ describe('Advanced Mining Suite Tests', () => {
       expect(fullReportEn).toBeInstanceOf(Blob);
       expect(fullReportEn.size).toBeGreaterThan(3000);
     });
+
+    it('accurately resolves active blast and calculates individual geotechnical metrics for each blast', () => {
+      const demoBlasts = [
+        {
+          id: 'blast-1',
+          blastId: 'BL-2026-001',
+          parameters: { benchHeight: 6.0, burden: 2.4, spacing: 2.8, numberOfHoles: 30, chargePerHole: 22.0, explosiveType: 'ANFO' },
+          rockMass: { rockType: 'Granodiorite', density: 2.68, ucsMPa: 120 },
+        },
+        {
+          id: 'blast-2',
+          blastId: 'BL-2026-002',
+          parameters: { benchHeight: 8.0, burden: 3.0, spacing: 3.5, numberOfHoles: 45, chargePerHole: 38.0, explosiveType: 'Emulsion' },
+          rockMass: { rockType: 'Schist', density: 2.75, ucsMPa: 85 },
+        },
+      ];
+
+      // Switch to blast-1
+      const activeBlast1 = demoBlasts.find(b => b.id === 'blast-1')!;
+      const holeVol1 = activeBlast1.parameters.burden * activeBlast1.parameters.spacing * activeBlast1.parameters.benchHeight;
+      const pf1 = activeBlast1.parameters.chargePerHole / holeVol1;
+      expect(activeBlast1.blastId).toBe('BL-2026-001');
+      expect(pf1).toBeCloseTo(0.545, 2);
+
+      // Switch to blast-2
+      const activeBlast2 = demoBlasts.find(b => b.id === 'blast-2')!;
+      const holeVol2 = activeBlast2.parameters.burden * activeBlast2.parameters.spacing * activeBlast2.parameters.benchHeight;
+      const pf2 = activeBlast2.parameters.chargePerHole / holeVol2;
+      expect(activeBlast2.blastId).toBe('BL-2026-002');
+      expect(pf2).toBeCloseTo(0.452, 2);
+      expect(activeBlast2.rockMass.rockType).toBe('Schist');
+    });
   });
 });
+

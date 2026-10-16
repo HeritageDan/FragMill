@@ -26,6 +26,7 @@ import { BlastTimingSimulatorView } from './components/timing/BlastTimingSimulat
 import { ComminutionDigitalTwinView } from './components/comminution/ComminutionDigitalTwinView';
 import { BlockModelKrigingView } from './components/geostatistics/BlockModelKrigingView';
 import { DrillTelemetryP2PView } from './components/telemetry/DrillTelemetryP2PView';
+import { ActiveBlastBanner } from './components/layout/ActiveBlastBanner';
 import { ReportVaultProvider, useReportVault } from './context/ReportVaultContext';
 import { ReportVaultModal } from './components/report/ReportVaultModal';
 import { RefreshCw, CheckCircle2, X } from 'lucide-react';
@@ -323,7 +324,18 @@ function AppContent() {
         onOpenReportVault={() => setIsReportModalOpen(true)}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-5">
+        {activeTab !== 'settings' && activeTab !== 'help' && activeBlast && (
+          <ActiveBlastBanner
+            blasts={blasts}
+            activeBlast={activeBlast}
+            activeBlastId={activeBlastId}
+            onSelectBlast={(id) => setActiveBlastId(id)}
+            onNewBlast={handleNewBlast}
+            lang={settings.language}
+          />
+        )}
+
         {activeTab === 'wizard' && activeBlast && (
           <FieldWizard
             key={activeBlast.id}
@@ -349,6 +361,7 @@ function AppContent() {
 
         {activeTab === 'drone3d' && activeBlast && (
           <Drone3DSizingView
+            key={activeBlast.id}
             blast={activeBlast}
             project={activeProject || undefined}
             site={activeSite || undefined}
@@ -358,6 +371,7 @@ function AppContent() {
 
         {activeTab === 'beltvision' && (
           <BeltEdgeVisionView
+            key={activeBlast.id}
             blast={activeBlast}
             project={activeProject || undefined}
             site={activeSite || undefined}
@@ -367,6 +381,7 @@ function AppContent() {
 
         {activeTab === 'timing' && activeBlast && (
           <BlastTimingSimulatorView
+            key={activeBlast.id}
             blast={activeBlast}
             project={activeProject || undefined}
             site={activeSite || undefined}
@@ -376,6 +391,7 @@ function AppContent() {
 
         {activeTab === 'comminution' && activeBlast && (
           <ComminutionDigitalTwinView
+            key={activeBlast.id}
             blast={activeBlast}
             project={activeProject || undefined}
             site={activeSite || undefined}
@@ -385,6 +401,7 @@ function AppContent() {
 
         {activeTab === 'kriging' && (
           <BlockModelKrigingView
+            key={activeBlast.id}
             blast={activeBlast}
             project={activeProject || undefined}
             site={activeSite || undefined}
@@ -394,6 +411,7 @@ function AppContent() {
 
         {activeTab === 'telemetry' && activeBlast && (
           <DrillTelemetryP2PView
+            key={activeBlast.id}
             blast={activeBlast}
             project={activeProject || undefined}
             site={activeSite || undefined}
@@ -404,6 +422,7 @@ function AppContent() {
         {activeTab === 'benchmap' && (
           <BenchMapView
             blasts={blasts}
+            activeBlastId={activeBlastId}
             onSelectBlast={(id) => {
               setActiveBlastId(id);
               setActiveTab('blast');
@@ -417,6 +436,8 @@ function AppContent() {
         {activeTab === 'validation' && (
           <ValidationDashboard
             blasts={blasts}
+            activeBlastId={activeBlastId}
+            onSelectBlast={(id) => setActiveBlastId(id)}
             onUpdateBlastGroundTruth={handleUpdateBlastGroundTruth}
             project={activeProject || undefined}
             site={activeSite || undefined}
@@ -427,6 +448,8 @@ function AppContent() {
         {activeTab === 'minetomill' && (
           <MineToMillView
             blasts={blasts}
+            activeBlastId={activeBlastId}
+            onSelectBlast={(id) => setActiveBlastId(id)}
             onUpdateMillBatch={handleUpdateMillBatch}
             project={activeProject || undefined}
             site={activeSite || undefined}
@@ -437,6 +460,8 @@ function AppContent() {
         {activeTab === 'kuzram' && (
           <KuzRamView
             blasts={blasts}
+            activeBlastId={activeBlastId}
+            onSelectBlast={(id) => setActiveBlastId(id)}
             project={activeProject || undefined}
             site={activeSite || undefined}
             lang={settings.language}

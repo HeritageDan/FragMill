@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Blast, KuzRamRockTables, BlastAdvisorTarget } from '../../types';
 import {
   computeKuzRam,
@@ -23,13 +23,28 @@ import { SendToReportButton } from '../report/SendToReportButton';
 
 interface KuzRamViewProps {
   blasts: Blast[];
+  activeBlastId?: string;
+  onSelectBlast?: (blastId: string) => void;
   project?: Project;
   site?: Site;
   lang?: 'en' | 'fr';
 }
 
-export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, project, site, lang = 'en' }) => {
-  const [selectedBlastId, setSelectedBlastId] = useState<string>(blasts[0]?.id || '');
+export const KuzRamView: React.FC<KuzRamViewProps> = ({
+  blasts,
+  activeBlastId,
+  onSelectBlast,
+  project,
+  site,
+  lang = 'en',
+}) => {
+  const [selectedBlastId, setSelectedBlastId] = useState<string>(activeBlastId || blasts[0]?.id || '');
+
+  useEffect(() => {
+    if (activeBlastId) {
+      setSelectedBlastId(activeBlastId);
+    }
+  }, [activeBlastId]);
   const [tables, setTables] = useState<KuzRamRockTables>(DEFAULT_ROCK_TABLES);
 
   // Bayesian MCMC states
@@ -112,12 +127,16 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({ blasts, project, site, l
           <span className="text-xs font-semibold text-slate-600">{t('selectBlast', lang)}</span>
           <select
             value={selectedBlastId}
-            onChange={(e) => setSelectedBlastId(e.target.value)}
+            onChange={(e) => {
+              const newId = e.target.value;
+              setSelectedBlastId(newId);
+              if (onSelectBlast) onSelectBlast(newId);
+            }}
             className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 bg-white"
           >
             {blasts.map((b) => (
               <option key={b.id} value={b.id}>
-                {b.blastId}
+                {b.blastId} ({b.rockMass.rockType})
               </option>
             ))}
           </select>

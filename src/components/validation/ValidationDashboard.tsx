@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Blast, GroundTruth, SieveDataGroundTruth } from '../../types';
 import { computeSieveDistribution, computeValidationComparison, parseSieveInput, DEFAULT_SAMPLE_TEMPLATE } from '../../services/validation';
 import * as XLSX from 'xlsx';
@@ -23,6 +23,8 @@ import { SendToReportButton } from '../report/SendToReportButton';
 
 interface ValidationDashboardProps {
   blasts: Blast[];
+  activeBlastId?: string;
+  onSelectBlast?: (blastId: string) => void;
   onUpdateBlastGroundTruth: (blastId: string, gt: GroundTruth) => void;
   project?: Project;
   site?: Site;
@@ -31,13 +33,21 @@ interface ValidationDashboardProps {
 
 export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
   blasts,
+  activeBlastId,
+  onSelectBlast,
   onUpdateBlastGroundTruth,
   project,
   site,
   lang = 'en',
 }) => {
   const isFr = lang === 'fr';
-  const [selectedBlastId, setSelectedBlastId] = useState<string>(blasts[0]?.id || '');
+  const [selectedBlastId, setSelectedBlastId] = useState<string>(activeBlastId || blasts[0]?.id || '');
+
+  useEffect(() => {
+    if (activeBlastId) {
+      setSelectedBlastId(activeBlastId);
+    }
+  }, [activeBlastId]);
   const [pasteBuffer, setPasteBuffer] = useState('');
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -234,7 +244,11 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
           <span className="text-xs font-semibold text-slate-600">{t('selectBlast', lang)}</span>
           <select
             value={selectedBlastId}
-            onChange={(e) => setSelectedBlastId(e.target.value)}
+            onChange={(e) => {
+              const newId = e.target.value;
+              setSelectedBlastId(newId);
+              if (onSelectBlast) onSelectBlast(newId);
+            }}
             className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 bg-white"
           >
             {blasts.map((b) => (

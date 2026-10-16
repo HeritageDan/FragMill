@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Blast, MillBatch } from '../../types';
 import { computeMillKPIs } from '../../services/minetomill';
 import { evaluateMineToMillEconomics, DEFAULT_ECONOMIC_PARAMS } from '../../services/economics';
@@ -22,6 +22,8 @@ import { SendToReportButton } from '../report/SendToReportButton';
 
 interface MineToMillViewProps {
   blasts: Blast[];
+  activeBlastId?: string;
+  onSelectBlast?: (blastId: string) => void;
   onUpdateMillBatch: (blastId: string, millBatch: MillBatch) => void;
   project?: Project;
   site?: Site;
@@ -30,12 +32,14 @@ interface MineToMillViewProps {
 
 export const MineToMillView: React.FC<MineToMillViewProps> = ({
   blasts,
+  activeBlastId,
+  onSelectBlast,
   onUpdateMillBatch,
   project,
   site,
   lang = 'en',
 }) => {
-  const [selectedBlastId, setSelectedBlastId] = useState<string>(blasts[0]?.id || '');
+  const [selectedBlastId, setSelectedBlastId] = useState<string>(activeBlastId || blasts[0]?.id || '');
 
   const selectedBlast = blasts.find((b) => b.id === selectedBlastId) || blasts[0];
   const millBatch = selectedBlast?.millBatch;
@@ -52,6 +56,26 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
   const [tailsGrade, setTailsGrade] = useState(millBatch?.tailsGradeGpt || 0.45);
   const [concentrateGrade, setConcentrateGrade] = useState(millBatch?.concentrateGradeGpt || 140);
   const [notes, setNotes] = useState(millBatch?.processingNotes || '');
+
+  useEffect(() => {
+    if (activeBlastId) {
+      setSelectedBlastId(activeBlastId);
+      const b = blasts.find((x) => x.id === activeBlastId);
+      if (b?.millBatch) {
+        setBatchTonnage(b.millBatch.batchTonnageTonnes);
+        setTruckCount(b.millBatch.truckCount || 75);
+        setBoulders(b.millBatch.bouldersSecondaryBreakingCount || 0);
+        setCrushingTime(b.millBatch.crushingTimeHours);
+        setCrushingEnergy(b.millBatch.crushingEnergyKwh);
+        setMillingThroughput(b.millBatch.millingThroughputTph);
+        setMillingEnergy(b.millBatch.millingEnergyKwh);
+        setHeadGrade(b.millBatch.headGradeGpt);
+        setTailsGrade(b.millBatch.tailsGradeGpt);
+        setConcentrateGrade(b.millBatch.concentrateGradeGpt || 140);
+        setNotes(b.millBatch.processingNotes || '');
+      }
+    }
+  }, [activeBlastId, blasts]);
 
   // Live computed KPIs
   const liveKPIs = computeMillKPIs(
@@ -163,6 +187,7 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
             onChange={(e) => {
               const newId = e.target.value;
               setSelectedBlastId(newId);
+              if (onSelectBlast) onSelectBlast(newId);
               const b = blasts.find((x) => x.id === newId);
               if (b?.millBatch) {
                 setBatchTonnage(b.millBatch.batchTonnageTonnes);
@@ -182,7 +207,7 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
           >
             {blasts.map((b) => (
               <option key={b.id} value={b.id}>
-                {b.blastId}
+                {b.blastId} ({b.rockMass.rockType})
               </option>
             ))}
           </select>

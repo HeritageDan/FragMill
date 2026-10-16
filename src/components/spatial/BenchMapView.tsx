@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Blast, Project, Site } from '../../types';
 import {
   Map,
@@ -19,6 +19,7 @@ import { SendToReportButton } from '../report/SendToReportButton';
 
 interface BenchMapViewProps {
   blasts: Blast[];
+  activeBlastId?: string;
   onSelectBlast: (blastId: string) => void;
   project?: Project;
   site?: Site;
@@ -27,6 +28,7 @@ interface BenchMapViewProps {
 
 export const BenchMapView: React.FC<BenchMapViewProps> = ({
   blasts,
+  activeBlastId: propActiveBlastId,
   onSelectBlast,
   project,
   site,
@@ -35,7 +37,7 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
   const isFr = lang === 'fr';
 
   const [selectedElevation, setSelectedElevation] = useState<number | 'all'>('all');
-  const [activeBlastId, setActiveBlastId] = useState<string>(blasts[0]?.id || '');
+  const [activeBlastId, setActiveBlastId] = useState<string>(propActiveBlastId || blasts[0]?.id || '');
   const [showExplanation, setShowExplanation] = useState<boolean>(false);
 
   // Interactive Pattern Geometry Overrides for Active Blast
@@ -50,6 +52,7 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
   // Sync geometry when active blast changes
   const handleSelectBlastBlock = (blastId: string) => {
     setActiveBlastId(blastId);
+    if (onSelectBlast) onSelectBlast(blastId);
     const b = blasts.find((x) => x.id === blastId);
     if (b) {
       setBurdenM(b.parameters.burden || 2.4);
@@ -58,6 +61,12 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
       setNumberOfHoles(b.parameters.numberOfHoles || 30);
     }
   };
+
+  useEffect(() => {
+    if (propActiveBlastId && propActiveBlastId !== activeBlastId) {
+      handleSelectBlastBlock(propActiveBlastId);
+    }
+  }, [propActiveBlastId]);
 
   // Live calculations
   const blastedVolumeM3 = useMemo(() => {
