@@ -152,11 +152,14 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
                 <Radio className="w-3 h-3 text-purple-600 animate-pulse" />
                 Live FRAGTRACK
               </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                {isFrench ? 'DONNÉES DE DÉMO' : 'DEMO DATA'}
+              </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {isFrench
-                ? 'Détection temps réel des roches à 20 FPS et protection anti-bourrage du concasseur primaire'
-                : 'Real-time 20 FPS fragmentation tracking & primary crusher choke prevention'}
+                ? `Détection optique continue (${Math.round(1000 / config.samplingIntervalMs)} FPS, ${config.beltSpeedMPerS} m/s) et protection anti-bourrage du concasseur primaire`
+                : `Continuous optical vision (${Math.round(1000 / config.samplingIntervalMs)} FPS, ${config.beltSpeedMPerS} m/s) & primary crusher choke prevention`}
             </p>
           </div>
         </div>

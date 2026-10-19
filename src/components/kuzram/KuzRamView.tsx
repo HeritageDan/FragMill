@@ -39,13 +39,60 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
   lang = 'en',
 }) => {
   const [selectedBlastId, setSelectedBlastId] = useState<string>(activeBlastId || blasts[0]?.id || '');
+  const selectedBlast = blasts.find((b) => b.id === selectedBlastId) || blasts[0];
+
+  const getInitialRockTables = (b?: Blast): KuzRamRockTables => {
+    if (!b) return DEFAULT_ROCK_TABLES;
+    const rm = b.rockMass;
+    let jpa = 30;
+    if (rm.jointOrientation === 'dip_out_of_face') jpa = 20;
+    else if (rm.jointOrientation === 'dip_into_face') jpa = 40;
+
+    let jps = 20;
+    const jSpacing = (rm as any).jointSpacingM !== undefined ? (rm as any).jointSpacingM : rm.meanJointSpacing;
+    if (jSpacing !== undefined) {
+      if (jSpacing < 0.1) jps = 10;
+      else if (jSpacing > 1.0) jps = 50;
+      else jps = 20;
+    }
+
+    const E = rm.youngsModulusGPa || 65;
+    const ucs = rm.ucsMPa || 110;
+    const hf = E < 50 ? Number((E / 3).toFixed(1)) : Number((ucs / 5).toFixed(1));
+
+    return {
+      rmd: (rm as any).rmd || 20,
+      jf: jps,
+      jfo: jpa,
+      density: rm.density || 2.76,
+      hf,
+    };
+  };
+
+  const [tables, setTables] = useState<KuzRamRockTables>(() => getInitialRockTables(selectedBlast));
 
   useEffect(() => {
     if (activeBlastId) {
       setSelectedBlastId(activeBlastId);
     }
   }, [activeBlastId]);
-  const [tables, setTables] = useState<KuzRamRockTables>(DEFAULT_ROCK_TABLES);
+
+  useEffect(() => {
+    if (selectedBlast) {
+      setTables(getInitialRockTables(selectedBlast));
+    }
+  }, [selectedBlastId]);
+
+  const initialTables = React.useMemo(() => getInitialRockTables(selectedBlast), [selectedBlast]);
+  const isTablesModified = React.useMemo(() => {
+    return (
+      Math.abs(tables.density - initialTables.density) > 0.001 ||
+      tables.jfo !== initialTables.jfo ||
+      tables.jf !== initialTables.jf ||
+      tables.rmd !== initialTables.rmd ||
+      Math.abs(tables.hf - initialTables.hf) > 0.01
+    );
+  }, [tables, initialTables]);
 
   // Bayesian MCMC states
   const [isCalibrating, setIsCalibrating] = useState(false);
@@ -67,7 +114,6 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
   });
   const [advisorResult, setAdvisorResult] = useState<any>(null);
 
-  const selectedBlast = blasts.find((b) => b.id === selectedBlastId) || blasts[0];
   const calculatedA = calculateRockFactorA(tables);
 
   // Run Kuz-Ram for selected blast
@@ -183,9 +229,16 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
               {t('cunninghamTablesTitle', lang)}
             </h3>
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-black text-xs">
-              {t('rockFactorA', lang)} = {calculatedA}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-black text-xs">
+                {t('rockFactorA', lang)} = {calculatedA}
+              </span>
+              {isTablesModified && (
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                  {lang === 'fr' ? 'Valeur modifiée' : 'Modified value'}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="space-y-3 text-xs">

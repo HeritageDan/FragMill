@@ -113,11 +113,12 @@ export function findPercentileSize(curve: CumulativePoint[], targetPercent: numb
 }
 
 // Rosin-Rammler nonlinear fitting: P(x) = 1 - exp(-(x/xc)^n)
-export function fitRosinRammler(curve: CumulativePoint[]): FitParametersRosinRammler {
+export function fitRosinRammler(curve: CumulativePoint[]): FitParametersRosinRammler & { converged?: boolean } {
   // Filter points strictly between 1% and 99% passing
   const valid = curve.filter((p) => p.passingPercent > 1 && p.passingPercent < 99 && p.sizeMm > 0);
+  const maxSize = curve.length > 0 ? Math.max(...curve.map((c) => c.sizeMm)) : 500;
   if (valid.length < 3) {
-    return { xc: 150, n: 1.2, r2: 0.9, rmse: 5 };
+    return { xc: 150, n: 1.2, r2: 0.9, rmse: 5, converged: true };
   }
 
   // Linear regression on Weibull coordinates:
@@ -139,14 +140,22 @@ export function fitRosinRammler(curve: CumulativePoint[]): FitParametersRosinRam
     sumXX += X * X;
   }
 
-  const slope = (count * sumXY - sumX * sumY) / Math.max(1e-6, count * sumXX - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / count;
+  const denom = count * sumXX - sumX * sumX;
+  const rawSlope = Math.abs(denom) > 1e-6 ? (count * sumXY - sumX * sumY) / denom : 1.2;
+  const rawIntercept = (sumY - rawSlope * sumX) / count;
 
-  const n = Math.max(0.5, Math.min(3.5, slope));
-  // intercept = -n * ln(xc) => ln(xc) = -intercept / n
-  const xc = Math.exp(-intercept / n);
+  let n = rawSlope;
+  let xc = Math.exp(-rawIntercept / Math.max(0.1, n));
 
-  // Compute R2 and RMSE
+  const minXc = Math.max(5, 0.2 * maxSize);
+  const maxXc = 3.0 * maxSize;
+  const converged = !isNaN(xc) && !isNaN(n) && n >= 0.5 && n <= 3.0 && xc >= minXc && xc <= maxXc;
+
+  // Bound parameters within physically meaningful ranges
+  n = Math.max(0.5, Math.min(3.0, isNaN(n) ? 1.2 : n));
+  xc = Math.max(minXc, Math.min(maxXc, isNaN(xc) ? 150 : xc));
+
+  // Compute R2 and RMSE (definition identical to Swebrec: RMSE in percentage points % of passing)
   let ssTot = 0;
   let ssRes = 0;
   const meanP = valid.reduce((s, p) => s + p.passingPercent, 0) / count;
@@ -165,6 +174,7 @@ export function fitRosinRammler(curve: CumulativePoint[]): FitParametersRosinRam
     n: Number(n.toFixed(2)),
     r2: Number(r2.toFixed(3)),
     rmse: Number(rmse.toFixed(2)),
+    converged: converged && rmse < 25,
   };
 }
 

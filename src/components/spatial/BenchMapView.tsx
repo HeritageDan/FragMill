@@ -42,10 +42,10 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
 
   // Interactive Pattern Geometry Overrides for Active Blast
   const selectedBlast = blasts.find((b) => b.id === activeBlastId) || blasts[0];
-  const [burdenM, setBurdenM] = useState<number>(selectedBlast?.parameters.burden || 2.4);
-  const [spacingM, setSpacingM] = useState<number>(selectedBlast?.parameters.spacing || 2.8);
-  const [benchHeightM, setBenchHeightM] = useState<number>(selectedBlast?.parameters.benchHeight || 6.0);
-  const [numberOfHoles, setNumberOfHoles] = useState<number>(selectedBlast?.parameters.numberOfHoles || 30);
+  const [burdenM, setBurdenM] = useState<number>(selectedBlast?.parameters.burden ?? 4.0);
+  const [spacingM, setSpacingM] = useState<number>(selectedBlast?.parameters.spacing ?? 3.0);
+  const [benchHeightM, setBenchHeightM] = useState<number>(selectedBlast?.parameters.benchHeight ?? 15.0);
+  const [numberOfHoles, setNumberOfHoles] = useState<number>(selectedBlast?.parameters.numberOfHoles ?? 50);
   const [patternType, setPatternType] = useState<'staggered' | 'rectangular'>('staggered');
   const [clearanceRadiusM, setClearanceRadiusM] = useState<number>(300);
 
@@ -55,10 +55,10 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
     if (onSelectBlast) onSelectBlast(blastId);
     const b = blasts.find((x) => x.id === blastId);
     if (b) {
-      setBurdenM(b.parameters.burden || 2.4);
-      setSpacingM(b.parameters.spacing || 2.8);
-      setBenchHeightM(b.parameters.benchHeight || 6.0);
-      setNumberOfHoles(b.parameters.numberOfHoles || 30);
+      setBurdenM(b.parameters.burden ?? 4.0);
+      setSpacingM(b.parameters.spacing ?? 3.0);
+      setBenchHeightM(b.parameters.benchHeight ?? 15.0);
+      setNumberOfHoles(b.parameters.numberOfHoles ?? 50);
     }
   };
 
@@ -74,23 +74,33 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
   }, [burdenM, spacingM, benchHeightM, numberOfHoles]);
 
   const blastedTonnageT = useMemo(() => {
-    const density = selectedBlast?.rockMass.density || 2.68;
+    const density = selectedBlast?.rockMass.density ?? 2.76;
     return Number((blastedVolumeM3 * density).toFixed(0));
   }, [blastedVolumeM3, selectedBlast]);
 
   const livePowderFactor = useMemo(() => {
-    const chargePerHole = selectedBlast?.parameters.chargePerHole || 22.0;
+    const chargePerHole = selectedBlast?.parameters.chargePerHole ?? 71.89;
     const holeVol = burdenM * spacingM * benchHeightM;
     return Number((chargePerHole / Math.max(0.1, holeVol)).toFixed(2));
   }, [burdenM, spacingM, benchHeightM, selectedBlast]);
+
+  const isGeometryModified = useMemo(() => {
+    if (!selectedBlast) return false;
+    return (
+      Math.abs(burdenM - (selectedBlast.parameters.burden ?? 4.0)) > 0.01 ||
+      Math.abs(spacingM - (selectedBlast.parameters.spacing ?? 3.0)) > 0.01 ||
+      Math.abs(benchHeightM - (selectedBlast.parameters.benchHeight ?? 15.0)) > 0.01 ||
+      numberOfHoles !== (selectedBlast.parameters.numberOfHoles ?? 50)
+    );
+  }, [burdenM, spacingM, benchHeightM, numberOfHoles, selectedBlast]);
 
   // Default coordinate layouts for blasts on the pit bench SVG
   const blastLayouts: Record<string, { x: number; y: number; w: number; h: number; bench: number }> = {
     'blast-bl-2026-001': { x: 120, y: 130, w: 110, h: 75, bench: 1240 },
     'blast-bl-2026-002': { x: 260, y: 135, w: 125, h: 80, bench: 1240 },
     'blast-bl-2026-003': { x: 410, y: 140, w: 105, h: 70, bench: 1240 },
-    'blast-bl-2026-004': { x: 180, y: 240, w: 130, h: 85, bench: 1220 },
-    'blast-bl-2026-005': { x: 340, y: 250, w: 120, h: 80, bench: 1220 },
+    'blast-bl-2026-004': { x: 180, y: 240, w: 130, h: 85, bench: 840 },
+    'blast-bl-2026-005': { x: 340, y: 250, w: 120, h: 80, bench: 840 },
   };
 
   const getP80 = (b: Blast): number => {
@@ -165,6 +175,7 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
               className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-slate-50"
             >
               <option value="all">{isFr ? 'Tous les Gradins (Fosse Complète)' : 'All Benches (Full Pit)'}</option>
+              <option value={840}>{isFr ? 'Gradin 840 RL (Gradin Pilote Actif)' : 'Bench 840 RL (Active Pilot Bench)'}</option>
               <option value={1260}>{isFr ? 'Gradin 1260 RL (Crête Rampe)' : 'Bench 1260 RL (Crest)'}</option>
               <option value={1240}>{isFr ? 'Gradin 1240 RL (Supérieur)' : 'Bench 1240 RL (Upper)'}</option>
               <option value={1220}>{isFr ? 'Gradin 1220 RL (Front Actif)' : 'Bench 1220 RL (Active Face)'}</option>
@@ -266,8 +277,13 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <Sliders className="w-4 h-4 text-blue-400" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-              {isFr ? 'Paramètres Géométriques du Gradin Actif' : 'Active Bench Geometry & Pattern Controls'} ({selectedBlast?.blastId})
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+              <span>{isFr ? 'Paramètres Géométriques du Gradin Actif' : 'Active Bench Geometry & Pattern Controls'} ({selectedBlast?.blastId})</span>
+              {isGeometryModified && (
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  {isFr ? 'Valeur modifiée' : 'Modified value'}
+                </span>
+              )}
             </h3>
           </div>
 

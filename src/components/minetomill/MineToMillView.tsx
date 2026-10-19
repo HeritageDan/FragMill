@@ -217,26 +217,44 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
             project={project}
             site={site}
             blast={selectedBlast}
-            lang={lang}
             getPayload={() => ({
               blastId: selectedBlast?.blastId,
               drillingCostPerTon: econResult.evaluation.drillingCostPerTon,
               blastingCostPerTon: econResult.evaluation.blastingCostPerTon,
+              secondaryBreakingCostPerTon: econResult.evaluation.secondaryBreakingCostPerTon,
               crushingCostPerTon: econResult.evaluation.crushingCostPerTon,
               millingCostPerTon: econResult.evaluation.millingCostPerTon,
               totalCostPerTon: econResult.evaluation.totalCostPerTon,
               optimalP80Mm: econResult.evaluation.optimalP80Mm,
+              isOptimumAtBoundary: econResult.evaluation.isOptimumAtBoundary,
               potentialSavingsPerTon: econResult.evaluation.potentialSavingsPerTon,
               carbonScope1Explosives: econResult.evaluation.carbonEmissions.scope1ExplosivesKgCo2ePerTon,
               carbonScope1Diesel: econResult.evaluation.carbonEmissions.scope1DieselKgCo2ePerTon,
               carbonScope2Electricity: econResult.evaluation.carbonEmissions.scope2ElectricityKgCo2ePerTon,
               carbonTotalKgCo2ePerTon: econResult.evaluation.carbonEmissions.totalKgCo2ePerTon,
             })}
-            summaryFr={`Optimisation mine-au-moulin (Tir ${selectedBlast?.blastId}) : coût global ${econResult.evaluation.totalCostPerTon.toFixed(2)} $/t, P80 optimal ${econResult.evaluation.optimalP80Mm} mm, économie +${econResult.evaluation.potentialSavingsPerTon.toFixed(2)} $/t.`}
-            summaryEn={`Mine-to-mill optimization (Blast ${selectedBlast?.blastId}): total cost $${econResult.evaluation.totalCostPerTon.toFixed(2)}/t, optimal P80 ${econResult.evaluation.optimalP80Mm} mm, savings +$${econResult.evaluation.potentialSavingsPerTon.toFixed(2)}/t.`}
+            summaryFr={`Optimisation mine-au-moulin (Tir ${selectedBlast?.blastId}) : coût global ${econResult.evaluation.totalCostPerTon.toFixed(2)} $/t, P80 optimal ${econResult.evaluation.optimalP80Mm} mm, économie ${econResult.evaluation.potentialSavingsPerTon.toFixed(2)} $/t.`}
+            summaryEn={`Mine-to-mill optimization (Blast ${selectedBlast?.blastId}): total cost $${econResult.evaluation.totalCostPerTon.toFixed(2)}/t, optimal P80 ${econResult.evaluation.optimalP80Mm} mm, potential savings $${econResult.evaluation.potentialSavingsPerTon.toFixed(2)}/t.`}
           />
         </div>
       </div>
+
+      {/* Demo Data Notice when blast has no mill batch */}
+      {!selectedBlast?.millBatch && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between text-xs text-amber-900">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              {lang === 'fr'
+                ? `Aucun lot usine enregistré pour le tir ${selectedBlast.blastId}. Les valeurs ci-dessous sont des estimations de démonstration.`
+                : `No plant reconciliation batch logged for blast ${selectedBlast.blastId}. Values below are demo estimates.`}
+            </span>
+          </div>
+          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900">
+            {lang === 'fr' ? 'DONNÉES DE DÉMO' : 'DEMO DATA'}
+          </span>
+        </div>
+      )}
 
       {/* KPI Highlight Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

@@ -712,13 +712,13 @@ export function renderDrone3DMuckpileGraphic(survey: DroneOrthomosaicData, lang 
   ctx.fillText(isFr ? 'LÉGENDE DU TAS 3D :' : '3D MUCKPILE LEGEND:', mapX + 18, mapY + mapH - 22);
 
   const droneChips = [
-    { c: '#EF4444', l: isFr ? 'Crête (165mm)' : 'Crest Zone (165mm)' },
-    { c: '#F59E0B', l: isFr ? 'Corps Central (245mm)' : 'Heaped Body (245mm)' },
-    { c: '#10B981', l: isFr ? 'Pied de Tir (395mm)' : 'Toe Apron (395mm)' },
-    { c: '#6366F1', l: isFr ? 'Arrière (460mm)' : 'Backbreak (460mm)' },
+    { c: '#EF4444', l: isFr ? 'Crête: 165mm' : 'Crest: 165mm' },
+    { c: '#F59E0B', l: isFr ? 'Centre: 245mm' : 'Body: 245mm' },
+    { c: '#10B981', l: isFr ? 'Pied: 395mm' : 'Toe: 395mm' },
+    { c: '#6366F1', l: isFr ? 'Arrière: 460mm' : 'Back: 460mm' },
   ];
 
-  let dChipX = mapX + (isFr ? 135 : 130);
+  let dChipX = mapX + (isFr ? 130 : 125);
   droneChips.forEach((chip) => {
     ctx.fillStyle = chip.c;
     ctx.fillRect(dChipX, mapY + mapH - 28, 12, 10);
@@ -727,9 +727,9 @@ export function renderDrone3DMuckpileGraphic(survey: DroneOrthomosaicData, lang 
     ctx.strokeRect(dChipX, mapY + mapH - 28, 12, 10);
 
     ctx.fillStyle = '#CBD5E1';
-    ctx.font = '8.5px Arial';
+    ctx.font = '8px Arial';
     ctx.fillText(chip.l, dChipX + 16, mapY + mapH - 20);
-    dChipX += isFr ? 82 : 78;
+    dChipX += isFr ? 86 : 82;
   });
 
   // Right Side Sector Breakdown Table
@@ -787,9 +787,27 @@ export function renderDrone3DMuckpileGraphic(survey: DroneOrthomosaicData, lang 
 // ---------------------------------------------------------------------------
 // 4. Conveyor Belt Vision & Crusher Choke Monitor Graphic
 // ---------------------------------------------------------------------------
-export function renderConveyorBeltGraphic(lang = 'fr'): string {
+export interface ConveyorBeltGraphicOptions {
+  lang?: string;
+  throughputTph?: number;
+  beltSpeedMPerS?: number;
+  p50Mm?: number;
+  p80Mm?: number;
+  crusherGapeThresholdMm?: number;
+  topSizeMm?: number;
+}
+
+export function renderConveyorBeltGraphic(options?: ConveyorBeltGraphicOptions | string): string {
+  const isFr = (typeof options === 'string' ? options : options?.lang) === 'fr';
+  const opt = typeof options === 'object' ? options : {};
+  const tph = opt?.throughputTph !== undefined ? opt.throughputTph : 245;
+  const speed = opt?.beltSpeedMPerS !== undefined ? opt.beltSpeedMPerS : 2.2;
+  const p50 = opt?.p50Mm !== undefined ? opt.p50Mm : 135;
+  const p80 = opt?.p80Mm !== undefined ? opt.p80Mm : 210;
+  const gape = opt?.crusherGapeThresholdMm !== undefined ? opt.crusherGapeThresholdMm : 600;
+  const topSize = opt?.topSizeMm !== undefined ? opt.topSizeMm : 480;
+
   const { canvas, ctx } = createHiDPICanvas(900, 420);
-  const isFr = lang === 'fr';
 
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -826,14 +844,23 @@ export function renderConveyorBeltGraphic(lang = 'fr'): string {
   ctx.strokeRect(bX + 40, bY, bW - 80, bH);
 
   // Moving rock fragments on belt
+  const isChoke = topSize >= gape;
   const rocks = [
-    { x: 180, y: 120, r: 24, c: '#71717A', box: 60, p: '142 mm' },
-    { x: 260, y: 180, r: 35, c: '#A1A1AA', box: 85, p: '210 mm' },
-    { x: 380, y: 140, r: 28, c: '#52525B', box: 70, p: '165 mm' },
-    { x: 220, y: 260, r: 18, c: '#71717A', box: 45, p: '95 mm' },
-    { x: 420, y: 240, r: 22, c: '#A1A1AA', box: 55, p: '120 mm' },
+    { x: 180, y: 120, r: 24, c: '#71717A', box: 60, p: `${p50} mm` },
+    { x: 260, y: 180, r: 35, c: '#A1A1AA', box: 85, p: `${p80} mm` },
+    { x: 380, y: 140, r: 28, c: '#52525B', box: 70, p: `${Math.round((p50 + p80) / 2)} mm` },
+    { x: 220, y: 260, r: 18, c: '#71717A', box: 45, p: `${Math.round(p50 * 0.7)} mm` },
+    { x: 420, y: 240, r: 22, c: '#A1A1AA', box: 55, p: `${Math.round(p50 * 0.9)} mm` },
     // BOULDER CHOKE ALERT
-    { x: 310, y: 220, r: 52, c: '#EF4444', box: 120, p: '480 mm [CHOKE ALERT]', alert: true },
+    {
+      x: 310,
+      y: 220,
+      r: 52,
+      c: isChoke ? '#EF4444' : '#10B981',
+      box: 120,
+      p: `${topSize} mm [${isChoke ? (isFr ? 'ALERTE CONCASSEUR' : 'CHOKE ALERT') : (isFr ? 'CONFORME' : 'OPTIMAL')}]`,
+      alert: isChoke,
+    },
   ];
 
   rocks.forEach((r) => {
@@ -854,13 +881,13 @@ export function renderConveyorBeltGraphic(lang = 'fr'): string {
 
   // Camera HUD Overlays
   ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-  ctx.fillRect(bX + 15, bY + 15, 140, 50);
+  ctx.fillRect(bX + 15, bY + 15, 175, 50);
   ctx.fillStyle = '#22C55E';
   ctx.font = 'bold 11px Arial';
   ctx.fillText('● LIVE STREAM : CAM-01', bX + 25, bY + 34);
   ctx.fillStyle = '#CBD5E1';
-  ctx.font = '10px Arial';
-  ctx.fillText('Cadence : 30 FPS | Gape : 400mm', bX + 25, bY + 52);
+  ctx.font = '9.5px Arial';
+  ctx.fillText(`Cadence : 4 FPS | Seuil : ${gape}mm`, bX + 25, bY + 52);
 
   // Dedicated Conveyor Stream Legend
   ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
@@ -875,8 +902,8 @@ export function renderConveyorBeltGraphic(lang = 'fr'): string {
   ctx.fillText(isFr ? 'LÉGENDE OPTIQUE :' : 'VISION HUD LEGEND:', bX + 22, bY + bH - 20);
 
   const convChips = [
-    { c: '#10B981', l: isFr ? 'Roches Conformes (<= 350mm)' : 'Compliant Ore (<= 350mm)' },
-    { c: '#EF4444', l: isFr ? 'Bloc Critique (> 350mm Choke)' : 'Critical Boulder (> 350mm Choke)' },
+    { c: '#10B981', l: isFr ? `Conforme (<=${gape}mm)` : `Compliant (<=${gape}mm)` },
+    { c: '#EF4444', l: isFr ? `Bloc (> ${gape}mm)` : `Oversize (> ${gape}mm)` },
     { c: '#EAB308', l: isFr ? 'Guides Bande (1.2m)' : 'Belt Guides (1.2m)' },
   ];
 
@@ -907,12 +934,12 @@ export function renderConveyorBeltGraphic(lang = 'fr'): string {
   ctx.fillText(isFr ? 'MÉTRIQUES DE BANDE' : 'CONVEYOR TELEMETRY', cardX + 20, cardY + 30);
 
   const metrics = [
-    [isFr ? 'Débit Instantané :' : 'Instant Throughput:', '485 t/h'],
-    [isFr ? 'Vitesse de bande :' : 'Belt Speed:', '2.4 m/s'],
-    [isFr ? 'Granulométrie P50 :' : 'Fragment P50:', '135 mm'],
-    [isFr ? 'Granulométrie P80 :' : 'Fragment P80:', '210 mm'],
-    [isFr ? 'Taux de surdimensionnés :' : 'Oversize Ratio:', '4.8 %'],
-    [isFr ? 'Statut Concasseur :' : 'Crusher Status:', isFr ? 'ALERTE BOULDER' : 'BOULDER ALERT'],
+    [isFr ? 'Débit Instantané :' : 'Instant Throughput:', `${tph} t/h`],
+    [isFr ? 'Vitesse de bande :' : 'Belt Speed:', `${speed} m/s`],
+    [isFr ? 'Granulométrie P50 :' : 'Fragment P50:', `${p50} mm`],
+    [isFr ? 'Granulométrie P80 :' : 'Fragment P80:', `${p80} mm`],
+    [isFr ? 'Seuil Concasseur :' : 'Crusher Gape Limit:', `${gape} mm`],
+    [isFr ? 'Statut Concasseur :' : 'Crusher Status:', isChoke ? (isFr ? 'ALERTE BOULDER' : 'BOULDER ALERT') : (isFr ? 'NOMINAL' : 'NOMINAL')],
   ];
 
   let my = cardY + 65;
@@ -933,9 +960,23 @@ export function renderConveyorBeltGraphic(lang = 'fr'): string {
 // ---------------------------------------------------------------------------
 // 5. 3D Blast Timing Simulator & Iso-Chronous Wavefront Graphic
 // ---------------------------------------------------------------------------
-export function renderBlastTimingGraphic(lang = 'fr'): string {
+export interface BlastTimingGraphicOptions {
+  lang?: string;
+  diameterMm?: number;
+  maxChargePerDelayKg?: number;
+  ppvMmPerS?: number;
+  distanceToStructureM?: number;
+}
+
+export function renderBlastTimingGraphic(options?: BlastTimingGraphicOptions | string): string {
+  const isFr = (typeof options === 'string' ? options : options?.lang) === 'fr';
+  const opt = typeof options === 'object' ? options : {};
+  const dia = opt?.diameterMm || 89;
+  const chargeDelay = opt?.maxChargePerDelayKg !== undefined ? opt.maxChargePerDelayKg : 28.5;
+  const dist = opt?.distanceToStructureM || 350;
+  const ppv = opt?.ppvMmPerS !== undefined ? opt.ppvMmPerS : 4.2;
+
   const { canvas, ctx } = createHiDPICanvas(900, 420);
-  const isFr = lang === 'fr';
 
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1008,25 +1049,25 @@ export function renderBlastTimingGraphic(lang = 'fr'): string {
   ctx.fillStyle = '#FFFFFF';
   ctx.font = 'bold 8.5px Arial';
   ctx.textAlign = 'left';
-  ctx.fillText(isFr ? 'LÉGENDE PYROTECHNIQUE :' : 'INITIATION LEGEND:', pX + 22, pY + pH - 20);
+  ctx.fillText(isFr ? 'LÉGENDE :' : 'LEGEND:', pX + 20, pY + pH - 20);
 
   ctx.fillStyle = '#FFFFFF';
   ctx.beginPath();
-  ctx.arc(pX + (isFr ? 165 : 145), pY + pH - 23, 4.5, 0, Math.PI * 2);
+  ctx.arc(pX + (isFr ? 95 : 85), pY + pH - 23, 4.5, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = '#CBD5E1';
   ctx.font = '8px Arial';
-  ctx.fillText(isFr ? 'Collet de Trou (Ø89mm)' : 'Hole Collar (Ø89mm)', pX + (isFr ? 175 : 155), pY + pH - 20);
+  ctx.fillText(isFr ? `Collet (Ø${dia}mm)` : `Collar (Ø${dia}mm)`, pX + (isFr ? 105 : 95), pY + pH - 20);
 
   ctx.strokeStyle = '#22C55E';
   ctx.lineWidth = 2.5;
   ctx.beginPath();
-  ctx.moveTo(pX + (isFr ? 295 : 275), pY + pH - 23);
-  ctx.lineTo(pX + (isFr ? 312 : 292), pY + pH - 23);
+  ctx.moveTo(pX + (isFr ? 230 : 210), pY + pH - 23);
+  ctx.lineTo(pX + (isFr ? 245 : 225), pY + pH - 23);
   ctx.stroke();
 
-  ctx.fillText(isFr ? 'Lignes Iso-Délai (25ms surface)' : 'Iso-Delay Wavefronts (25ms)', pX + (isFr ? 320 : 300), pY + pH - 20);
+  ctx.fillText(isFr ? 'Lignes Iso-Délai (25ms surface)' : 'Iso-Delay Wavefronts (25ms)', pX + (isFr ? 252 : 232), pY + pH - 20);
 
   // Right Side USBM Vibration Compliance Card
   const cX = 620;
@@ -1042,12 +1083,13 @@ export function renderBlastTimingGraphic(lang = 'fr'): string {
   ctx.font = 'bold 12px Arial';
   ctx.fillText(isFr ? 'CONFORMITÉ VIBRATOIRE (USBM)' : 'USBM VIBRATION AUDIT', cX + 20, cY + 30);
 
+  const isCompliant = ppv <= 12.5;
   const vInfo = [
-    [isFr ? 'Distance structure :' : 'Structure Distance:', '350 m'],
-    [isFr ? 'Charge max par retard :' : 'Max Instant Charge:', '28.5 kg'],
-    [isFr ? 'Vitesse Particulaire (PPV) :' : 'Peak Velocity (PPV):', '4.2 mm/s'],
+    [isFr ? 'Distance structure :' : 'Structure Distance:', `${dist} m`],
+    [isFr ? 'Charge max par retard :' : 'Max Instant Charge:', `${chargeDelay} kg`],
+    [isFr ? 'Vitesse Particulaire (PPV) :' : 'Peak Velocity (PPV):', `${ppv} mm/s`],
     [isFr ? 'Seuil critique USBM :' : 'USBM Threshold Limit:', '12.5 mm/s'],
-    [isFr ? 'Facteur de Sécurité :' : 'Safety Factor:', '3.0x (CONFORME)'],
+    [isFr ? 'Facteur de Sécurité :' : 'Safety Factor:', `${(12.5 / Math.max(0.1, ppv)).toFixed(1)}x (${isCompliant ? (isFr ? 'CONFORME' : 'COMPLIANT') : (isFr ? 'NON-CONFORME' : 'EXCEEDED')})`],
   ];
 
   let vy = cY + 65;
@@ -1056,7 +1098,7 @@ export function renderBlastTimingGraphic(lang = 'fr'): string {
     ctx.font = '10px Arial';
     ctx.fillText(k, cX + 20, vy);
 
-    ctx.fillStyle = v.includes('CONFORME') ? '#16A34A' : '#0F172A';
+    ctx.fillStyle = v.includes('CONFORME') || v.includes('COMPLIANT') ? '#16A34A' : '#0F172A';
     ctx.font = 'bold 11px Arial';
     ctx.fillText(v, cX + 20, vy + 15);
     vy += 45;
@@ -1068,9 +1110,36 @@ export function renderBlastTimingGraphic(lang = 'fr'): string {
 // ---------------------------------------------------------------------------
 // 5b. Comminution Circuit Flowsheet & Energy Balance Graphic (Bond & Morrell)
 // ---------------------------------------------------------------------------
-export function renderComminutionCircuitGraphic(lang = 'fr'): string {
-  const { canvas, ctx } = createHiDPICanvas(900, 420);
+export interface ComminutionGraphicOptions {
+  throughputTph?: number;
+  crushingKwhPerT?: number;
+  sagKwhPerT?: number;
+  ballMillKwhPerT?: number;
+  totalKwhPerT?: number;
+  bondWorkIndex?: number;
+  f80Mm?: number;
+  p80TargetUm?: number;
+}
+
+export function renderComminutionCircuitGraphic(options?: ComminutionGraphicOptions | string, langArg = 'fr'): string {
+  const opts: ComminutionGraphicOptions = typeof options === 'object' && options !== null ? options : {};
+  const lang = typeof options === 'string' ? options : langArg;
   const isFr = lang === 'fr';
+
+  const throughput = opts.throughputTph ?? 485;
+  const crushingE = opts.crushingKwhPerT ?? 0.50;
+  const sagE = opts.sagKwhPerT ?? 11.06;
+  const ballE = opts.ballMillKwhPerT ?? 9.05;
+  const totalE = opts.totalKwhPerT ?? Number((crushingE + sagE + ballE).toFixed(2));
+  const bondWi = opts.bondWorkIndex ?? 14.5;
+  const f80 = opts.f80Mm ? Math.round(opts.f80Mm) : 280;
+  const p80Um = opts.p80TargetUm ?? 75;
+
+  const crushingPct = totalE > 0 ? ((crushingE / totalE) * 100).toFixed(1) : '2.4';
+  const sagPct = totalE > 0 ? ((sagE / totalE) * 100).toFixed(1) : '53.7';
+  const ballPct = totalE > 0 ? ((ballE / totalE) * 100).toFixed(1) : '43.9';
+
+  const { canvas, ctx } = createHiDPICanvas(900, 420);
 
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1110,10 +1179,10 @@ export function renderComminutionCircuitGraphic(lang = 'fr'): string {
 
   // 4 processing unit blocks
   const units = [
-    { x: fX + 20, y: fY + 40, w: 105, h: 90, title: isFr ? 'CONCASSEUR' : 'PRIMARY JAW', sub: 'F80: 280mm -> 110mm', e: '0.50 kWh/t', col: '#38BDF8' },
-    { x: fX + 155, y: fY + 40, w: 105, h: 90, title: isFr ? 'STOCK TAMPON' : 'SURGE BIN', sub: 'Débit : 485 t/h', e: isFr ? 'Alimentation SAG' : 'SAG Mill Feed', col: '#94A3B8' },
-    { x: fX + 290, y: fY + 40, w: 115, h: 90, title: isFr ? 'BROYEUR SAG' : 'SAG MILL', sub: 'F80: 110mm -> 12mm', e: '11.06 kWh/t (54%)', col: '#F59E0B' },
-    { x: fX + 430, y: fY + 40, w: 105, h: 90, title: isFr ? 'BROYEUR BOULETS' : 'BALL MILL', sub: 'P80 Cible : 75 µm', e: '9.05 kWh/t (44%)', col: '#10B981' },
+    { x: fX + 20, y: fY + 40, w: 105, h: 90, title: isFr ? 'CONCASSEUR' : 'PRIMARY JAW', sub: `F80: ${f80}mm -> 110mm`, e: `${crushingE.toFixed(2)} kWh/t`, col: '#38BDF8' },
+    { x: fX + 155, y: fY + 40, w: 105, h: 90, title: isFr ? 'STOCK TAMPON' : 'SURGE BIN', sub: `${isFr ? 'Débit' : 'Feed'}: ${Math.round(throughput)} t/h`, e: isFr ? 'Alimentation SAG' : 'SAG Mill Feed', col: '#94A3B8' },
+    { x: fX + 290, y: fY + 40, w: 115, h: 90, title: isFr ? 'BROYEUR SAG' : 'SAG MILL', sub: 'F80: 110mm -> 12mm', e: `${sagE.toFixed(2)} kWh/t (${Math.round(Number(sagPct))}%)`, col: '#F59E0B' },
+    { x: fX + 430, y: fY + 40, w: 105, h: 90, title: isFr ? 'BROYEUR BOULETS' : 'BALL MILL', sub: `P80 Cible : ${p80Um} µm`, e: `${ballE.toFixed(2)} kWh/t (${Math.round(Number(ballPct))}%)`, col: '#10B981' },
   ];
 
   // Draw unit cards and flow arrows
@@ -1183,10 +1252,10 @@ export function renderComminutionCircuitGraphic(lang = 'fr'): string {
 
   ctx.fillStyle = '#06B6D4';
   ctx.font = 'bold 9.5px Arial';
-  ctx.fillText(isFr ? 'HYDROCYCLONES D50=75µm' : 'CYCLONES D50=75µm', fX + 455, fY + 215);
+  ctx.fillText(isFr ? `HYDROCYCLONES D50=${p80Um}µm` : `CYCLONES D50=${p80Um}µm`, fX + 455, fY + 215);
   ctx.fillStyle = '#94A3B8';
   ctx.font = '8px Arial';
-  ctx.fillText(isFr ? 'Overflow -> Flottation (P80=75µm)' : 'Overflow -> Flotation (P80=75µm)', fX + 455, fY + 232);
+  ctx.fillText(isFr ? `Overflow -> Flottation (P80=${p80Um}µm)` : `Overflow -> Flotation (P80=${p80Um}µm)`, fX + 455, fY + 232);
 
   // Dedicated Legend Box at bottom of flowsheet
   ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
@@ -1200,9 +1269,9 @@ export function renderComminutionCircuitGraphic(lang = 'fr'): string {
   ctx.fillText(isFr ? 'LÉGENDE DU CIRCUIT :' : 'FLOWSHEET LEGEND:', fX + 18, fY + fH - 22);
 
   const flowLeg = [
-    { color: '#38BDF8', label: isFr ? 'Flux Principal (485 t/h)' : 'Main Slurry (485 tph)' },
+    { color: '#38BDF8', label: isFr ? `Flux Principal (${Math.round(throughput)} t/h)` : `Main Slurry (${Math.round(throughput)} tph)` },
     { color: '#EF4444', label: isFr ? 'Recyclage Cailloux' : 'Pebble Recycle' },
-    { color: '#10B981', label: isFr ? 'Produit Fini (75µm)' : 'Final Product (75µm)' },
+    { color: '#10B981', label: isFr ? `Produit Fini (${p80Um}µm)` : `Final Product (${p80Um}µm)` },
   ];
   let lx = fX + (isFr ? 140 : 135);
   flowLeg.forEach((fl) => {
@@ -1235,12 +1304,12 @@ export function renderComminutionCircuitGraphic(lang = 'fr'): string {
   ctx.fillText(isFr ? 'RÉPARTITION D’ÉNERGIE' : 'SPECIFIC ENERGY AUDIT', cX + 20, cY + 30);
 
   const eBreakdown = [
-    [isFr ? 'Concassage Primaire :' : 'Primary Crushing:', '0.50 kWh/t (2.4%)'],
-    [isFr ? 'Broyage SAG :' : 'SAG Milling:', '11.06 kWh/t (53.7%)'],
-    [isFr ? 'Broyeur à Boulets :' : 'Ball Milling:', '9.05 kWh/t (43.9%)'],
-    [isFr ? 'Total Énergie Spécifique :' : 'Total Specific Energy:', '20.61 kWh/t'],
-    [isFr ? 'Indice de Travail (Wi) :' : 'Bond Work Index (Wi):', '14.5 kWh/t'],
-    [isFr ? 'Débit Nominal Usine :' : 'Nominal Throughput:', '485 tonnes/h'],
+    [isFr ? 'Concassage Primaire :' : 'Primary Crushing:', `${crushingE.toFixed(2)} kWh/t (${crushingPct}%)`],
+    [isFr ? 'Broyage SAG :' : 'SAG Milling:', `${sagE.toFixed(2)} kWh/t (${sagPct}%)`],
+    [isFr ? 'Broyeur à Boulets :' : 'Ball Milling:', `${ballE.toFixed(2)} kWh/t (${ballPct}%)`],
+    [isFr ? 'Total Énergie Spécifique :' : 'Total Specific Energy:', `${totalE.toFixed(2)} kWh/t`],
+    [isFr ? 'Indice de Travail (Wi) :' : 'Bond Work Index (Wi):', `${bondWi.toFixed(1)} kWh/t`],
+    [isFr ? 'Débit Nominal Usine :' : 'Nominal Throughput:', `${Math.round(throughput)} tonnes/h`],
   ];
 
   let ey = cY + 65;
@@ -1257,11 +1326,26 @@ export function renderComminutionCircuitGraphic(lang = 'fr'): string {
 
   return canvas.toDataURL('image/png', 0.95);
 }
+
+// ---------------------------------------------------------------------------
 // 6. Geostatistical Kriging Block Model Heatmap Graphic
 // ---------------------------------------------------------------------------
-export function renderKrigingModelGraphic(lang = 'fr'): string {
-  const { canvas, ctx } = createHiDPICanvas(900, 420);
+export interface KrigingGraphicOptions {
+  softCutoff?: number;
+  hardCutoff?: number;
+  isDemo?: boolean;
+}
+
+export function renderKrigingModelGraphic(options?: KrigingGraphicOptions | string, langArg = 'fr'): string {
+  const opts: KrigingGraphicOptions = typeof options === 'object' && options !== null ? options : {};
+  const lang = typeof options === 'string' ? options : langArg;
   const isFr = lang === 'fr';
+
+  const softCutoff = opts.softCutoff ?? 75;
+  const hardCutoff = opts.hardCutoff ?? 125;
+  const isDemo = opts.isDemo ?? false;
+
+  const { canvas, ctx } = createHiDPICanvas(900, 420);
 
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1273,6 +1357,12 @@ export function renderKrigingModelGraphic(lang = 'fr'): string {
     40,
     30
   );
+
+  if (isDemo) {
+    ctx.fillStyle = '#DC2626';
+    ctx.font = 'bold 10px Arial';
+    ctx.fillText(isFr ? '[DONNÉES DE DÉMO / SÉQUENCE STANDARD]' : '[DEMO DATA / BENCHMARK GRID]', 550, 30);
+  }
 
   const kX = 50;
   const kY = 55;
@@ -1290,8 +1380,8 @@ export function renderKrigingModelGraphic(lang = 'fr'): string {
       // Synthetic spatial hardness gradient (Soft = blue, Intermediate = amber, Hard = red)
       const hardness = Math.sin(c / 3.5) * 40 + Math.cos(r / 2.5) * 35 + 110;
       let color = '#3B82F6'; // Soft
-      if (hardness > 125) color = '#EF4444'; // Hard
-      else if (hardness > 95) color = '#F59E0B'; // Intermediate
+      if (hardness > hardCutoff) color = '#EF4444'; // Hard
+      else if (hardness > softCutoff) color = '#F59E0B'; // Intermediate
 
       ctx.fillStyle = color;
       ctx.fillRect(kX + c * cw, kY + r * ch, cw - 1, ch - 1);
@@ -1334,9 +1424,9 @@ export function renderKrigingModelGraphic(lang = 'fr'): string {
   ctx.fillText(isFr ? 'LÉGENDE DOMAINES :' : 'KRIGING DOMAINS:', kX + 18, kY + kH - 20);
 
   const kChips = [
-    { c: '#3B82F6', l: isFr ? 'Tendre (<95 MPa)' : 'Soft (<95 MPa)' },
-    { c: '#F59E0B', l: isFr ? 'Moyen (95-125 MPa)' : 'Medium (95-125 MPa)' },
-    { c: '#EF4444', l: isFr ? 'Dur (>125 MPa)' : 'Hard (>125 MPa)' },
+    { c: '#3B82F6', l: isFr ? `Tendre (<${softCutoff} MPa)` : `Soft (<${softCutoff} MPa)` },
+    { c: '#F59E0B', l: isFr ? `Moyen (${softCutoff}-${hardCutoff} MPa)` : `Medium (${softCutoff}-${hardCutoff} MPa)` },
+    { c: '#EF4444', l: isFr ? `Dur (>${hardCutoff} MPa)` : `Hard (>${hardCutoff} MPa)` },
   ];
 
   let kChipX = kX + (isFr ? 130 : 125);
@@ -1350,7 +1440,7 @@ export function renderKrigingModelGraphic(lang = 'fr'): string {
     ctx.fillStyle = '#CBD5E1';
     ctx.font = '8px Arial';
     ctx.fillText(chip.l, kChipX + 16, kY + kH - 18);
-    kChipX += isFr ? 100 : 95;
+    kChipX += isFr ? 105 : 100;
   });
 
   // Right Side Legend Card
@@ -1368,9 +1458,9 @@ export function renderKrigingModelGraphic(lang = 'fr'): string {
   ctx.fillText(isFr ? 'ZONAGE GÉOMÉCANIQUE' : 'GEOMECHANICAL DOMAINS', cX + 20, cY + 30);
 
   const domains = [
-    [isFr ? 'Domaine Tendre (Bleu) :' : 'Soft Domain (Blue):', '0.42 kg/m³ | UCS <95'],
-    [isFr ? 'Domaine Moyen (Orange) :' : 'Intermediate (Amber):', '0.58 kg/m³ | UCS 95-125'],
-    [isFr ? 'Domaine Dur (Rouge) :' : 'Hard Massive (Red):', '0.74 kg/m³ | UCS >125'],
+    [isFr ? 'Domaine Tendre (Bleu) :' : 'Soft Domain (Blue):', `0.42 kg/m³ | UCS <${softCutoff}`],
+    [isFr ? 'Domaine Moyen (Orange) :' : 'Intermediate (Amber):', `0.58 kg/m³ | UCS ${softCutoff}-${hardCutoff}`],
+    [isFr ? 'Domaine Dur (Rouge) :' : 'Hard Massive (Red):', `0.74 kg/m³ | UCS >${hardCutoff}`],
     [isFr ? 'Portée Variogramme (a) :' : 'Variogram Range (a):', '45.0 m'],
     [isFr ? 'Effet Pépite (C0) :' : 'Nugget Effect (C0):', '50.0 MPa²'],
   ];
@@ -1393,9 +1483,26 @@ export function renderKrigingModelGraphic(lang = 'fr'): string {
 // ---------------------------------------------------------------------------
 // 7. Drill Rig Collar Deviation Target Bullseye Graphic
 // ---------------------------------------------------------------------------
-export function renderDrillCollarBullseyeGraphic(holes: IREDESHole[], toleranceMm = 60, lang = 'fr'): string {
-  const { canvas, ctx } = createHiDPICanvas(900, 420);
+export interface DrillBullseyeOptions {
+  toleranceMm?: number;
+  complianceRate?: number;
+  totalHoles?: number;
+  rigModel?: string;
+  averageRopMPerMin?: number;
+  isDemo?: boolean;
+}
+
+export function renderDrillCollarBullseyeGraphic(
+  holes: IREDESHole[],
+  toleranceArg: number | DrillBullseyeOptions = 60,
+  langArg = 'fr'
+): string {
+  const opts: DrillBullseyeOptions = typeof toleranceArg === 'object' && toleranceArg !== null ? toleranceArg : {};
+  const toleranceMm = typeof toleranceArg === 'number' ? toleranceArg : opts.toleranceMm ?? 60;
+  const lang = langArg;
   const isFr = lang === 'fr';
+
+  const { canvas, ctx } = createHiDPICanvas(900, 420);
 
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1407,6 +1514,13 @@ export function renderDrillCollarBullseyeGraphic(holes: IREDESHole[], toleranceM
     40,
     30
   );
+
+  const isDemo = opts.isDemo ?? (holes.length === 0);
+  if (isDemo) {
+    ctx.fillStyle = '#DC2626';
+    ctx.font = 'bold 10px Arial';
+    ctx.fillText(isFr ? '[DONNÉES DE DÉMO MWD]' : '[MWD DEMO DATA]', 600, 30);
+  }
 
   const tX = 50;
   const tY = 55;
@@ -1458,7 +1572,14 @@ export function renderDrillCollarBullseyeGraphic(holes: IREDESHole[], toleranceM
   ctx.stroke();
 
   // Plot holes
-  holes.forEach((h) => {
+  const holesToPlot = holes.length > 0 ? holes : Array.from({ length: 30 }, (_, i) => ({
+    holeId: `H-${i + 1}`,
+    collarDeviationMm: (i * 17) % 85 + 10,
+    actualDepth: 16.2,
+    actualAngle: 90,
+  } as unknown as IREDESHole));
+
+  holesToPlot.forEach((h) => {
     const err = h.collarDeviationMm || 35;
     const angle = (parseInt(h.holeId.replace(/\D/g, '') || '1') * 47) % 360;
     const rad = (angle * Math.PI) / 180;
@@ -1488,9 +1609,9 @@ export function renderDrillCollarBullseyeGraphic(holes: IREDESHole[], toleranceM
   ctx.fillText(isFr ? 'LÉGENDE TOLÉRANCE :' : 'ACCURACY LEGEND:', tX + 18, tY + tH - 20);
 
   const bChips = [
-    { c: '#10B981', l: isFr ? 'Conforme (<= 60mm)' : 'Compliant (<= 60mm)' },
-    { c: '#F59E0B', l: isFr ? 'Alerte (60-90mm)' : 'Warning (60-90mm)' },
-    { c: '#EF4444', l: isFr ? 'Hors Norme (> 90mm)' : 'Out of Spec (> 90mm)' },
+    { c: '#10B981', l: isFr ? `Conforme (<= ${toleranceMm}mm)` : `Compliant (<= ${toleranceMm}mm)` },
+    { c: '#F59E0B', l: isFr ? `Alerte (${toleranceMm}-${Math.round(toleranceMm * 1.5)}mm)` : `Warning (${toleranceMm}-${Math.round(toleranceMm * 1.5)}mm)` },
+    { c: '#EF4444', l: isFr ? `Hors Norme (> ${Math.round(toleranceMm * 1.5)}mm)` : `Out of Spec (> ${Math.round(toleranceMm * 1.5)}mm)` },
   ];
 
   let bChipX = tX + (isFr ? 135 : 125);
@@ -1523,15 +1644,18 @@ export function renderDrillCollarBullseyeGraphic(holes: IREDESHole[], toleranceM
   ctx.font = 'bold 12px Arial';
   ctx.fillText(isFr ? 'RÉSULTATS DE CONFORMITÉ' : 'DRILLING ACCURACY STATS', cX + 20, cY + 30);
 
-  const compliantCount = holes.filter((h) => (h.collarDeviationMm || 0) <= toleranceMm).length;
-  const rate = holes.length > 0 ? Math.round((compliantCount / holes.length) * 100) : 92;
+  const compliantCount = holesToPlot.filter((h) => (h.collarDeviationMm || 0) <= toleranceMm).length;
+  const computedRate = holesToPlot.length > 0 ? Math.round((compliantCount / holesToPlot.length) * 100) : 92;
+  const rate = opts.complianceRate ?? computedRate;
+  const rigModel = opts.rigModel ?? 'SmartROC T45';
+  const rop = opts.averageRopMPerMin ?? 1.42;
 
   const stats = [
     [isFr ? 'Tolérance contractuelle :' : 'Contractual Tolerance:', `${toleranceMm} mm`],
     [isFr ? 'Taux de conformité :' : 'Compliance Rate:', `${rate} %`],
-    [isFr ? 'Trous forés :' : 'Total Drilled Holes:', `${holes.length || 30}`],
-    [isFr ? 'Foreuse connectée :' : 'Connected Rig Model:', 'SmartROC T45'],
-    [isFr ? 'Vitesse moyenne (ROP) :' : 'Average ROP Speed:', '1.42 m/min'],
+    [isFr ? 'Trous forés :' : 'Total Drilled Holes:', `${opts.totalHoles ?? holesToPlot.length}`],
+    [isFr ? 'Foreuse connectée :' : 'Connected Rig Model:', rigModel],
+    [isFr ? 'Vitesse moyenne (ROP) :' : 'Average ROP Speed:', `${rop.toFixed(2)} m/min`],
   ];
 
   let sy = cY + 65;
@@ -1552,9 +1676,31 @@ export function renderDrillCollarBullseyeGraphic(holes: IREDESHole[], toleranceM
 // ---------------------------------------------------------------------------
 // 8. Open-Pit Bench Map & Animated Flyrock Safety Zone Graphic
 // ---------------------------------------------------------------------------
-export function renderBenchMapGraphic(blast: Blast, flyrockRadiusM = 300, lang = 'fr'): string {
-  const { canvas, ctx } = createHiDPICanvas(900, 420);
+export interface BenchMapGraphicOptions {
+  numberOfHoles?: number;
+  benchElevation?: number;
+  blastedVolumeM3?: number;
+  totalTonnageTonnes?: number;
+}
+
+export function renderBenchMapGraphic(
+  blast: Blast,
+  flyrockRadiusArg: number | BenchMapGraphicOptions = 300,
+  langArg = 'fr',
+  optionsArg?: BenchMapGraphicOptions
+): string {
+  const opts: BenchMapGraphicOptions =
+    typeof flyrockRadiusArg === 'object' && flyrockRadiusArg !== null
+      ? flyrockRadiusArg
+      : optionsArg ?? {};
+  const flyrockRadiusM = typeof flyrockRadiusArg === 'number' ? flyrockRadiusArg : 300;
+  const lang = typeof flyrockRadiusArg === 'string' ? flyrockRadiusArg : langArg;
   const isFr = lang === 'fr';
+
+  const nHoles = opts.numberOfHoles ?? blast.parameters?.numberOfHoles ?? 50;
+  const benchElevation = opts.benchElevation ?? (blast as any).benchElevation ?? (blast.parameters as any)?.benchElevation ?? 840;
+
+  const { canvas, ctx } = createHiDPICanvas(900, 420);
 
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1638,9 +1784,9 @@ export function renderBenchMapGraphic(blast: Blast, flyrockRadiusM = 300, lang =
   ctx.fillText(isFr ? 'LÉGENDE CARTO :' : 'MAP LEGEND:', bX + 18, bY + bH - 20);
 
   const mapChips = [
-    { c: '#F59E0B', l: isFr ? 'Emprise Tir (30 trous)' : 'Blast Polygon (30 holes)' },
+    { c: '#F59E0B', l: isFr ? `Emprise Tir (${nHoles} trous)` : `Blast Polygon (${nHoles} holes)` },
     { c: '#EF4444', l: isFr ? `Zone Sécurité (R=${flyrockRadiusM}m)` : `Safety Zone (R=${flyrockRadiusM}m)`, dash: true },
-    { c: '#64748B', l: isFr ? 'Courbe Niveau (1240 RL)' : 'Topo Crest (1240 RL)', line: true },
+    { c: '#64748B', l: isFr ? `Courbe Niveau (${benchElevation} RL)` : `Topo Crest (${benchElevation} RL)`, line: true },
   ];
 
   let mChipX = bX + (isFr ? 120 : 110);
@@ -1694,11 +1840,11 @@ export function renderBenchMapGraphic(blast: Blast, flyrockRadiusM = 300, lang =
   ctx.textAlign = 'left';
   ctx.fillText(isFr ? 'DONNÉES DU GRADIN' : 'BENCH GEOMETRY', cardX + 20, cardY + 30);
 
-  const vol = (blast.parameters.burden || 2.4) * (blast.parameters.spacing || 2.8) * (blast.parameters.benchHeight || 6.0) * (blast.parameters.numberOfHoles || 30);
-  const ton = vol * (blast.rockMass.density || 2.65);
+  const vol = opts.blastedVolumeM3 ?? ((blast.parameters.burden || 2.4) * (blast.parameters.spacing || 2.8) * (blast.parameters.benchHeight || 6.0) * nHoles);
+  const ton = opts.totalTonnageTonnes ?? (vol * (blast.rockMass?.density || 2.76));
 
   const data = [
-    [isFr ? 'Gradin de fosse :' : 'Bench Elevation:', `${blast.benchElevation || 1240} RL`],
+    [isFr ? 'Gradin de fosse :' : 'Bench Elevation:', `${benchElevation} RL`],
     [isFr ? 'Volume abattu :' : 'Blasted Volume:', `${Math.round(vol).toLocaleString()} m³`],
     [isFr ? 'Tonnage total :' : 'Total Tonnage:', `${Math.round(ton).toLocaleString()} tonnes`],
     [isFr ? 'Rayon évacuation :' : 'Evacuation Clearance:', `${flyrockRadiusM} m`],

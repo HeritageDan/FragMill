@@ -141,9 +141,12 @@ export const Drone3DSizingView: React.FC<Drone3DSizingViewProps> = ({ blast, pro
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">
                 UAV LiDAR / RTK
               </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                {isFrench ? 'DONNÉES DE DÉMO' : 'DEMO DATA'}
+              </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              {surveyData.name} • {surveyData.metadata.crs} • GSD: {surveyData.metadata.gsdMmPerPx} mm/px
+              {surveyData.name} ({surveyData.totalVolumeM3.toLocaleString()} m³ {isFrench ? 'démo' : 'demo'} vs {Number(((blast.parameters.burden || 4) * (blast.parameters.spacing || 3) * (blast.parameters.benchHeight || 15) * (blast.parameters.numberOfHoles || 50)).toFixed(0))} m³ {isFrench ? 'tir nominal' : 'design blast'}) • GSD: {surveyData.metadata.gsdMmPerPx} mm/px
             </p>
           </div>
         </div>

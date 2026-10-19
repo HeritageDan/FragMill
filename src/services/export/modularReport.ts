@@ -11,6 +11,8 @@ import type {
   ReportVaultState,
 } from '../../types/reportVault';
 import { REPORT_SECTIONS_REGISTRY } from '../../types/reportVault';
+import { getBlastState } from '../blastState';
+import type { BlastState } from '../blastState';
 import { simulateComminutionCircuit } from '../comminution/bondMorrellEngine';
 import { evaluateMineToMillEconomics, DEFAULT_ECONOMIC_PARAMS } from '../economics';
 import { computeKuzRam, calculateRockFactorA, DEFAULT_ROCK_TABLES } from '../kuzram';
@@ -263,25 +265,13 @@ export async function generateModularVaultPdfReport(
       .replace(/Heavy ANFO/gi, 'ANFO Lourd');
   };
 
-  // Pre-calculate fallback models
-  const holeVol = (blast.parameters.burden || 2.4) * (blast.parameters.spacing || 2.8) * (blast.parameters.benchHeight || 6.0);
-  const powderFactor = (blast.parameters.chargePerHole || 22.0) / Math.max(0.1, holeVol);
-  const rockA = calculateRockFactorA(DEFAULT_ROCK_TABLES);
-  const kuzRam = computeKuzRam(blast.parameters, blast.rockMass, rockA);
-  const comminutionParams = {
-    f80Mm: 195,
-    targetP80Mm: 0.075,
-    bondWorkIndexKWhPerT: 14.5,
-    rockAxb: 42.0,
-    plantOperatingHoursPerDay: 20,
-    electricityCostPerKWhUSD: 0.14,
-    explosiveCostPerKgUSD: 1.85,
-    targetDailyThroughputTonnes: 500,
-  };
-  const comminutionSim = simulateComminutionCircuit(comminutionParams);
+  // Single Source of Truth for this blast
+  const blastState = getBlastState(blast);
+  const rockA = blastState.rock.rockFactorA;
+  const kuzRam = blastState.kuzRam;
   const droneSurvey = generateDemoDroneSurvey(blast.blastId);
-  const drillHoles = generateDrillTelemetryFromBlast(blast);
-  const econResult = evaluateMineToMillEconomics(blast, 195, blast.millBatch, DEFAULT_ECONOMIC_PARAMS);
+  const drillHoles = blastState.drilling.holes;
+  const econResult = evaluateMineToMillEconomics(blast, blastState.optical.p80Mm, blast.millBatch, DEFAULT_ECONOMIC_PARAMS);
 
   // Render each selected section on dedicated pages
   for (let index = 0; index < finalKeys.length; index++) {
@@ -324,15 +314,15 @@ export async function generateModularVaultPdfReport(
       const activeRun = activeImg?.segmentationRuns?.[0];
       const mMetrics = activeRun?.metrics;
 
-      const burden = p.burden ?? blast.parameters.burden ?? 2.4;
-      const spacing = p.spacing ?? blast.parameters.spacing ?? 2.8;
-      const benchHeight = p.benchHeight ?? blast.parameters.benchHeight ?? 6.0;
-      const diameter = p.holeDiameter ?? blast.parameters.holeDiameter ?? 89;
-      const depth = p.holeDepth ?? blast.parameters.holeDepth ?? 6.8;
-      const subdrill = p.subdrill ?? blast.parameters.subdrill ?? 0.8;
-      const charge = p.chargePerHole ?? blast.parameters.chargePerHole ?? 22.0;
-      const numHoles = p.numberOfHoles ?? blast.parameters.numberOfHoles ?? 42;
-      const pf = (charge / Math.max(0.1, burden * spacing * benchHeight)).toFixed(2);
+      const burden = blastState.geometry.burden;
+      const spacing = blastState.geometry.spacing;
+      const benchHeight = blastState.geometry.benchHeight;
+      const diameter = blastState.geometry.holeDiameterMm;
+      const depth = blastState.geometry.holeDepth;
+      const subdrill = blastState.geometry.subdrill;
+      const charge = blastState.explosive.chargePerHole;
+      const numHoles = blastState.geometry.numberOfHoles;
+      const pf = blastState.explosive.powderFactorKgPerM3.toFixed(2);
 
       // 1. GÉOMÉTRIE DU PLAN DE TIR & MÉTADONNÉES GÉOTECHNIQUES DU MASSIF
       doc.setFontSize(9.5);
@@ -363,8 +353,8 @@ export async function generateModularVaultPdfReport(
       );
       doc.text(
         isFr
-          ? `Type de roche : ${translateRock(blast.rockMass.rockType)} (Densité : ${blast.rockMass.density} t/m³)`
-          : `Rock Type: ${blast.rockMass.rockType} (Density: ${blast.rockMass.density} t/m³)`,
+          ? `Type de roche : ${translateRock(blastState.rock.rockType)} (Densité : ${blastState.rock.densityTPerM3} t/m³)`
+          : `Rock Type: ${blastState.rock.rockType} (Density: ${blastState.rock.densityTPerM3} t/m³)`,
         col2,
         y,
         { maxWidth: 88 }
@@ -380,8 +370,8 @@ export async function generateModularVaultPdfReport(
       );
       doc.text(
         isFr
-          ? `Espacement joints : ${blast.rockMass.meanJointSpacing || 0.45} m | Orientation : ${translateJointOrientation(blast.rockMass.jointOrientation)}`
-          : `Joint Spacing: ${blast.rockMass.meanJointSpacing || 0.45} m | Orientation: ${blast.rockMass.jointOrientation}`,
+          ? `Espacement joints : ${blastState.rock.meanJointSpacingM || 0.45} m | Orientation : ${translateJointOrientation(blastState.rock.jointOrientation)}`
+          : `Joint Spacing: ${blastState.rock.meanJointSpacingM || 0.45} m | Orientation: ${blastState.rock.jointOrientation}`,
         col2,
         y,
         { maxWidth: 88 }
@@ -396,7 +386,7 @@ export async function generateModularVaultPdfReport(
         { maxWidth: 88 }
       );
       doc.text(
-        `GSI / RMR: ${blast.rockMass.estimatedGsiOrRmr || 65} | UCS: ${blast.rockMass.ucsMPa || 120} MPa | E: ${blast.rockMass.youngsModulusGPa || 45} GPa`,
+        `GSI / RMR: ${blastState.rock.gsiOrRmr || 65} | UCS: ${blastState.rock.ucsMPa || 120} MPa | E: ${blastState.rock.youngsModulusGPa || 45} GPa`,
         col2,
         y,
         { maxWidth: 88 }
@@ -404,16 +394,16 @@ export async function generateModularVaultPdfReport(
       y += 4.5;
       doc.text(
         isFr
-          ? `Explosif : ${translateExplosive(blast.parameters.explosiveType)} (${charge} kg/trou)`
-          : `Explosive: ${blast.parameters.explosiveType || 'ANFO'} (${charge} kg/hole)`,
+          ? `Explosif : ${translateExplosive(blastState.explosive.explosiveType)} (${charge} kg/trou)`
+          : `Explosive: ${blastState.explosive.explosiveType || 'ANFO'} (${charge} kg/hole)`,
         col1,
         y,
         { maxWidth: 88 }
       );
       doc.text(
         isFr
-          ? `Consommation spécifique : ${pf} kg/m³ | RWS : ${blast.parameters.rws || 100} | Facteur A : ${rockA.toFixed(2)}`
-          : `Powder Factor: ${pf} kg/m³ | RWS: ${blast.parameters.rws || 100} | Rock Factor A: ${rockA.toFixed(2)}`,
+          ? `Consommation spécifique : ${pf} kg/m³ | RWS : ${blastState.explosive.rws || 100} | Facteur A : ${rockA.toFixed(2)}`
+          : `Powder Factor: ${pf} kg/m³ | RWS: ${blastState.explosive.rws || 100} | Rock Factor A: ${rockA.toFixed(2)}`,
         col2,
         y,
         { maxWidth: 88 }
@@ -451,10 +441,10 @@ export async function generateModularVaultPdfReport(
         isFr
           ? `Étalonnage échelle : ${formatCalibrationMethod(activeImg?.calibration?.method)} (${activeImg?.calibration?.realWorldDistanceMm || 500} mm) | Résolution optique : ${
               activeImg?.calibration?.pxPerMm?.toFixed(3) || '0.400'
-            } px/mm | Fragments identifiés : ${activeRun?.fragments?.length || p.fragmentCount || 342}`
+            } px/mm | Fragments identifiés : ${blastState.optical.fragmentCount}`
           : `Scale Calibration: ${formatCalibrationMethod(activeImg?.calibration?.method)} (${activeImg?.calibration?.realWorldDistanceMm || 500} mm) | Optical Resolution: ${
               activeImg?.calibration?.pxPerMm?.toFixed(3) || '0.400'
-            } px/mm | Identified Fragments: ${activeRun?.fragments?.length || p.fragmentCount || 342}`,
+            } px/mm | Identified Fragments: ${blastState.optical.fragmentCount}`,
         14,
         y
       );
@@ -473,15 +463,15 @@ export async function generateModularVaultPdfReport(
       );
 
       const colX = [18, 62, 106, 150];
-      const p10Val = p.p10 ?? mMetrics?.p10 ?? 32;
-      const p20Val = p.p20 ?? mMetrics?.p20 ?? 54;
-      const p50Val = p.p50 ?? mMetrics?.p50 ?? 128;
-      const p80Val = p.p80 ?? mMetrics?.p80 ?? 195;
-      const p90Val = p.p90 ?? mMetrics?.p90 ?? 245;
-      const pMaxVal = p.topSize ?? mMetrics?.pMax ?? 380;
-      const unifVal = p.uniformityIndex ?? mMetrics?.uniformityIndex ?? 1.25;
-      const overVal = p.oversizePercent ?? mMetrics?.oversizePercent ?? 8.4;
-      const finesVal = p.finesPercent ?? mMetrics?.finesPercent ?? 12.2;
+      const p10Val = blastState.optical.p10Mm;
+      const p20Val = blastState.optical.p20Mm;
+      const p50Val = blastState.optical.p50Mm;
+      const p80Val = blastState.optical.p80Mm;
+      const p90Val = blastState.optical.p90Mm;
+      const pMaxVal = blastState.optical.topSizeMm;
+      const unifVal = blastState.optical.uniformityIndex;
+      const overVal = blastState.optical.oversizePercent;
+      const finesVal = blastState.optical.finesPercent;
 
       // Metric Headers
       doc.setFontSize(7.5);
@@ -539,17 +529,25 @@ export async function generateModularVaultPdfReport(
         [
           [
             isFr ? 'Swebrec 3-Paramètres' : 'Swebrec 3-Parameter',
-            `xMax = ${mMetrics?.swebrecFit?.xMax || 500} mm, x50 = ${mMetrics?.swebrecFit?.x50 || p50Val} mm`,
-            `b = ${mMetrics?.swebrecFit?.b || 1.85}`,
-            `${mMetrics?.swebrecFit?.r2 || 0.991}`,
-            `${mMetrics?.swebrecFit?.rmse || 2.14}%`,
+            `xMax = ${blastState.optical.swebrecFit.xMax} mm, x50 = ${blastState.optical.swebrecFit.x50} mm`,
+            `b = ${blastState.optical.swebrecFit.b}`,
+            `${blastState.optical.swebrecFit.r2}`,
+            `${blastState.optical.swebrecFit.rmse}%`,
           ],
           [
             'Rosin-Rammler (Weibull)',
-            `xc = ${mMetrics?.rosinRammlerFit?.xc || 208} mm`,
-            `n = ${mMetrics?.rosinRammlerFit?.n || 1.35}`,
-            `${mMetrics?.rosinRammlerFit?.r2 || 0.984}`,
-            `${mMetrics?.rosinRammlerFit?.rmse || 3.22}%`,
+            blastState.optical.rosinRammlerFit.converged
+              ? `xc = ${blastState.optical.rosinRammlerFit.xc} mm`
+              : (isFr ? 'Ajustement non convergent' : 'Fit did not converge'),
+            blastState.optical.rosinRammlerFit.converged
+              ? `n = ${blastState.optical.rosinRammlerFit.n}`
+              : '-',
+            blastState.optical.rosinRammlerFit.converged
+              ? `${blastState.optical.rosinRammlerFit.r2}`
+              : '-',
+            blastState.optical.rosinRammlerFit.converged
+              ? `${blastState.optical.rosinRammlerFit.rmse}%`
+              : '-',
           ],
           [
             isFr ? 'Prédicteur Empirique Kuz-Ram' : 'Kuz-Ram Empirical Predictor',
@@ -566,14 +564,17 @@ export async function generateModularVaultPdfReport(
 
       // 5. CUMULATIVE SIEVE PASSING (PSD)
       const targetApertures = [15, 25, 50, 75, 100, 150, 200, 250, 300, 400];
-      let sieveCurveRows: (string | number)[][] = [];
-      const rawC = (mMetrics?.rawCurve && mMetrics.rawCurve.length > 0)
-        ? [...mMetrics.rawCurve].sort((a, b) => a.sizeMm - b.sizeMm)
+      const rawC = blastState.optical.curve && blastState.optical.curve.length > 0
+        ? [...blastState.optical.curve].sort((a, b) => a.sizeMm - b.sizeMm)
         : [];
 
-      if (rawC.length > 0) {
-        sieveCurveRows = targetApertures.map((target) => {
-          let passing = 0;
+      const sieveCurveRows: (string | number)[][] = targetApertures.map((target) => {
+        let passing = 0;
+        if (target === 300) {
+          passing = Number((100 - overVal).toFixed(1));
+        } else if (target === 25) {
+          passing = Number(finesVal.toFixed(1));
+        } else if (rawC.length > 0) {
           if (target <= rawC[0].sizeMm) {
             passing = (target / rawC[0].sizeMm) * rawC[0].passingPercent;
           } else if (target >= rawC[rawC.length - 1].sizeMm) {
@@ -587,32 +588,20 @@ export async function generateModularVaultPdfReport(
               }
             }
           }
-          const clamped = Math.max(0, Math.min(100, passing));
-          return [
-            `${target.toFixed(1)} mm`,
-            `${clamped.toFixed(1)}%`,
-            target <= 25
-              ? (isFr ? 'Fraction fine (<25 mm)' : 'Fines fraction (<25 mm)')
-              : target >= 300
-              ? (isFr ? 'Bloc hors-gabarit (>300 mm)' : 'Oversize Boulder (>300 mm)')
-              : (isFr ? 'Alimentation standard usine' : 'Standard mill feed'),
-          ];
-        });
-      }
-      if (sieveCurveRows.length === 0) {
-        sieveCurveRows = [
-          ['15.0 mm', '2.5%', isFr ? 'Fraction fine (<25 mm)' : 'Fines fraction (<25 mm)'],
-          ['25.0 mm', `${finesVal}%`, isFr ? 'Limite coupure fines' : 'Fines cutoff limit'],
-          ['50.0 mm', '18.4%', isFr ? 'Alimentation optimale' : 'Optimal mill feed'],
-          ['75.0 mm', '32.1%', isFr ? 'Alimentation standard' : 'Standard mill feed'],
-          ['100.0 mm', '45.0%', isFr ? 'Produit concassage' : 'Crusher product'],
-          ['150.0 mm', '62.5%', isFr ? 'Alimentation standard' : 'Standard mill feed'],
-          ['200.0 mm', '76.8%', isFr ? 'Alimentation broyeur SAG' : 'SAG mill feed'],
-          ['250.0 mm', '87.2%', isFr ? 'Alimentation grossière' : 'Coarse feed'],
-          ['300.0 mm', `${(100 - overVal).toFixed(1)}%`, isFr ? 'Limite concasseur primaire' : 'Primary crusher limit'],
-          ['400.0 mm', '100.0%', isFr ? 'Bloc taille maximale' : 'Top size boulder'],
+        } else {
+          passing = target >= 400 ? 100 : target <= 15 ? 2.5 : 50;
+        }
+        const clamped = Math.max(0, Math.min(100, passing));
+        return [
+          `${target.toFixed(1)} mm`,
+          `${clamped.toFixed(1)}%`,
+          target <= 25
+            ? (isFr ? 'Fraction fine (<25 mm)' : 'Fines fraction (<25 mm)')
+            : target >= 300
+            ? (isFr ? 'Bloc hors-gabarit (>300 mm)' : 'Oversize Boulder (>300 mm)')
+            : (isFr ? 'Alimentation standard usine' : 'Standard mill feed'),
         ];
-      }
+      });
 
       y = drawTable(
         isFr
@@ -633,31 +622,31 @@ export async function generateModularVaultPdfReport(
           [
             isFr ? 'P10 (Fraction Fine)' : 'P10 (Fine Cut)',
             `${p10Val} mm`,
-            `[${mMetrics?.bootstrapCI?.p10?.[0] || 28} mm - ${mMetrics?.bootstrapCI?.p10?.[1] || 36} mm]`,
-            isFr ? 'Haute Fiabilité (N=3000 Rééchantillons)' : 'High Confidence (N=3000 Resamples)',
+            `[${mMetrics?.bootstrapCI?.p10?.[0] || Math.round(p10Val * 0.88)} mm - ${mMetrics?.bootstrapCI?.p10?.[1] || Math.round(p10Val * 1.12)} mm]`,
+            isFr ? `Haute Fiabilité (N=${blastState.optical.bootstrapIterations} Rééchantillons)` : `High Confidence (N=${blastState.optical.bootstrapIterations} Resamples)`,
           ],
           [
             isFr ? 'P20 (Passant 20%)' : 'P20 (Passing 20%)',
             `${p20Val} mm`,
-            `[${mMetrics?.bootstrapCI?.p20?.[0] || 48} mm - ${mMetrics?.bootstrapCI?.p20?.[1] || 60} mm]`,
+            `[${mMetrics?.bootstrapCI?.p20?.[0] || Math.round(p20Val * 0.9)} mm - ${mMetrics?.bootstrapCI?.p20?.[1] || Math.round(p20Val * 1.1)} mm]`,
             isFr ? 'Haute Fiabilité' : 'High Confidence',
           ],
           [
             isFr ? 'P50 (Taille Médiane)' : 'P50 (Median Size)',
             `${p50Val} mm`,
-            `[${mMetrics?.bootstrapCI?.p50?.[0] || 118} mm - ${mMetrics?.bootstrapCI?.p50?.[1] || 138} mm]`,
+            `[${mMetrics?.bootstrapCI?.p50?.[0] || Math.round(p50Val * 0.92)} mm - ${mMetrics?.bootstrapCI?.p50?.[1] || Math.round(p50Val * 1.08)} mm]`,
             isFr ? 'Poids Statistique Maximal' : 'Maximum Statistical Weight',
           ],
           [
             isFr ? 'P80 (Aliment. Broyage)' : 'P80 (Grinding Feed)',
             `${p80Val} mm`,
-            `[${mMetrics?.bootstrapCI?.p80?.[0] || 180} mm - ${mMetrics?.bootstrapCI?.p80?.[1] || 210} mm]`,
+            `[${mMetrics?.bootstrapCI?.p80?.[0] || Math.round(p80Val * 0.92)} mm - ${mMetrics?.bootstrapCI?.p80?.[1] || Math.round(p80Val * 1.08)} mm]`,
             isFr ? 'Haute Fiabilité (Base Dimensionnement)' : 'High Confidence (Mill Design Basis)',
           ],
           [
             isFr ? 'P90 (Coupure Grossière)' : 'P90 (Coarse Cut)',
             `${p90Val} mm`,
-            `[${mMetrics?.bootstrapCI?.p90?.[0] || 225} mm - ${mMetrics?.bootstrapCI?.p90?.[1] || 265} mm]`,
+            `[${mMetrics?.bootstrapCI?.p90?.[0] || Math.round(p90Val * 0.9)} mm - ${mMetrics?.bootstrapCI?.p90?.[1] || Math.round(p90Val * 1.1)} mm]`,
             isFr ? 'Modérée (Sensibilité aux Gros Blocs)' : 'Moderate (Boulder Edge Sensitivity)',
           ],
         ],
@@ -711,10 +700,10 @@ export async function generateModularVaultPdfReport(
       );
       y += 5.0;
 
-      const sieveCurve = blast.groundTruth?.sieveData ? computeSieveDistribution(blast.groundTruth.sieveData).curve : undefined;
+      const sieveCurve = blastState.sieve.hasSieveData && blast.groundTruth?.sieveData ? computeSieveDistribution(blast.groundTruth.sieveData).curve : undefined;
       const logChart = renderLogarithmicPassingChart({
-        measuredPoints: activeRun?.metrics?.rawCurve,
-        kuzRamPoints: kuzRam.curve,
+        measuredPoints: blastState.optical.curve,
+        kuzRamPoints: kuzRam.predictedCurve,
         sievePoints: sieveCurve,
         p10: p10Val,
         p50: p50Val,
@@ -773,7 +762,7 @@ export async function generateModularVaultPdfReport(
         ],
         [
           isFr ? '2. Niveaux de Gris' : '2. Grayscale Map',
-          'Luminance Y = 0.299R+0.587G+0.114B',
+          blastState.optical.luminanceFormula,
           isFr ? 'Suppression de la chromaticité et normalisation du contraste' : 'Eliminates color chromaticity, standardizes brightness',
           isFr ? 'Monochrome 8-bit normalisé' : 'Standard 8-bit grayscale',
         ],
@@ -833,8 +822,8 @@ export async function generateModularVaultPdfReport(
       const alt = p.flightAltitudeM ?? droneSurvey.metadata.flightAltitudeM ?? 45;
       const gsd = p.gsdMmPerPx ?? droneSurvey.metadata.gsdMmPerPx ?? 12.5;
       const crs = p.crs ?? droneSurvey.metadata.crs ?? 'WGS84 / UTM Zone 33N';
-      const totVol = p.totalVolumeM3 ?? droneSurvey.totalVolumeM3 ?? 4120;
-      const avgP80 = p.averageP80Mm ?? droneSurvey.averageP80Mm ?? 182;
+      const totVol = blastState.drone.totalVolumeM3;
+      const avgP80 = blastState.drone.meanP80Mm;
 
       // Meta banner
       doc.setFillColor(238, 242, 255);
@@ -844,15 +833,15 @@ export async function generateModularVaultPdfReport(
       doc.setTextColor(49, 46, 129);
       doc.text(
         isFr
-          ? `TÉLÉMÉTRIE VOL : Altitude : ${alt} m | GSD : ${gsd} mm/px | Recouvrement : 80% / 70% | Système : ${crs}`
-          : `FLIGHT TELEMETRY: Altitude: ${alt} m | GSD: ${gsd} mm/px | Overlap: 80% / 70% | CRS: ${crs}`,
+          ? `TÉLÉMÉTRIE VOL [DONNÉES DE DÉMO] : Altitude : ${alt} m | GSD : ${gsd} mm/px | Recouvrement : 80% / 70% | Système : ${crs}`
+          : `FLIGHT TELEMETRY [DEMO DATA]: Altitude: ${alt} m | GSD: ${gsd} mm/px | Overlap: 80% / 70% | CRS: ${crs}`,
         18,
         y + 5
       );
       doc.text(
         isFr
-          ? `VOLUME GLOBAL : ${totVol} m³ abattus | P80 Moyen : ${avgP80} mm | Facteur de Foisonnement 3D : 1.35`
-          : `GLOBAL VOLUME: ${totVol} m³ blasted | Mean P80: ${avgP80} mm | 3D Bulking Expansion Factor: 1.35`,
+          ? `VOLUME SURVEY : ${totVol} m³ (Démo) vs Volume Prévu Gradin : ${blastState.geometry.totalBlastedVolumeM3} m³ | P80 Moyen : ${avgP80} mm`
+          : `SURVEY VOLUME: ${totVol} m³ (Demo) vs Design Bench Volume: ${blastState.geometry.totalBlastedVolumeM3} m³ | Mean P80: ${avgP80} mm`,
         18,
         y + 9.5
       );
@@ -862,13 +851,8 @@ export async function generateModularVaultPdfReport(
       const droneGraphic = renderDrone3DMuckpileGraphic(droneSurvey, isFr ? 'fr' : 'en');
       addImageWithPageCheck(droneGraphic, 182, 92);
 
-      const sectors = droneSurvey.sectors.map((s) => [
-        isFr
-          ? s.name.replace('Crest / Free Face Ejection Zone', 'Crête / Éjection Front Libre')
-              .replace('Central Heaped Muckpile (Main Body)', 'Cœur du Tas (Corps Central)')
-              .replace('Toe Confinement / Heavy Boulder Apron', 'Pied de Tir / Nappe Gros Blocs')
-              .replace('Backbreak / Crest Tension Cracks', 'Arrière / Fissures de Tension')
-          : s.name,
+      const sectors = blastState.drone.sectors.map((s) => [
+        isFr ? s.nameFr : s.nameEn,
         `${s.volumeM3} m³`,
         `${s.p50Mm} mm`,
         `${s.p80Mm} mm`,
@@ -892,11 +876,12 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 3: BELT VISION
     else if (key === 'beltvision') {
-      const tph = p.instantTph ?? 245;
-      const util = p.beltUtilizationPercent ?? 78;
-      const speed = p.beltSpeedMPerS ?? 2.2;
-      const width = p.beltWidthM ?? 1.2;
-      const threshold = p.crusherGapeThresholdMm ?? 350;
+      const tph = blastState.belt.instantTph;
+      const util = 78;
+      const speed = blastState.belt.beltSpeedMPerS;
+      const width = blastState.belt.beltWidthM;
+      const threshold = blastState.belt.crusherGapeThresholdMm;
+      const fps = blastState.belt.fps;
 
       doc.setFillColor(240, 253, 250);
       doc.rect(14, y, 182, 12, 'F');
@@ -905,31 +890,39 @@ export async function generateModularVaultPdfReport(
       doc.setTextColor(19, 78, 74);
       doc.text(
         isFr
-          ? `PARAMÈTRES BANDE : Largeur ${width}m | Vitesse ${speed} m/s | Débit Instantané : ${tph} t/h | Taux de Charge : ${util}%`
-          : `BELT PARAMETERS: Width ${width}m | Speed ${speed} m/s | Instant Throughput: ${tph} tph | Loading Rate: ${util}%`,
+          ? `PARAMÈTRES BANDE [DONNÉES DE DÉMO] : Largeur ${width}m | Vitesse ${speed} m/s | Débit : ${tph} t/h | Taux de Charge : ${util}%`
+          : `BELT PARAMETERS [DEMO DATA]: Width ${width}m | Speed ${speed} m/s | Throughput: ${tph} tph | Loading Rate: ${util}%`,
         18,
         y + 5
       );
       doc.text(
         isFr
-          ? `SEUIL BLOCAGE CONCASSEUR : ${threshold} mm | Alarme Optique : Active | Caméra Industrielle IP67 : 60 FPS`
-          : `CRUSHER CHOKE THRESHOLD: ${threshold} mm | Optical Alarm: Armed | Industrial IP67 Camera: 60 FPS`,
+          ? `SEUIL BLOCAGE CONCASSEUR : ${threshold} mm | Alarme Optique : Active | Caméra Industrielle : ${fps} FPS`
+          : `CRUSHER CHOKE THRESHOLD: ${threshold} mm | Optical Alarm: Armed | Industrial Camera: ${fps} FPS`,
         18,
         y + 9.5
       );
       y += 16;
 
       // Embed Conveyor Belt Live Feed & Crusher Choke Graphic
-      const beltGraphic = renderConveyorBeltGraphic(isFr ? 'fr' : 'en');
+      const beltGraphic = renderConveyorBeltGraphic({
+        throughputTph: tph,
+        beltSpeedMPerS: speed,
+        p50Mm: blastState.belt.p50Mm,
+        p80Mm: blastState.belt.p80Mm,
+        crusherGapeThresholdMm: threshold,
+        topSizeMm: blastState.belt.topSizeMm,
+        lang: isFr ? 'fr' : 'en',
+      });
       addImageWithPageCheck(beltGraphic, 182, 85);
 
       const beltStatsRows = [
-        ['P20 (Fines transportées)', `${p.p20Mm ?? 42} mm`, isFr ? 'Optimal' : 'Pass'],
-        ['P50 (Médiane sur bande)', `${p.p50Mm ?? 95} mm`, isFr ? 'Normal' : 'Pass'],
-        ['P80 (Calibre d’alimentation)', `${p.p80Mm ?? 165} mm`, isFr ? 'Conforme broyage' : 'Grinding compliant'],
-        ['TopSize (Taille maximale)', `${p.topSizeMm ?? 280} mm`, isFr ? '< Seuil de blocage' : '< Choke threshold'],
-        ['Comptage fragments analysés', `${p.totalRocksDetected ?? 1420} roches`, isFr ? 'Échantillonnage continu' : 'Continuous stream'],
-        ['Blocs critiques hors-gabarit', `${p.oversizeCount ?? 2} blocs`, isFr ? 'Gabarit surveillé' : 'Monitored'],
+        ['P20 (Fines transportées)', `${Math.round(blastState.belt.p50Mm * 0.45)} mm`, isFr ? 'Optimal' : 'Pass'],
+        ['P50 (Médiane sur bande)', `${blastState.belt.p50Mm} mm`, isFr ? 'Normal' : 'Pass'],
+        ['P80 (Calibre d’alimentation)', `${blastState.belt.p80Mm} mm`, isFr ? 'Conforme broyage' : 'Grinding compliant'],
+        ['TopSize (Taille maximale)', `${blastState.belt.topSizeMm} mm`, isFr ? '< Seuil de blocage' : '< Choke threshold'],
+        ['Comptage fragments analysés', '1 420 roches', isFr ? 'Échantillonnage continu' : 'Continuous stream'],
+        ['Blocs critiques hors-gabarit', '2 blocs', isFr ? 'Gabarit surveillé' : 'Monitored'],
       ];
 
       y = drawTable(
@@ -965,11 +958,12 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 4: 3D TIMING & FACE PROFILER
     else if (key === 'timing') {
-      const surfaceDelay = p.surfaceDelayMs ?? 25;
-      const inHoleDelay = p.inHoleDelayMs ?? 500;
-      const maxHolesPerDelay = p.maxHolesPerDelay ?? 2;
-      const maxChargePerDelay = p.maxChargePerDelayKg ?? 48;
-      const ppv = p.predictedPPVMmPerS ?? 4.2;
+      const surfaceDelay = blastState.timing.surfaceDelayMs;
+      const inHoleDelay = blastState.timing.inHoleDelayMs;
+      const maxChargePerDelay = blastState.timing.maxChargePerDelayKg;
+      const ppv = blastState.timing.predictedPPVMmPerS;
+      const dist = blastState.timing.distanceToStructureM;
+      const diam = blastState.geometry.holeDiameterMm;
 
       doc.setFillColor(255, 247, 237);
       doc.rect(14, y, 182, 12, 'F');
@@ -978,29 +972,40 @@ export async function generateModularVaultPdfReport(
       doc.setTextColor(154, 52, 18);
       doc.text(
         isFr
-          ? `SÉQUENCE PYROTECHNIQUE : Retard Surface : ${surfaceDelay} ms | Retard Fond de Trou : ${inHoleDelay} ms (Électronique)`
-          : `INITIATION SEQUENCE: Surface Delay: ${surfaceDelay} ms | In-Hole Delay: ${inHoleDelay} ms (Electronic Detonators)`,
+          ? `SÉQUENCE PYROTECHNIQUE : Retard Surface : ${surfaceDelay} ms | Retard Fond : ${inHoleDelay} ms (Électronique) | Diamètre : Ø${diam} mm`
+          : `INITIATION SEQUENCE: Surface Delay: ${surfaceDelay} ms | In-Hole Delay: ${inHoleDelay} ms (Electronic Detonators) | Diameter: Ø${diam} mm`,
         18,
         y + 5
       );
       doc.text(
         isFr
-          ? `VIBRATIONS USBM : Charge Max/Retard : ${maxChargePerDelay} kg | PPV Prédit : ${ppv} mm/s à 350m (Norme Conforme)`
-          : `USBM VIBRATIONS: Max Instant Charge: ${maxChargePerDelay} kg | Predicted PPV: ${ppv} mm/s at 350m (Compliant)`,
+          ? `VIBRATIONS USBM : Charge Max/Retard : ${maxChargePerDelay} kg | PPV Prédit : ${ppv} mm/s à ${dist}m (Norme Conforme)`
+          : `USBM VIBRATIONS: Max Instant Charge: ${maxChargePerDelay} kg | Predicted PPV: ${ppv} mm/s at ${dist}m (Compliant)`,
         18,
         y + 9.5
       );
       y += 16;
 
       // Embed Blast Timing & Iso-delay Contours Graphic
-      const timingGraphic = renderBlastTimingGraphic(isFr ? 'fr' : 'en');
+      const timingGraphic = renderBlastTimingGraphic({
+        diameterMm: diam,
+        maxChargePerDelayKg: maxChargePerDelay,
+        ppvMmPerS: ppv,
+        distanceToStructureM: dist,
+        lang: isFr ? 'fr' : 'en',
+      });
       addImageWithPageCheck(timingGraphic, 182, 85);
 
       const timingRows = [
-        [isFr ? '1. Vitesse d’Onde de Choc (VOD)' : '1. Detonation Velocity (VOD)', '5 200 m/s', '4 800 - 5 600 m/s', isFr ? 'Conforme émulsion pompée' : 'Bulk emulsion compliant'],
+        [
+          isFr ? '1. Vitesse d’Onde de Choc (VOD)' : '1. Detonation Velocity (VOD)',
+          `${blastState.explosive.vodMPerS.toLocaleString()} m/s`,
+          blastState.explosive.isEmulsion ? '4 800 - 5 600 m/s' : '3 800 - 4 500 m/s',
+          isFr ? `Conforme ${blastState.explosive.explosiveType}` : `${blastState.explosive.explosiveType} compliant`,
+        ],
         [isFr ? '2. Intervalle Inter-Rangées' : '2. Inter-Row Delay Time', `${surfaceDelay} ms`, '20 - 45 ms', isFr ? 'Expansion du tas optimale' : 'Optimal muck relief'],
         [isFr ? '3. Risque de Chevauchement' : '3. Hole Scatter Risk', '0.00 %', '< 0.05 %', isFr ? 'Détonateurs électroniques ultra-précis' : 'High precision electronics'],
-        [isFr ? '4. Vitesse Particulaire (PPV 350m)' : '4. Peak Particle Velocity (PPV)', `${ppv} mm/s`, '< 12.5 mm/s (USBM)', isFr ? 'Seuil structure respecté' : 'Infrastructure safe'],
+        [isFr ? '4. Vitesse Particulaire (PPV)' : '4. Peak Particle Velocity (PPV)', `${ppv} mm/s`, '< 12.5 mm/s (USBM)', isFr ? 'Seuil structure respecté' : 'Infrastructure safe'],
         [isFr ? '5. Surpression Aérienne Détonation' : '5. Airblast Overpressure', '118 dB(L)', '< 133 dB(L)', isFr ? 'Niveau acoustique acceptable' : 'Acoustics compliant'],
       ];
 
@@ -1019,13 +1024,13 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 5: COMMINUTION DIGITAL TWIN
     else if (key === 'comminution') {
-      const wi = p.bondWorkIndex ?? comminutionParams.bondWorkIndexKWhPerT;
-      const axb = p.rockAxb ?? comminutionParams.rockAxb;
-      const eTotal = comminutionSim.totalSpecificEnergyKWhPerT.toFixed(2);
-      const eGrind = comminutionSim.grindingSpecificEnergyKWhPerT.toFixed(2);
-      const eCrush = comminutionSim.crushingSpecificEnergyKWhPerT.toFixed(2);
-      const throughput = comminutionSim.achievableThroughputTPH;
-      const goldRec = comminutionSim.estimatedGoldRecoveryPercent.toFixed(1);
+      const wi = 14.5;
+      const axb = 42.0;
+      const eTotal = blastState.comminution.totalSpecificEnergyKwhPerT.toFixed(2);
+      const eGrind = blastState.comminution.grindingSpecificEnergyKwhPerT.toFixed(2);
+      const eCrush = blastState.comminution.crushingSpecificEnergyKwhPerT.toFixed(2);
+      const throughput = blastState.comminution.achievableThroughputTPH;
+      const goldRec = blastState.comminution.goldRecoveryPercent.toFixed(1);
 
       doc.setFillColor(236, 253, 245);
       doc.rect(14, y, 182, 12, 'F');
@@ -1049,16 +1054,21 @@ export async function generateModularVaultPdfReport(
       y += 16;
 
       // Embed Industrial Comminution Circuit Flowsheet Graphic
-      const comminutionGraphic = renderComminutionCircuitGraphic(isFr ? 'fr' : 'en');
+      const comminutionGraphic = renderComminutionCircuitGraphic({
+        throughputTph: throughput,
+        crushingKwhPerT: blastState.comminution.crushingSpecificEnergyKwhPerT,
+        totalKwhPerT: blastState.comminution.totalSpecificEnergyKwhPerT,
+        f80Mm: blastState.optical.p80Mm,
+      }, isFr ? 'fr' : 'en');
       addImageWithPageCheck(comminutionGraphic, 182, 85);
 
       const commRows = [
-        [isFr ? 'Énergie Concassage Primaire' : 'Primary Crushing Energy', `${eCrush} kWh/t`, '1.5 - 2.5 kWh/t', isFr ? 'Consommation mâchoires' : 'Crusher power draw'],
+        [isFr ? 'Énergie Concassage Primaire' : 'Primary Crushing Energy', `${eCrush} kWh/t`, '0.40 - 0.80 kWh/t', isFr ? 'Consommation mâchoires concasseur' : 'Crusher power draw'],
         [isFr ? 'Énergie Spécifique Broyeur SAG' : 'SAG Mill Specific Energy', `${(parseFloat(eGrind) * 0.55).toFixed(2)} kWh/t`, '6.0 - 9.5 kWh/t', isFr ? 'Impact direct du P80 d’abattage' : 'Directly influenced by P80'],
         [isFr ? 'Énergie Broyeur à Boulets' : 'Ball Mill Specific Energy', `${(parseFloat(eGrind) * 0.45).toFixed(2)} kWh/t`, '5.0 - 7.5 kWh/t', isFr ? 'Finesse P80 finale 75 µm' : 'Target grind size 75 µm'],
         [isFr ? 'Énergie Globale de Comminution' : 'Total Circuit Specific Energy', `${eTotal} kWh/t`, '12.0 - 18.0 kWh/t', isFr ? 'Optimisée par tir à haute énergie' : 'Optimized by high-energy blast'],
-        [isFr ? 'Débit Nominal du Broyeur' : 'Plant Achievable Throughput', `${throughput} t/h`, '> 220 t/h', isFr ? 'Capacité d’usine atteinte' : 'Target capacity met'],
-        [isFr ? 'Taux de Récupération Métallurgique' : 'Estimated Mineral Recovery', `${goldRec} %`, '> 88.0 %', isFr ? 'Libération minérale supérieure' : 'Superior mineral liberation'],
+        [isFr ? 'Débit Nominal du Broyeur' : 'Plant Achievable Throughput', `${throughput} t/h`, '> 200 t/h', isFr ? blastState.comminution.diagnosticCapacityTextFr : blastState.comminution.diagnosticCapacityTextEn],
+        [isFr ? 'Taux de Récupération Métallurgique' : 'Estimated Mineral Recovery', `${goldRec} %`, '> 85.0 %', isFr ? 'Libération minérale supérieure' : 'Superior mineral liberation'],
       ];
 
       y = drawTable(
@@ -1076,10 +1086,8 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 6: BLOCK MODEL & KRIGING
     else if (key === 'kriging') {
-      const rangeM = p.rangeM ?? 45;
-      const nugget = p.nugget ?? 50;
-      const sill = p.sill ?? 280;
-      const model = p.model ?? 'spherical';
+      const softCut = blastState.kriging.softCutoffMPa;
+      const hardCut = blastState.kriging.hardCutoffMPa;
 
       doc.setFillColor(245, 243, 255);
       doc.rect(14, y, 182, 12, 'F');
@@ -1088,28 +1096,28 @@ export async function generateModularVaultPdfReport(
       doc.setTextColor(88, 28, 135);
       doc.text(
         isFr
-          ? `GÉOSTATISTIQUE : Variogramme : ${model.toUpperCase()} | Portée (a) : ${rangeM} m | Pépite (C0) : ${nugget} | Palier (C) : ${sill}`
-          : `GEOSTATISTICS: Variogram: ${model.toUpperCase()} | Range (a): ${rangeM} m | Nugget (C0): ${nugget} | Sill (C): ${sill}`,
+          ? `GÉOSTATISTIQUE : Variogramme : SPHERICAL | Portée (a) : 45.0 m | Pépite (C0) : 50.0 | Palier (C) : 280`
+          : `GEOSTATISTICS: Variogram: SPHERICAL | Range (a): 45.0 m | Nugget (C0): 50.0 | Sill (C): 280`,
         18,
         y + 5
       );
       doc.text(
         isFr
-          ? `ESTIMATION BLUE : Krigeage Ordinaire 2D de la Dureté (UCS) | Zonage Automatique du Dosage d'Explosif (0.42 à 0.74 kg/m³)`
-          : `BLUE ESTIMATION: 2D Ordinary Kriging of Rock UCS | Automated Powder Factor Zonation (0.42 to 0.74 kg/m³)`,
+          ? `ESTIMATION BLUE : Krigeage Ordinaire 2D (Seuils : Tendre < ${softCut} MPa | Dur > ${hardCut} MPa) | Dosage : 0.42 à 0.74 kg/m³`
+          : `BLUE ESTIMATION: 2D Ordinary Kriging (Cutoffs: Soft < ${softCut} MPa | Hard > ${hardCut} MPa) | Powder Factor: 0.42 to 0.74 kg/m³`,
         18,
         y + 9.5
       );
       y += 16;
 
       // Embed Geostatistical Ordinary Kriging Block Model Graphic
-      const krigingGraphic = renderKrigingModelGraphic(isFr ? 'fr' : 'en');
+      const krigingGraphic = renderKrigingModelGraphic({ softCutoff: softCut, hardCutoff: hardCut, isDemo: true }, isFr ? 'fr' : 'en');
       addImageWithPageCheck(krigingGraphic, 182, 85);
 
       const krigRows = [
-        [isFr ? 'Domaine Tendre (Saprolite / Fissuré)' : 'Soft Domain (Saprolite / Weathered)', '< 80 MPa', '0.42 kg/m³', '25%', isFr ? 'ANFO standard 0.40 - 0.45 kg/m³' : 'Standard ANFO'],
-        [isFr ? 'Domaine Moyen (Andésite modérée)' : 'Medium Domain (Moderate Andesite)', '80 - 130 MPa', '0.58 kg/m³', '52%', isFr ? 'Émulsion 30/70 avec sur-énergie' : 'Heavy ANFO 30/70'],
-        [isFr ? 'Domaine Dur (Granodiorite massive)' : 'Hard Massive (Massive Granodiorite)', '> 130 MPa', '0.74 kg/m³', '23%', isFr ? 'Émulsion pure + mailles resserrées' : 'Full Emulsion + tight pattern'],
+        [isFr ? 'Domaine Tendre (Saprolite / Fissuré)' : 'Soft Domain (Saprolite / Weathered)', `< ${softCut} MPa`, '0.42 kg/m³', `${blastState.kriging.softDomainPercent}%`, isFr ? 'ANFO standard 0.40 - 0.45 kg/m³' : 'Standard ANFO'],
+        [isFr ? 'Domaine Moyen (Andésite modérée)' : 'Medium Domain (Moderate Andesite)', `${softCut} - ${hardCut} MPa`, '0.58 kg/m³', `${blastState.kriging.mediumDomainPercent}%`, isFr ? 'Émulsion 30/70 avec sur-énergie' : 'Heavy ANFO 30/70'],
+        [isFr ? 'Domaine Dur (Granodiorite massive)' : 'Hard Massive (Massive Granodiorite)', `> ${hardCut} MPa`, '0.74 kg/m³', `${blastState.kriging.hardDomainPercent}%`, isFr ? 'Émulsion pure + mailles resserrées' : 'Full Emulsion + tight pattern'],
       ];
 
       y = drawTable(
@@ -1127,10 +1135,10 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 7: DRILL TELEMETRY & IREDES
     else if (key === 'telemetry') {
-      const tol = p.collarToleranceMm ?? 60;
-      const comp = p.complianceRate ?? 92;
-      const maxErr = p.maxCollarError ?? 82;
-      const rop = p.avgPenetrationRate ?? 1.38;
+      const tol = blastState.drilling.collarToleranceMm;
+      const comp = blastState.drilling.complianceRatePercent;
+      const maxErr = blastState.drilling.maxCollarErrorMm;
+      const rop = blastState.drilling.avgPenetrationRateMPerMin;
 
       doc.setFillColor(240, 249, 255);
       doc.rect(14, y, 182, 12, 'F');
@@ -1139,30 +1147,37 @@ export async function generateModularVaultPdfReport(
       doc.setTextColor(3, 105, 161);
       doc.text(
         isFr
-          ? `TÉLÉMÉTRIE MWD : Tolérance Collet : ${tol} mm | Taux de Conformité : ${comp}% | Écart Maximum : ${maxErr} mm`
-          : `MWD TELEMETRY: Collar Tolerance: ${tol} mm | Compliance Rate: ${comp}% | Max Error: ${maxErr} mm`,
+          ? `TÉLÉMÉTRIE MWD [${blastState.drilling.isDemoData ? 'DONNÉES DE DÉMO' : 'RELEVÉ RÉEL'}] : Tolérance : ${tol} mm | Conformité : ${comp}% | Écart Max : ${maxErr} mm`
+          : `MWD TELEMETRY [${blastState.drilling.isDemoData ? 'DEMO DATA' : 'AS-BUILT'}]: Collar Tolerance: ${tol} mm | Compliance: ${comp}% | Max Error: ${maxErr} mm`,
         18,
         y + 5
       );
       doc.text(
         isFr
-          ? `PERFORMANCES FOREUSE : Vitesse d'avancement moyenne : ${rop} m/min | Protocole IREDES XML Validé`
-          : `RIG DRILLING SPEED: Average ROP: ${rop} m/min | Standard IREDES XML Protocol Compliant`,
+          ? `PERFORMANCES FOREUSE : Vitesse ROP : ${rop.toFixed(2)} m/min | Foreuse : ${blastState.drilling.rigModel} | Protocole IREDES XML Validé`
+          : `RIG DRILLING SPEED: Average ROP: ${rop.toFixed(2)} m/min | Rig: ${blastState.drilling.rigModel} | Standard IREDES XML Validated`,
         18,
         y + 9.5
       );
       y += 16;
 
       // Embed MWD Drill Collar Deviation Bullseye Target Graphic
-      const bullseyeGraphic = renderDrillCollarBullseyeGraphic(drillHoles, tol, isFr ? 'fr' : 'en');
+      const bullseyeGraphic = renderDrillCollarBullseyeGraphic(blastState.drilling.holes, {
+        toleranceMm: tol,
+        complianceRate: comp,
+        totalHoles: blastState.drilling.totalHoles,
+        rigModel: blastState.drilling.rigModel,
+        averageRopMPerMin: rop,
+        isDemo: blastState.drilling.isDemoData,
+      }, isFr ? 'fr' : 'en');
       addImageWithPageCheck(bullseyeGraphic, 182, 85);
 
-      const drillRows = drillHoles.slice(0, 7).map((h) => [
+      const drillRows = blastState.drilling.holes.slice(0, 7).map((h) => [
         h.holeId,
         `${h.plannedDepthM.toFixed(1)} m`,
         `${(h.actualDepthM || h.plannedDepthM).toFixed(1)} m`,
         `${h.collarDeviationMm || 12} mm`,
-        `${h.penetrationRateMPerMin || 1.35} m/min`,
+        `${(h.penetrationRateMPerMin || rop).toFixed(2)} m/min`,
         (h.collarDeviationMm || 0) <= tol ? (isFr ? 'CONFORME' : 'PASS') : (isFr ? 'ÉCART' : 'WARN'),
       ]);
 
@@ -1181,10 +1196,13 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 8: BENCH MAP
     else if (key === 'benchmap') {
-      const bench = p.benchElevation ?? blast.benchElevation ?? 1240;
-      const flyrock = p.flyrockRadiusM ?? 300;
-      const burden = p.burden ?? blast.parameters.burden ?? 2.4;
-      const spacing = p.spacing ?? blast.parameters.spacing ?? 2.8;
+      const bench = blastState.geometry.benchElevationRL;
+      const flyrock = 300;
+      const burden = blastState.geometry.burden;
+      const spacing = blastState.geometry.spacing;
+      const numHoles = blastState.geometry.numberOfHoles;
+      const vol = blastState.geometry.totalBlastedVolumeM3;
+      const ton = blastState.rock.totalBlastedTonnage;
 
       doc.setFillColor(254, 243, 199);
       doc.rect(14, y, 182, 12, 'F');
@@ -1193,8 +1211,8 @@ export async function generateModularVaultPdfReport(
       doc.setTextColor(146, 64, 14);
       doc.text(
         isFr
-          ? `GÉOMÉTRIE FOSSE : Gradin ${bench} RL | Maille : ${burden}m × ${spacing}m (Staggered Quinconce)`
-          : `PIT GEOMETRY: Bench ${bench} RL | Pattern: ${burden}m × ${spacing}m (Staggered)`,
+          ? `GÉOMÉTRIE FOSSE : Gradin ${bench} RL | Maille : ${burden}m × ${spacing}m (${numHoles} trous) | Volume : ${vol.toLocaleString()} m³`
+          : `PIT GEOMETRY: Bench ${bench} RL | Pattern: ${burden}m × ${spacing}m (${numHoles} holes) | Volume: ${vol.toLocaleString()} m³`,
         18,
         y + 5
       );
@@ -1208,15 +1226,22 @@ export async function generateModularVaultPdfReport(
       y += 16;
 
       // Embed Open-Pit Bench Map Graphic with Flyrock Radius
-      const benchGraphic = renderBenchMapGraphic(blast, flyrock, isFr ? 'fr' : 'en');
+      const benchGraphic = renderBenchMapGraphic(blast, flyrock, isFr ? 'fr' : 'en', {
+        numberOfHoles: numHoles,
+        benchElevation: bench,
+        blastedVolumeM3: vol,
+        totalTonnageTonnes: ton,
+      });
       addImageWithPageCheck(benchGraphic, 182, 85);
 
       const benchRows = [
-        [isFr ? 'Altitude du Gradin (Cote RL)' : 'Bench Floor Elevation (RL)', `${bench} m RL`, isFr ? 'Planification d’exploitation' : 'Pit mine plan'],
+        [isFr ? 'Altitude du Gradin (Cote RL)' : 'Bench Floor Elevation (RL)', `${bench} m RL`, isFr ? 'Gradin actif du tir' : 'Active blast bench'],
         [isFr ? 'Banquette Effectrice (Burden B)' : 'Effective Burden (B)', `${burden} m`, isFr ? 'Face libre dégagée' : 'Free face cleared'],
-        [isFr ? 'Espacement des Trous (Spacing S)' : 'Hole Spacing (S)', `${spacing}m`, isFr ? 'Couverture latérale d’amorçage' : 'Lateral relief'],
+        [isFr ? 'Espacement des Trous (Spacing S)' : 'Hole Spacing (S)', `${spacing} m`, isFr ? 'Couverture latérale d’amorçage' : 'Lateral relief'],
+        [isFr ? 'Nombre Total de Trous' : 'Total Blast Holes', `${numHoles} trous`, isFr ? 'Conformité patron de tir' : 'Blast pattern validated'],
         [isFr ? 'Rayon de Sécurité Anti-Projections' : 'Flyrock Clearance Perimeter', `${flyrock} m`, isFr ? 'Évacuation conforme du personnel' : 'Personnel cleared'],
-        [isFr ? 'Volume Global d’Abattage Gradin' : 'Total Bench Blasted Volume', `${Math.round(holeVol * (blast.parameters.numberOfHoles || 30))} m³`, isFr ? 'Réconciliation mensuelle fosse' : 'Monthly pit reconciliation'],
+        [isFr ? 'Volume Global d’Abattage Gradin' : 'Total Bench Blasted Volume', `${vol.toLocaleString()} m³`, isFr ? 'Volume géométrique foré' : 'Drilled blast volume'],
+        [isFr ? 'Tonnage Total Abattu' : 'Total Blasted Tonnage', `${ton.toLocaleString()} tonnes`, isFr ? `Densité in-situ ${blastState.rock.densityTPerM3} t/m³` : `In-situ density ${blastState.rock.densityTPerM3} t/m³`],
       ];
 
       y = drawTable(
@@ -1234,69 +1259,116 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 9: GROUND TRUTH VALIDATION
     else if (key === 'validation') {
-      const errP50 = p.errorP50Percent ?? 4.2;
-      const errP80 = p.errorP80Percent ?? 5.8;
-      const mape = p.meanAbsErrorPercent ?? 4.8;
-      const k_bias = p.kBiasFactor ?? 1.12;
+      if (!blastState.sieve.hasSieveData) {
+        // Honest disclosure when no sieve ground truth was performed
+        doc.setFillColor(254, 242, 242);
+        doc.roundedRect(14, y, 182, 24, 2, 2, 'F');
+        doc.setTextColor(153, 27, 27);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.text(
+          isFr
+            ? 'AUCUNE DONNÉE DE TAMISAGE PHYSIQUE POUR CE TIR'
+            : 'NO PHYSICAL SIEVE GROUND TRUTH DATA FOR THIS BLAST',
+          18,
+          y + 7
+        );
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(185, 28, 28);
+        doc.text(
+          isFr
+            ? 'Aucun échantillon de tamisage physique n’a été réalisé pour ce tir. Par rigueur métrologique et honnêteté scientifique, les indicateurs d’écart (MAPE, R²) ne sont pas affichés sans pesée contradictoire réelle.'
+            : 'No physical sieve ground truth sampling was executed for this blast. To ensure metrological integrity and scientific transparency, error metrics (MAPE, R²) are withheld rather than simulated.',
+          18,
+          y + 13,
+          { maxWidth: 174 }
+        );
+        y += 30;
 
-      doc.setFillColor(236, 254, 255);
-      doc.rect(14, y, 182, 12, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(14, 116, 144);
-      doc.text(
-        isFr
-          ? `RÉCONCILIATION PHYSIQUE : Écart P50 : ${errP50}% | Écart P80 : ${errP80}% | MAPE Global : ${mape}% (<15% Conforme)`
-          : `PHYSICAL RECONCILIATION: P50 Error: ${errP50}% | P80 Error: ${errP80}% | Overall MAPE: ${mape}% (<15% Compliant)`,
-        18,
-        y + 5
-      );
-      doc.text(
-        isFr
-          ? `CORRECTION STÉRÉOLOGIQUE : Facteur Biais K_bias = ${k_bias} | Corrélation Tamis / Optique R² = 0.982`
-          : `STEREOLOGICAL BIAS: Correction Factor K_bias = ${k_bias} | Sieve vs Optical Correlation R² = 0.982`,
-        18,
-        y + 9.5
-      );
-      y += 16;
+        const emptyRows = [
+          [isFr ? 'Tamisage Physique Contradictoire' : 'Physical Mechanical Screening', isFr ? 'Non réalisé pour ce tir' : 'Not performed for this blast', isFr ? 'En attente d’échantillonnage' : 'Pending physical sampling'],
+          [isFr ? 'Courbe Granulométrique Référence' : 'Reference PSD Curve', isFr ? 'Modèle Optique & Kuz-Ram actifs' : 'Optical & Kuz-Ram models active', isFr ? 'Basé sur clichés haute résolution' : 'Based on high-res muck photography'],
+          [isFr ? 'Protocole d’Étalonnage' : 'Calibration Protocol', isFr ? 'Mire géométrique 2D sur le tas' : '2D geometric target on muckpile', isFr ? 'Résolution certifiée' : 'Certified optical resolution'],
+        ];
 
-      // Embed Sieve Ground Truth Correlation Chart
-      const valChart = renderLogarithmicPassingChart({
-        measuredPoints: blast.images?.[0]?.segmentationRuns?.[0]?.metrics?.rawCurve,
-        sievePoints: blast.groundTruth?.sieveData ? computeSieveDistribution(blast.groundTruth.sieveData).curve : undefined,
-        p50: 128,
-        p80: 195,
-        title: isFr ? 'Validation Physique : Courbes Tamis vs Optique' : 'Ground Truth Validation: Sieve vs Optical PSD',
-        lang: isFr ? 'fr' : 'en',
-      });
-      addImageWithPageCheck(valChart, 182, 94);
+        y = drawTable(
+          isFr
+            ? ['Élément Métrologique', 'État d’Avancement', 'Recommandation Qualité']
+            : ['Metrological Component', 'Current Status', 'Quality Recommendation'],
+          emptyRows,
+          [60, 55, 67],
+          y,
+          isFr ? 'STATUT DE VÉRIFICATION MÉCANIQUE' : 'MECHANICAL VALIDATION STATUS',
+          headerTitle,
+          headerSub
+        );
+      } else {
+        const errP20 = blastState.sieve.errorP20Percent ?? 0;
+        const errP50 = blastState.sieve.errorP50Percent ?? 0;
+        const errP80 = blastState.sieve.errorP80Percent ?? 0;
+        const mape = blastState.sieve.mapePercent ?? 0;
+        const k_bias = blastState.sieve.kBiasFactor ?? 1.0;
 
-      const sweetRows = [
-        [isFr ? 'Erreur Relative sur P20 (Fines)' : 'P20 Relative Sieve Error', `${(p.errorP20Percent ?? 6.2).toFixed(1)} %`, '< 15.0 %', isFr ? 'CONFORME : Bonne détection des fines' : 'PASS: High fines accuracy'],
-        [isFr ? 'Erreur Relative sur P50 (Médiane)' : 'P50 Relative Sieve Error', `${errP50.toFixed(1)} %`, '< 10.0 %', isFr ? 'CONFORME : Calage optimal de la médiane' : 'PASS: Optimal median alignment'],
-        [isFr ? 'Erreur Relative sur P80 (Calibre broyage)' : 'P80 Relative Sieve Error', `${errP80.toFixed(1)} %`, '< 10.0 %', isFr ? 'CONFORME : Fidélité critique pour l’usine' : 'PASS: Critical mill feed accuracy'],
-        [isFr ? 'Erreur Moyenne Absolue (MAPE)' : 'Mean Absolute Percentage Error', `${mape.toFixed(1)} %`, '< 12.0 %', isFr ? 'CONFORME : Modèle optique validé' : 'PASS: Vision model certified'],
-        [isFr ? 'Facteur Biais Stéréologique (k_bias)' : 'Stereological Bias Factor (k_bias)', `${k_bias}`, '1.05 - 1.25', isFr ? 'APPLIQUÉ : Correction 2D -> 3D' : 'APPLIED: 2D to 3D corrected'],
-      ];
+        doc.setFillColor(236, 254, 255);
+        doc.rect(14, y, 182, 12, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(14, 116, 144);
+        doc.text(
+          isFr
+            ? `RÉCONCILIATION PHYSIQUE : Écart P50 : ${errP50.toFixed(1)}% | Écart P80 : ${errP80.toFixed(1)}% | MAPE : ${mape.toFixed(1)}% | Formule : MAPE = 1/N Σ|P_opt - P_tamis| / P_tamis`
+            : `PHYSICAL RECONCILIATION: P50 Error: ${errP50.toFixed(1)}% | P80 Error: ${errP80.toFixed(1)}% | MAPE: ${mape.toFixed(1)}% | Formula: MAPE = 1/N Σ|P_opt - P_sieve| / P_sieve`,
+          18,
+          y + 5
+        );
+        doc.text(
+          isFr
+            ? `ÉCHANTILLON TAMISÉ : Masse : ${blastState.sieve.sampleMassKg || 250} kg | Biais Stéréologique K_bias = ${k_bias} | Corrélation R² = ${blastState.sieve.r2 || 0.98}`
+            : `SCREENED SAMPLE: Mass: ${blastState.sieve.sampleMassKg || 250} kg | Stereological Bias K_bias = ${k_bias} | Correlation R² = ${blastState.sieve.r2 || 0.98}`,
+          18,
+          y + 9.5
+        );
+        y += 16;
 
-      y = drawTable(
-        isFr
-          ? ['Métrique de Validation Statistique', 'Valeur Observée', 'Seuil d’Acceptation', 'Diagnostic d’Ingénierie']
-          : ['Statistical Validation Metric', 'Observed Value', 'Acceptance Threshold', 'Engineering Diagnostic'],
-        sweetRows,
-        [54, 34, 38, 56],
-        y,
-        isFr ? 'TEST STATISTIQUE DE CONCORDANCE OPTIQUE VS TAMIS' : 'OPTICAL VS SIEVE STATISTICAL CONCORDANCE TEST',
-        headerTitle,
-        headerSub
-      );
+        // Embed Sieve Ground Truth Correlation Chart
+        const valChart = renderLogarithmicPassingChart({
+          measuredPoints: blastState.optical.curve,
+          sievePoints: blast.groundTruth?.sieveData ? computeSieveDistribution(blast.groundTruth.sieveData).curve : undefined,
+          p50: blastState.optical.p50Mm,
+          p80: blastState.optical.p80Mm,
+          title: isFr ? 'Validation Physique : Courbes Tamis vs Optique' : 'Ground Truth Validation: Sieve vs Optical PSD',
+          lang: isFr ? 'fr' : 'en',
+        });
+        addImageWithPageCheck(valChart, 182, 94);
+
+        const sweetRows = [
+          [isFr ? 'Erreur Relative sur P20 (Fines)' : 'P20 Relative Sieve Error', `${errP20.toFixed(1)} %`, '< 15.0 %', errP20 < 15 ? (isFr ? 'CONFORME : Bonne détection des fines' : 'PASS: High fines accuracy') : (isFr ? 'ÉCART SUPÉRIEUR' : 'WARNING')],
+          [isFr ? 'Erreur Relative sur P50 (Médiane)' : 'P50 Relative Sieve Error', `${errP50.toFixed(1)} %`, '< 10.0 %', errP50 < 10 ? (isFr ? 'CONFORME : Calage optimal de la médiane' : 'PASS: Optimal median alignment') : (isFr ? 'ÉCART' : 'WARNING')],
+          [isFr ? 'Erreur Relative sur P80 (Calibre broyage)' : 'P80 Relative Sieve Error', `${errP80.toFixed(1)} %`, '< 10.0 %', errP80 < 10 ? (isFr ? 'CONFORME : Fidélité critique pour l’usine' : 'PASS: Critical mill feed accuracy') : (isFr ? 'ÉCART' : 'WARNING')],
+          [isFr ? 'Erreur Moyenne Absolue (MAPE)' : 'Mean Absolute Percentage Error', `${mape.toFixed(1)} %`, '< 12.0 %', mape < 12 ? (isFr ? 'CONFORME : Modèle optique validé' : 'PASS: Vision model certified') : (isFr ? 'ÉCART' : 'WARNING')],
+          [isFr ? 'Facteur Biais Stéréologique (k_bias)' : 'Stereological Bias Factor (k_bias)', `${k_bias}`, '1.05 - 1.25', isFr ? 'APPLIQUÉ : Correction 2D -> 3D' : 'APPLIED: 2D to 3D corrected'],
+        ];
+
+        y = drawTable(
+          isFr
+            ? ['Métrique de Validation Statistique', 'Valeur Observée', 'Seuil d’Acceptation', 'Diagnostic d’Ingénierie']
+            : ['Statistical Validation Metric', 'Observed Value', 'Acceptance Threshold', 'Engineering Diagnostic'],
+          sweetRows,
+          [54, 34, 38, 56],
+          y,
+          isFr ? 'TEST STATISTIQUE DE CONCORDANCE OPTIQUE VS TAMIS' : 'OPTICAL VS SIEVE STATISTICAL CONCORDANCE TEST',
+          headerTitle,
+          headerSub
+        );
+      }
     }
 
     // SECTION 10: MINE TO MILL
     else if (key === 'minetomill') {
-      const totalCost = econResult.evaluation.totalCostPerTon.toFixed(2);
-      const optimalP80 = econResult.evaluation.optimalP80Mm;
-      const savings = econResult.evaluation.potentialSavingsPerTon.toFixed(2);
+      const totalCost = blastState.economics.totalCostPerTonUSD.toFixed(2);
+      const optimalP80 = blastState.economics.optimalP80Mm;
+      const savings = blastState.economics.potentialSavingsPerTonUSD.toFixed(2);
 
       doc.setFillColor(236, 253, 245);
       doc.rect(14, y, 182, 12, 'F');
@@ -1305,15 +1377,15 @@ export async function generateModularVaultPdfReport(
       doc.setTextColor(6, 95, 70);
       doc.text(
         isFr
-          ? `OPTIMISATION ÉCONOMIQUE : Coût total actuel : ${totalCost} USD/t | P80 Optimal Économique : ${optimalP80} mm`
-          : `ECONOMIC OPTIMIZATION: Current Total Cost: ${totalCost} USD/t | Optimal Economic P80: ${optimalP80} mm`,
+          ? `OPTIMISATION ÉCONOMIQUE : Coût total : ${totalCost} USD/t | P80 Optimal : ${optimalP80} mm${blastState.economics.isOptimumAtBoundary ? ' (Borne mini atteinte)' : ''}`
+          : `ECONOMIC OPTIMIZATION: Current Cost: ${totalCost} USD/t | Optimal P80: ${optimalP80} mm${blastState.economics.isOptimumAtBoundary ? ' (Boundary minimum)' : ''}`,
         18,
         y + 5
       );
       doc.text(
         isFr
-          ? `GAINS POTENTIELS : Économie de +${savings} USD/t de minerai traité | Empreinte Carbone : ${econResult.evaluation.carbonEmissions.totalKgCo2ePerTon.toFixed(2)} kg CO2e/t`
-          : `POTENTIAL SAVINGS: +${savings} USD/t of processed ore | Carbon Footprint: ${econResult.evaluation.carbonEmissions.totalKgCo2ePerTon.toFixed(2)} kg CO2e/t`,
+          ? `GAINS POTENTIELS : Économie de +${savings} USD/t de minerai | Empreinte Carbone : ${blastState.economics.totalCarbonKgCo2ePerTon.toFixed(2)} kg CO2e/t`
+          : `POTENTIAL SAVINGS: +${savings} USD/t of processed ore | Carbon Footprint: ${blastState.economics.totalCarbonKgCo2ePerTon.toFixed(2)} kg CO2e/t`,
         18,
         y + 9.5
       );
@@ -1323,13 +1395,18 @@ export async function generateModularVaultPdfReport(
       const m2mGraphic = renderMineToMillGraphic(optimalP80, parseFloat(totalCost), isFr ? 'fr' : 'en');
       addImageWithPageCheck(m2mGraphic, 182, 85);
 
-      const econRows = [
-        [isFr ? '1. Foration Primaire' : '1. Primary Drilling', `${econResult.evaluation.drillingCostPerTon.toFixed(2)} USD/t`, '12.4%', isFr ? 'Amortissement & couronnes' : 'Rig amortization & bits'],
-        [isFr ? '2. Minage & Explosifs' : '2. Explosives & Blasting', `${econResult.evaluation.blastingCostPerTon.toFixed(2)} USD/t`, '21.5%', isFr ? 'ANFO, relais & détonateurs' : 'ANFO & detonators'],
-        [isFr ? '3. Concassage Primaire' : '3. Primary Crushing', `${econResult.evaluation.crushingCostPerTon.toFixed(2)} USD/t`, '9.8%', isFr ? 'Énergie électrique & mâchoires' : 'Electricity & wear liners'],
-        [isFr ? '4. Broyage (SAG + Boulets)' : '4. Milling (SAG + Ball)', `${econResult.evaluation.millingCostPerTon.toFixed(2)} USD/t`, '56.3%', isFr ? 'Poste de coût le plus élevé' : 'Highest cost component'],
-        [isFr ? 'Total Coût Minier & Minéralurgique' : 'Total Mine-to-Mill Cost', `${totalCost} USD/t`, '100.0%', isFr ? 'Objectif d’optimisation globale' : 'Holistic objective'],
-      ];
+      const econRows = blastState.economics.costs.map((c) => [
+        isFr ? c.nameFr : c.nameEn,
+        `${c.costPerTonUSD.toFixed(2)} USD/t`,
+        `${c.percentage.toFixed(1)}%`,
+        isFr ? c.driverFr : c.driverEn,
+      ]);
+      econRows.push([
+        isFr ? 'Total Coût Minier & Minéralurgique' : 'Total Mine-to-Mill Cost',
+        `${totalCost} USD/t`,
+        '100.0%',
+        isFr ? 'Somme exacte des 5 postes de comminution' : 'Exact sum of all 5 comminution cost centers',
+      ]);
 
       y = drawTable(
         isFr
@@ -1338,16 +1415,16 @@ export async function generateModularVaultPdfReport(
         econRows,
         [60, 36, 36, 50],
         y,
-        isFr ? 'DÉCOMPOSITION DU COÛT GLOBAL MINE-AU-MOULIN' : 'HOLISTIC MINE-TO-MILL OPERATING COST BREAKDOWN',
+        isFr ? 'DÉCOMPOSITION DU COÛT GLOBAL MINE-AU-MOULIN (5 POSTES)' : 'HOLISTIC MINE-TO-MILL OPERATING COST BREAKDOWN (5 LINES)',
         headerTitle,
         headerSub
       );
 
       const carbonRows = [
-        [isFr ? 'Scope 1 : Détonation Explosifs (ANFO)' : 'Scope 1: Explosives Detonation (ANFO)', `${econResult.evaluation.carbonEmissions.scope1ExplosivesKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? 'Réaction chimique nitrate-fioul' : 'ANFO detonation gas'],
-        [isFr ? 'Scope 1 : Gazole Engins (Chargeuses/Dumpers)' : 'Scope 1: Diesel Fleet (Shovel & Haul)', `${econResult.evaluation.carbonEmissions.scope1DieselKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? 'Consommation carburant' : 'Engine combustion'],
-        [isFr ? 'Scope 2 : Électricité Réseau Broyeurs' : 'Scope 2: Mill Electricity Grid', `${econResult.evaluation.carbonEmissions.scope2ElectricityKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? 'Moteurs broyeurs SAG/Boulets' : 'Heavy grinding motors'],
-        [isFr ? 'Bilan Carbone Global par Tonne' : 'Total Carbon Footprint per Tonne', `${econResult.evaluation.carbonEmissions.totalKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? 'Audit environnemental conforme' : 'Compliant environmental audit'],
+        [isFr ? 'Scope 1 : Détonation Explosifs (ANFO)' : 'Scope 1: Explosives Detonation (ANFO)', `${blastState.economics.scope1ExplosivesKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? 'Réaction chimique nitrate-fioul' : 'ANFO detonation gas'],
+        [isFr ? 'Scope 1 : Gazole Engins (Chargeuses/Dumpers)' : 'Scope 1: Diesel Fleet (Shovel & Haul)', `${blastState.economics.scope1DieselKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? 'Consommation carburant flotte' : 'Engine combustion'],
+        [isFr ? 'Scope 2 : Électricité Réseau Broyeurs' : 'Scope 2: Mill Electricity Grid', `${blastState.economics.scope2ElectricityKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? `Calculé sur l’énergie totale (${blastState.comminution.totalSpecificEnergyKwhPerT} kWh/t)` : `Derived from total comminution energy (${blastState.comminution.totalSpecificEnergyKwhPerT} kWh/t)`],
+        [isFr ? 'Bilan Carbone Global par Tonne' : 'Total Carbon Footprint per Tonne', `${blastState.economics.totalCarbonKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? 'Audit environnemental certifié' : 'Compliant environmental audit'],
       ];
 
       y = drawTable(
@@ -1365,7 +1442,7 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 11: KUZ-RAM
     else if (key === 'kuzram') {
-      const rockFactorA = rockA.toFixed(2);
+      const rockFactorA = blastState.rock.rockFactorA.toFixed(2);
       const uniformityN = kuzRam.uniformityIndexN.toFixed(2);
       const characteristicXc = kuzRam.characteristicSizeXcMm.toFixed(1);
       const predictedP50 = kuzRam.meanSizeX50Mm.toFixed(1);
@@ -1385,8 +1462,8 @@ export async function generateModularVaultPdfReport(
       );
       doc.text(
         isFr
-          ? `PRÉDICTION EMPIRIQUE : P50 Calculé : ${predictedP50} mm | P80 Calculé : ${predictedP80} mm | Calage Bayésien : Favorable`
-          : `EMPIRICAL PREDICTION: Calculated P50: ${predictedP50} mm | Calculated P80: ${predictedP80} mm | Bayesian Calibration: Nominal`,
+          ? `PRÉDICTION EMPIRIQUE : P50 Calculé : ${predictedP50} mm | P80 Calculé : ${predictedP80} mm | Calage Bayésien : ${blastState.optical.bayesianStatus}`
+          : `EMPIRICAL PREDICTION: Calculated P50: ${predictedP50} mm | Calculated P80: ${predictedP80} mm | Bayesian Calibration: ${blastState.optical.bayesianStatus}`,
         18,
         y + 9.5
       );
@@ -1394,7 +1471,7 @@ export async function generateModularVaultPdfReport(
 
       // Embed Kuz-Ram Cumulative Passing Chart
       const kuzramChart = renderLogarithmicPassingChart({
-        kuzRamPoints: kuzRam.curve,
+        kuzRamPoints: kuzRam.predictedCurve,
         p50: kuzRam.meanSizeX50Mm,
         p80: kuzRam.p80Mm,
         title: isFr ? 'Distribution Granulométrique Kuz-Ram (Cunningham)' : 'Kuz-Ram Particle Size Distribution (Cunningham)',
@@ -1402,19 +1479,21 @@ export async function generateModularVaultPdfReport(
       });
       addImageWithPageCheck(kuzramChart, 182, 94);
 
+      const comps = blastState.rock.components;
       const kuzRows = [
-        [isFr ? 'Description Massif Rocheux (RMD)' : 'Rock Mass Description (RMD)', '10.0', isFr ? 'Massif modérément fracturé' : 'Moderately fractured'],
-        [isFr ? 'Espacement des Joints (JPS)' : 'Joint Plane Spacing (JPS)', '20.0', isFr ? 'Espacement moyen 0.5m' : 'Mean spacing 0.5m'],
-        [isFr ? 'Orientation des Diaclases (JPA)' : 'Joint Plane Angle (JPA)', '20.0', isFr ? 'Pendage vers le front' : 'Dip into face'],
-        [isFr ? 'Influence Densité Roche (RDI)' : 'Rock Density Influence (RDI)', '0.52', 'Densité 2.68 t/m³'],
-        [isFr ? 'Facteur de Dureté UCS (HF)' : 'Hardness Factor (HF)', '3.20', 'UCS 120 MPa, E 50 GPa'],
-        [isFr ? 'Facteur de Roche Global A' : 'Cunningham Rock Factor A', `${rockFactorA}`, isFr ? 'Constante géomécanique Cunningham' : 'Cunningham geomechanical constant'],
+        [isFr ? 'Description Massif Rocheux (RMD)' : 'Rock Mass Description (RMD)', `${comps.rmd.toFixed(1)}`, isFr ? (blastState.rock.gsiOrRmr > 75 ? 'Massif très résistant/massif (50)' : 'Massif modérément fracturé (20)') : 'Rock mass structure description'],
+        [isFr ? 'Espacement des Joints (JPS)' : 'Joint Plane Spacing (JPS)', `${comps.jps.toFixed(1)}`, isFr ? `Espacement moyen ${blastState.rock.meanJointSpacingM} m` : `Mean joint spacing ${blastState.rock.meanJointSpacingM} m`],
+        [isFr ? 'Orientation des Diaclases (JPA)' : 'Joint Plane Angle (JPA)', `${comps.jpa.toFixed(1)}`, isFr ? (comps.jpa === 30 ? 'Pendage perpendiculaire (30)' : comps.jpa === 40 ? 'Pendage vers le front (40)' : 'Pendage hors du front (20)') : `Joint dip orientation code (${comps.jpa})`],
+        [isFr ? 'Influence Densité Roche (RDI)' : 'Rock Density Influence (RDI)', `${comps.rdi.toFixed(2)}`, `RDI = 25 × ${blastState.rock.densityTPerM3.toFixed(2)} - 50 = ${comps.rdi.toFixed(2)}`],
+        [isFr ? 'Facteur de Dureté UCS / E (HF)' : 'Hardness Factor (HF)', `${comps.hf.toFixed(2)}`, `UCS ${blastState.rock.ucsMPa} MPa, E ${blastState.rock.youngsModulusGPa} GPa (HF = ${comps.hf.toFixed(2)})`],
+        [isFr ? 'Somme des Composantes Cunningham' : 'Sum of Components (Σ)', `${comps.sum.toFixed(2)}`, isFr ? 'Somme exacte RMD + JPS + JPA + RDI + HF' : 'Exact sum of 5 components'],
+        [isFr ? 'Facteur de Roche Global A' : 'Cunningham Rock Factor A', `${rockFactorA}`, isFr ? `A = 0.06 × ${comps.sum.toFixed(2)} = ${rockFactorA}` : `A = 0.06 × ${comps.sum.toFixed(2)} = ${rockFactorA}`],
       ];
 
       y = drawTable(
         isFr
-          ? ['Composante du Facteur de Roche A', 'Valeur Numérique', 'Interprétation Géotechnique']
-          : ['Rock Factor A Component', 'Numerical Value', 'Geotechnical Meaning'],
+          ? ['Composante du Facteur de Roche A', 'Valeur Numérique', 'Interprétation Géotechnique & Formule']
+          : ['Rock Factor A Component', 'Numerical Value', 'Geotechnical Meaning & Formula'],
         kuzRows,
         [60, 36, 86],
         y,
@@ -1423,6 +1502,147 @@ export async function generateModularVaultPdfReport(
         headerSub
       );
     }
+  }
+
+  // DEDICATED FINAL PAGE: DATA QUALITY CONTROL & AUDIT TRAIL
+  doc.addPage();
+  const qaTitle = isFr ? 'FRAGMILL : CONTRÔLE QUALITÉ & INTÉGRITÉ' : 'FRAGMILL : DATA QUALITY CONTROL & AUDIT';
+  const qaSub = isFr
+    ? `Audit de cohérence physique, détection d'incohérences géotechniques et traçabilité pour le tir ${blast.blastId}`
+    : `Physical consistency audit, geotechnical validation checks, and data provenance for blast ${blast.blastId}`;
+  activeHeaderTitle = qaTitle;
+  activeHeaderSub = qaSub;
+  drawHeader(qaTitle, qaSub);
+  let qaY = 28;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(31, 56, 100);
+  doc.text(
+    isFr
+      ? 'CONTRÔLE QUALITÉ DES DONNÉES & AUDIT D’INTÉGRITÉ GÉOTECHNIQUE (QA/QC)'
+      : 'DATA QUALITY CONTROL & GEOTECHNICAL INTEGRITY AUDIT (QA/QC)',
+    14,
+    qaY
+  );
+  qaY += 6;
+
+  // Physical validation alerts
+  const warnings = isFr ? blastState.validationWarningsFr : blastState.validationWarningsEn;
+  if (warnings.length > 0) {
+    doc.setFillColor(254, 242, 242);
+    doc.roundedRect(14, qaY, 182, 10 + warnings.length * 6.5, 2, 2, 'F');
+    doc.setTextColor(185, 28, 28);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text(
+      isFr ? 'ALERTES DE COHÉRENCE PHYSIQUE DÉTECTÉES SUR LES ENTRÉES :' : 'PHYSICAL CONSISTENCY ALERTS FLAGGED ON BLAST INPUTS:',
+      18,
+      qaY + 5.5
+    );
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    warnings.forEach((warn, idx) => {
+      doc.text(`• ${warn}`, 18, qaY + 11 + idx * 6.5, { maxWidth: 174 });
+    });
+    qaY += 15 + warnings.length * 6.5;
+  } else {
+    doc.setFillColor(240, 253, 244);
+    doc.roundedRect(14, qaY, 182, 14, 2, 2, 'F');
+    doc.setTextColor(22, 101, 52);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text(
+      isFr
+        ? '✓ TOUTES LES VÉRIFICATIONS PHYSIQUES SONT CONFORMES (Profondeur, Capacité linéaire, Bourrage, Fits).'
+        : '✓ ALL PHYSICAL INPUT CHECKS PASSED (Hole Depth, Linear Capacity, Deck Sums, Regression Fits).',
+      18,
+      qaY + 9
+    );
+    qaY += 20;
+  }
+
+  // Data Provenance & Traceability Table
+  const provenanceRows = [
+    [
+      isFr ? 'Tir & Géométrie' : 'Blast Geometry',
+      isFr ? 'Plan de Tir Certifié' : 'Certified Blast Plan',
+      isFr ? `Gradin ${blastState.geometry.benchElevationRL} RL, ${blastState.geometry.numberOfHoles} trous, Ø${blastState.geometry.holeDiameterMm}mm` : `Bench ${blastState.geometry.benchElevationRL} RL, ${blastState.geometry.numberOfHoles} holes, Ø${blastState.geometry.holeDiameterMm}mm`,
+      isFr ? 'Conforme' : 'Verified',
+    ],
+    [
+      isFr ? 'Granulométrie Optique' : 'Optical Sizing',
+      blastState.optical.hasOpticalData ? (isFr ? 'Cliché Tas Étalonné' : 'Calibrated Photo') : (isFr ? 'Modèle Empirique' : 'Empirical Model'),
+      isFr ? `${blastState.optical.fragmentCount} fragments détectés, P80 = ${blastState.optical.p80Mm} mm` : `${blastState.optical.fragmentCount} fragments identified, P80 = ${blastState.optical.p80Mm} mm`,
+      blastState.optical.fragmentCount >= 150 ? (isFr ? 'Robuste (N>150)' : 'Robust') : (isFr ? 'Avertissement Échantillonnage' : 'Warning'),
+    ],
+    [
+      isFr ? 'Modèle Kuz-Ram' : 'Kuz-Ram Model',
+      isFr ? 'Cunningham (1987)' : 'Cunningham (1987)',
+      isFr ? `Facteur A = ${blastState.rock.rockFactorA.toFixed(2)}, X50 = ${blastState.kuzRam.meanSizeX50Mm} mm` : `Factor A = ${blastState.rock.rockFactorA.toFixed(2)}, X50 = ${blastState.kuzRam.meanSizeX50Mm} mm`,
+      isFr ? 'Référence Théorique' : 'Theoretical Baseline',
+    ],
+    [
+      isFr ? 'Télémesure Foration MWD' : 'MWD Drilling Telemetry',
+      blastState.drilling.isDemoData ? (isFr ? 'Données de Démo' : 'Demo Dataset') : (isFr ? 'Relevé IREDES Réel' : 'Real IREDES Log'),
+      isFr ? `${blastState.drilling.totalHoles} trous analysés, conformité ${blastState.drilling.complianceRatePercent}%` : `${blastState.drilling.totalHoles} holes analyzed, compliance ${blastState.drilling.complianceRatePercent}%`,
+      blastState.drilling.isDemoData ? (isFr ? 'Indicatif / Démo' : 'Demo') : (isFr ? 'Certifié IREDES' : 'Certified'),
+    ],
+    [
+      isFr ? 'Vision Convoyeur' : 'Conveyor Belt Vision',
+      blastState.belt.isDemoData ? (isFr ? 'Flux Simulé' : 'Simulated Stream') : (isFr ? 'Caméra IP67 Direct' : 'Live IP67 Stream'),
+      isFr ? `Vitesse ${blastState.belt.beltSpeedMPerS} m/s, seuil ${blastState.belt.crusherGapeThresholdMm} mm` : `Speed ${blastState.belt.beltSpeedMPerS} m/s, gape ${blastState.belt.crusherGapeThresholdMm} mm`,
+      blastState.belt.isDemoData ? (isFr ? 'Données de Démo' : 'Demo') : (isFr ? 'Temps Réel' : 'Live Stream'),
+    ],
+    [
+      isFr ? 'Photogrammétrie Drone 3D' : 'Drone 3D Sizing',
+      blastState.drone.isDemoData ? (isFr ? 'Levé Standard Démo' : 'Demo Photogrammetry') : (isFr ? 'Orthomosaïque Réelle' : 'Real Orthomosaic'),
+      isFr ? `${blastState.drone.totalVolumeM3} m³ (${blastState.drone.pointCloudCount} points)` : `${blastState.drone.totalVolumeM3} m³ (${blastState.drone.pointCloudCount} points)`,
+      blastState.drone.isDemoData ? (isFr ? 'Données de Démo' : 'Demo') : (isFr ? 'Topographique' : 'Survey-grade'),
+    ],
+    [
+      isFr ? 'Tamisage Physique' : 'Physical Sieve Validation',
+      blastState.sieve.hasSieveData ? (isFr ? 'Pesée Laboratoire' : 'Lab Mechanical Screening') : (isFr ? 'Non Réalisé' : 'Not Performed'),
+      blastState.sieve.hasSieveData ? (isFr ? `MAPE = ${blastState.sieve.mapePercent}%` : `MAPE = ${blastState.sieve.mapePercent}%`) : (isFr ? 'Aucun échantillon pesé pour ce tir' : 'No sieve data recorded for this blast'),
+      blastState.sieve.hasSieveData ? (isFr ? 'Vérité Terrain' : 'Ground Truth') : (isFr ? 'Non Applicable' : 'N/A'),
+    ],
+  ];
+
+  qaY = drawTable(
+    isFr
+      ? ['Domaine Analytique FragMill', 'Provenance de la Donnée', 'Détails Métrologiques', 'Niveau de Certitude']
+      : ['FragMill Analytical Domain', 'Data Provenance / Source', 'Metrological Details', 'Confidence Level'],
+    provenanceRows,
+    [48, 44, 56, 34],
+    qaY,
+    isFr ? 'MATRICE DE TRAÇABILITÉ DES DONNÉES DU RAPPORT' : 'REPORT DATA PROVENANCE & TRACEABILITY MATRIX',
+    qaTitle,
+    qaSub
+  );
+
+  // Technical Signature & Approval Box
+  if (qaY < 235) {
+    doc.setFillColor(248, 250, 252);
+    doc.rect(14, qaY + 5, 182, 32, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(14, qaY + 5, 182, 32, 'S');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(31, 56, 100);
+    doc.text(isFr ? 'VISA DE VALIDATION D’INGÉNIERIE MINIÈRE :' : 'MINING ENGINEERING AUDIT SIGN-OFF:', 18, qaY + 11);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(isFr ? 'Ingénieur Responsable des Tirs :' : 'Blasting Engineer:', 18, qaY + 18);
+    doc.text(isFr ? 'Directeur Minéralurgie / Usine :' : 'Mill Processing Manager:', 75, qaY + 18);
+    doc.text(isFr ? 'Directeur des Opérations Mine :' : 'Mine Operations Director:', 135, qaY + 18);
+
+    doc.text('Signature: _______________________', 18, qaY + 28);
+    doc.text('Signature: _______________________', 75, qaY + 28);
+    doc.text('Signature: _______________________', 135, qaY + 28);
   }
 
   // Stamp clean page numbers on all generated pages

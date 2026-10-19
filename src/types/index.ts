@@ -219,6 +219,7 @@ export interface EconomicEvaluation {
   totalCostPerTon: number;
   optimalP80Mm: number;
   potentialSavingsPerTon: number;
+  isOptimumAtBoundary?: boolean;
   carbonEmissions: {
     scope1ExplosivesKgCo2ePerTon: number;
     scope1DieselKgCo2ePerTon: number;

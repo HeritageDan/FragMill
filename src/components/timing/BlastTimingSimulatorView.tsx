@@ -46,11 +46,13 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const rows = 4;
-  const cols = Math.max(4, Math.round((blast.parameters.numberOfHoles || 30) / rows));
-  const burden = blast.parameters.burden || 2.4;
-  const spacing = blast.parameters.spacing || 2.8;
-  const chargeKg = blast.parameters.chargePerHole || 22.0;
+  const dia = blast.parameters.holeDiameter || 79;
+  const nHoles = blast.parameters.numberOfHoles || 50;
+  const rows = 5;
+  const cols = Math.max(4, Math.ceil(nHoles / rows));
+  const burden = blast.parameters.burden || 4.0;
+  const spacing = blast.parameters.spacing || 3.0;
+  const chargeKg = blast.parameters.chargePerHole || 71.89;
 
   const [holes, setHoles] = useState<HoleTimingInfo[]>([]);
 
@@ -226,6 +228,7 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
               surfaceDelayMs,
               inHoleDelayMs,
               totalDurationMs: holes.length > 0 ? Math.max(...holes.map((h) => h.firingTimeMs)) : 0,
+              holeDiameterMm: dia,
               maxChargePerDelayKg: chargeKg,
               distanceToStructureM,
               estimatedPPVMmS: ppvEstimate.estimatedPPVMmS,

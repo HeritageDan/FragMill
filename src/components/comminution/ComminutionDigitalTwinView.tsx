@@ -33,13 +33,25 @@ export const ComminutionDigitalTwinView: React.FC<ComminutionDigitalTwinViewProp
   const isFrench = lang === 'fr';
 
   // State for circuit simulation
-  const [f80Mm, setF80Mm] = useState<number>(185); // incoming feed from blast
+  const defaultF80 = blast.images[0]?.segmentationRuns?.[0]?.metrics?.p80 || (blast.parameters as any)?.p80 || 280;
+  const [f80Mm, setF80Mm] = useState<number>(defaultF80); // incoming feed from blast
   const [targetP80Microns, setTargetP80Microns] = useState<number>(75); // 75 µm = 0.075 mm
   const [bondWi, setBondWi] = useState<number>(14.5); // 14.5 kWh/t quartz-granodiorite
   const [rockAxb, setRockAxb] = useState<number>(42); // 42 drop weight hardness
   const [operatingHours, setOperatingHours] = useState<number>(20);
   const [powerCostUSD, setPowerCostUSD] = useState<number>(0.14);
-  const [explosiveCostUSD, setExplosiveCostUSD] = useState<number>(1.25);
+  const [explosiveCostUSD, setExplosiveCostUSD] = useState<number>(1.85);
+
+  React.useEffect(() => {
+    const f80 = blast.images[0]?.segmentationRuns?.[0]?.metrics?.p80 || (blast.parameters as any)?.p80 || 280;
+    setF80Mm(f80);
+  }, [blast.id]);
+
+  const isCircuitModified =
+    Math.abs(f80Mm - defaultF80) > 0.5 ||
+    targetP80Microns !== 75 ||
+    bondWi !== 14.5 ||
+    explosiveCostUSD !== 1.85;
 
   const circuitParams: BondCircuitParams = {
     f80Mm,
@@ -145,9 +157,16 @@ export const ComminutionDigitalTwinView: React.FC<ComminutionDigitalTwinViewProp
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column (5 cols): Parameter Controls */}
         <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-          <h3 className="text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-2">
-            {isFrench ? 'Paramètres du Circuit de Broyage' : 'Milling Circuit Inputs'}
-          </h3>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <h3 className="text-sm font-extrabold text-slate-900">
+              {isFrench ? 'Paramètres du Circuit de Broyage' : 'Milling Circuit Inputs'}
+            </h3>
+            {isCircuitModified && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                {isFrench ? 'Valeur modifiée' : 'Modified value'}
+              </span>
+            )}
+          </div>
 
           <div className="space-y-3 text-xs">
             <div>

@@ -65,6 +65,12 @@ export function generateDrillTelemetryFromBlast(blast: Blast): IREDESHole[] {
   const spacing = blast.parameters.spacing || 2.8;
   const depth = blast.parameters.holeDepth || 6.8;
 
+  const seedBase = blast.blastId.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) + 42;
+  const pseudoRandom = (seed: number): number => {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+  };
+
   for (let i = 0; i < count; i++) {
     const r = Math.floor(i / cols);
     const c = i % cols;
@@ -73,13 +79,19 @@ export function generateDrillTelemetryFromBlast(blast: Blast): IREDESHole[] {
     const plannedY = r * burden + 200.0;
     const plannedZ = 840.0;
 
-    // Simulate GPS drilling deviation (10 mm to 140 mm collar drift, depth error +/- 0.3m)
-    const collarErrorMm = Math.round(15 + Math.random() * 85);
-    const depthDriftM = parseFloat(((Math.random() - 0.45) * 0.4).toFixed(2));
+    const r1 = pseudoRandom(seedBase + i * 7);
+    const r2 = pseudoRandom(seedBase + i * 13 + 1);
+    const r3 = pseudoRandom(seedBase + i * 19 + 2);
+    const r4 = pseudoRandom(seedBase + i * 23 + 3);
+    const r5 = pseudoRandom(seedBase + i * 29 + 4);
+
+    // Deterministic GPS drilling deviation (15 mm to 100 mm collar drift, depth error +/- 0.2m)
+    const collarErrorMm = Math.round(15 + r1 * 85);
+    const depthDriftM = parseFloat(((r2 - 0.45) * 0.4).toFixed(2));
     const actualDepthM = parseFloat((depth + depthDriftM).toFixed(2));
 
-    const actualX = plannedX + (collarErrorMm / 1000) * (Math.random() > 0.5 ? 1 : -1);
-    const actualY = plannedY + (collarErrorMm / 1000) * (Math.random() > 0.5 ? 1 : -1);
+    const actualX = plannedX + (collarErrorMm / 1000) * (r4 > 0.5 ? 1 : -1);
+    const actualY = plannedY + (collarErrorMm / 1000) * (r5 > 0.5 ? 1 : -1);
 
     holes.push({
       holeId: `DH-${(i + 1).toString().padStart(3, '0')}`,
@@ -95,7 +107,7 @@ export function generateDrillTelemetryFromBlast(blast: Blast): IREDESHole[] {
       actualDepthM,
       collarDeviationMm: collarErrorMm,
       depthDeviationM: depthDriftM,
-      penetrationRateMPerMin: parseFloat((0.85 + Math.random() * 0.45).toFixed(2)),
+      penetrationRateMPerMin: parseFloat((0.85 + r3 * 0.45).toFixed(2)),
     });
   }
 

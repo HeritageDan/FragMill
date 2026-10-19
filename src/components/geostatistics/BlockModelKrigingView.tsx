@@ -232,6 +232,9 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">
                 {variogramParams.model.toUpperCase()} • {variogramParams.rangeM}m
               </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                {isFrench ? 'DONNÉES DE DÉMO' : 'DEMO DATA'}
+              </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {isFrench

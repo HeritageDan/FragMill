@@ -20,8 +20,11 @@ export const DEFAULT_ROCK_TABLES: KuzRamRockTables = {
 
 export function calculateRockFactorA(tables: KuzRamRockTables): number {
   const rdi = 25 * tables.density - 50;
-  // A = 0.06 * (RMD + JF + RDI + HF)
-  const a = 0.06 * (tables.rmd + tables.jf + tables.jfo + rdi + tables.hf);
+  // Cunningham (1987): A = 0.06 * (RMD + JPS + JPA + RDI + HF)
+  const jps = tables.jf;
+  const jpa = tables.jfo;
+  const sum = tables.rmd + jps + jpa + rdi + tables.hf;
+  const a = 0.06 * sum;
   return Number(Math.max(1, a).toFixed(2));
 }
 
@@ -39,7 +42,7 @@ export function computeKuzRam(
   const E = params.rws || 100; // Relative Weight Strength, ANFO=100
   const BCL = params.bottomChargeLength; // m
   const CCL = params.columnChargeLength; // m
-  const L = BCL + CCL; // Total charge length (m)
+  const L = Math.max(0.1, BCL + CCL); // Total charge length (m)
 
   // Powder factor K (kg/m3) = Q / (B * S * H)
   const volumePerHole = B * S * H;
@@ -48,23 +51,29 @@ export function computeKuzRam(
   // Rock Factor A
   let A = customRockFactorA;
   if (!A) {
-    let jfoVal = 30;
-    if (rockMass.jointOrientation === 'dip_out_of_face') jfoVal = 20;
-    if (rockMass.jointOrientation === 'dip_into_face') jfoVal = 40;
+    // JPA: dip out of face = 20, strike perpendicular = 30, dip into face = 40
+    let jpaVal = 30;
+    if (rockMass.jointOrientation === 'dip_out_of_face') jpaVal = 20;
+    else if (rockMass.jointOrientation === 'dip_into_face') jpaVal = 40;
 
-    let jfVal = 20;
-    if (rockMass.meanJointSpacing < 0.1) jfVal = 10;
-    else if (rockMass.meanJointSpacing > 1.0) jfVal = 50;
+    // JPS: Joint spacing (<0.1m = 10, 0.1-1.0m = 20, >1.0m = 50)
+    let jpsVal = 20;
+    if (rockMass.meanJointSpacing < 0.1) jpsVal = 10;
+    else if (rockMass.meanJointSpacing > 1.0) jpsVal = 50;
 
+    // HF: Hardness Factor = E/3 if E < 50 GPa, otherwise UCS/5
     let hfVal = 15;
-    if (rockMass.youngsModulusGPa) hfVal = rockMass.youngsModulusGPa / 30;
-    else if (rockMass.ucsMPa) hfVal = rockMass.ucsMPa / 5;
+    if (rockMass.youngsModulusGPa && rockMass.youngsModulusGPa < 50) {
+      hfVal = rockMass.youngsModulusGPa / 3;
+    } else if (rockMass.ucsMPa) {
+      hfVal = rockMass.ucsMPa / 5;
+    }
 
     const tables: KuzRamRockTables = {
-      rmd: 20,
-      jf: jfVal,
-      jfo: jfoVal,
-      density: rockMass.density || 2.65,
+      rmd: rockMass.estimatedGsiOrRmr && rockMass.estimatedGsiOrRmr < 40 ? 10 : 20,
+      jf: jpsVal,
+      jfo: jpaVal,
+      density: rockMass.density || 2.68,
       hf: hfVal,
     };
     A = calculateRockFactorA(tables);

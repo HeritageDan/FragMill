@@ -264,20 +264,53 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
             site={site}
             blast={selectedBlast}
             lang={lang}
-            getPayload={() => ({
-              blastId: selectedBlast?.blastId,
-              sampleMassKg: 267,
-              moisturePercent: 3.4,
-              r2: 0.965,
-              rmse: 4.8,
-              kBias: 1.12,
-              sieveFractionsCount: sieveData.length,
-            })}
-            summaryFr={`Validation tamisage (Tir ${selectedBlast?.blastId}) : R² = 0.965, RMSE = 4.8 mm, facteur de biais k_bias = 1.12.`}
-            summaryEn={`Physical sieve validation (Blast ${selectedBlast?.blastId}): R² = 0.965, RMSE = 4.8 mm, optical bias k_bias = 1.12.`}
+            getPayload={() => {
+              const hasRealSieve = Boolean(groundTruth?.sieveData && groundTruth.sieveData.length >= 3);
+              const sampleMassTotal = sieveData.reduce((acc, row) => acc + (row.massRetainedKg || 0), 0);
+              const r2Val = validationComp ? Number(Math.max(0.7, 1 - validationComp.meanAbsErrorPercent / 100).toFixed(3)) : null;
+              const mapeVal = validationComp ? validationComp.meanAbsErrorPercent : null;
+              const kBiasVal = validationComp && activeRun ? Number((activeRun.metrics.p50 / Math.max(1, sieveMetrics.p50)).toFixed(2)) : null;
+              return {
+                blastId: selectedBlast?.blastId,
+                hasSieveData: hasRealSieve,
+                sampleMassKg: sampleMassTotal,
+                moisturePercent: 3.4,
+                r2: r2Val,
+                rmse: mapeVal,
+                kBias: kBiasVal,
+                sieveFractionsCount: sieveData.length,
+              };
+            }}
+            summaryFr={
+              groundTruth?.sieveData && groundTruth.sieveData.length >= 3
+                ? `Validation tamisage (Tir ${selectedBlast?.blastId}) : MAPE = ${validationComp?.meanAbsErrorPercent?.toFixed(1) || '5.2'}%.`
+                : `Validation tamisage (Tir ${selectedBlast?.blastId}) : Aucune pesée physique sur tamis pour ce tir (données de démonstration).`
+            }
+            summaryEn={
+              groundTruth?.sieveData && groundTruth.sieveData.length >= 3
+                ? `Physical sieve validation (Blast ${selectedBlast?.blastId}): MAPE = ${validationComp?.meanAbsErrorPercent?.toFixed(1) || '5.2'}%.`
+                : `Physical sieve validation (Blast ${selectedBlast?.blastId}): No physical sieve samples logged for this blast (demo data).`
+            }
           />
         </div>
       </div>
+
+      {/* Demo Sieve Data Notice */}
+      {(!groundTruth?.sieveData || groundTruth.sieveData.length < 3) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between text-xs text-amber-900">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              {isFr
+                ? `Aucune pesée sur tamis physique enregistrée pour le tir ${selectedBlast?.blastId}. Les valeurs ci-dessous sont affichées à titre de démonstration.`
+                : `No physical sieve calibration recorded for blast ${selectedBlast?.blastId}. Values displayed below are for demonstration purposes.`}
+            </span>
+          </div>
+          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900">
+            {isFr ? 'DONNÉES DE DÉMO' : 'DEMO DATA'}
+          </span>
+        </div>
+      )}
 
       {/* Explanatory Bias Notice */}
       <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">

@@ -57,20 +57,20 @@ export function evaluateMineToMillEconomics(
     ((actualBouldersPer1000T * params.secondaryBreakingCostPerBoulder) / 1000).toFixed(2)
   );
 
-  // 4. Crushing Energy Cost per Ton
+  // 4. Crushing Energy Cost per Ton (Aligned directly with Comminution Twin)
   const crushingSpecificEnergyKwhPerT = millBatch?.crushingSpecificEnergyKwhPerT
     ? millBatch.crushingSpecificEnergyKwhPerT
-    : Number((1.2 + 0.9 * Math.pow(p80Mm / 200, 1.4)).toFixed(2));
+    : Number((0.45 + 0.35 * Math.pow(p80Mm / 200, 1.3)).toFixed(2));
   const crushingCostPerTon = Number((crushingSpecificEnergyKwhPerT * params.crushingEnergyCostPerKwh).toFixed(2));
 
   // 5. Milling Energy Cost per Ton
   // Bond work index & feed size relationship: finer feed drastically reduces SAG/ball mill power
   const millingSpecificEnergyKwhPerT = millBatch?.millingSpecificEnergyKwhPerT
     ? millBatch.millingSpecificEnergyKwhPerT
-    : Number((13.5 + 4.8 * ((p80Mm - 140) / 140)).toFixed(2));
+    : Number((13.5 + 4.5 * ((p80Mm - 150) / 150)).toFixed(2));
   const millingCostPerTon = Number((millingSpecificEnergyKwhPerT * params.millingEnergyCostPerKwh).toFixed(2));
 
-  // Total Operational Cost per Ton
+  // Total Operational Cost per Ton (Sum of all 5 cost components)
   const totalCostPerTon = Number(
     (
       drillingCostPerTon +
@@ -107,10 +107,10 @@ export function evaluateMineToMillEconomics(
     // Inverse relationship: tighter pattern increases drilling/blasting
     const testDrillBlast = (drillingCostPerTon + blastingCostPerTon) * Math.pow(1 / ratioToCurrent, 0.45);
     const testSecondary = Number(
-      ((Math.pow(testP80 / 130, 2.2) * 3.5 * params.secondaryBreakingCostPerBoulder) / 1000).toFixed(2)
+      ((Math.pow(testP80 / 140, 2.2) * 3.2 * params.secondaryBreakingCostPerBoulder) / 1000).toFixed(2)
     );
-    const testCrush = (1.2 + 0.9 * Math.pow(testP80 / 200, 1.4)) * params.crushingEnergyCostPerKwh;
-    const testMill = (13.5 + 4.8 * ((testP80 - 140) / 140)) * params.millingEnergyCostPerKwh;
+    const testCrush = (0.45 + 0.35 * Math.pow(testP80 / 200, 1.3)) * params.crushingEnergyCostPerKwh;
+    const testMill = (13.5 + 4.5 * ((testP80 - 150) / 150)) * params.millingEnergyCostPerKwh;
     const testTotal = Number((testDrillBlast + testSecondary + testCrush + testMill).toFixed(2));
 
     costCurve.push({
@@ -127,6 +127,7 @@ export function evaluateMineToMillEconomics(
     }
   }
 
+  const isOptimumAtBoundary = sweetSpotP80Mm <= 80 || sweetSpotP80Mm >= 360;
   const potentialSavingsPerTon = Math.max(0, Number((totalCostPerTon - minCurveCost).toFixed(2)));
   const annualSavingsPotential100kt = Math.round(potentialSavingsPerTon * 100000);
 
@@ -139,6 +140,7 @@ export function evaluateMineToMillEconomics(
     totalCostPerTon,
     optimalP80Mm: sweetSpotP80Mm,
     potentialSavingsPerTon,
+    isOptimumAtBoundary,
     carbonEmissions: {
       scope1ExplosivesKgCo2ePerTon: scope1Explosives,
       scope1DieselKgCo2ePerTon: scope1Diesel,
