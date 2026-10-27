@@ -133,6 +133,66 @@ export function computeKuzRam(
     { sizeMm: 800, passingPercent: evalPassing(800) },
   ];
 
+  // KCO Model (Kuz-Ram-Cunningham-Ouchterlony 2005) Extension
+  // xMax bounded by in-situ block size or bench geometry
+  const inSituBlockSizeMm = Math.max(300, (rockMass.meanJointSpacing || 0.5) * 1000 * 1.5);
+  const xMaxMm = Math.min(inSituBlockSizeMm, Math.max(x50Mm * 2.5, H * 1000 * 0.35));
+  const bParam = Number((0.17 * Math.log(Math.max(1.1, xMaxMm / Math.max(1, x50Mm))) * Math.pow(n, 0.8)).toFixed(2));
+
+  const evalKcoPassing = (sizeMm: number) => {
+    if (sizeMm <= 0) return 0;
+    if (sizeMm >= xMaxMm) return 100;
+    const ratio = Math.log(xMaxMm / sizeMm) / Math.max(0.001, Math.log(xMaxMm / x50Mm));
+    const frac = 1 / (1 + Math.pow(Math.max(0.001, ratio), bParam));
+    return Number((frac * 100).toFixed(2));
+  };
+
+  const kcoCurve: CumulativePoint[] = [
+    { sizeMm: 2, passingPercent: evalKcoPassing(2) },
+    { sizeMm: 5, passingPercent: evalKcoPassing(5) },
+    { sizeMm: 10, passingPercent: evalKcoPassing(10) },
+    { sizeMm: 25, passingPercent: evalKcoPassing(25) },
+    { sizeMm: 50, passingPercent: evalKcoPassing(50) },
+    { sizeMm: 75, passingPercent: evalKcoPassing(75) },
+    { sizeMm: 100, passingPercent: evalKcoPassing(100) },
+    { sizeMm: 150, passingPercent: evalKcoPassing(150) },
+    { sizeMm: 200, passingPercent: evalKcoPassing(200) },
+    { sizeMm: 250, passingPercent: evalKcoPassing(250) },
+    { sizeMm: 300, passingPercent: evalKcoPassing(300) },
+    { sizeMm: 400, passingPercent: evalKcoPassing(400) },
+    { sizeMm: 500, passingPercent: evalKcoPassing(500) },
+    { sizeMm: 600, passingPercent: evalKcoPassing(600) },
+    { sizeMm: 800, passingPercent: evalKcoPassing(800) },
+  ];
+
+  // Flyrock Safety Analysis (Richards & Moore 2004 / Lundborg 1981)
+  // Face burst throw (m), Cratering throw (m), Rifling throw (m)
+  const dInches = D / 25.4;
+  const kfFace = 13.5;
+  const kfCrater = 9.8;
+  const kfRifling = 17.5;
+  const chargePerMeter = Q / Math.max(0.5, L);
+  const faceThrow = Number(((kfFace * Math.pow(chargePerMeter, 2/3)) / Math.max(1, B)).toFixed(1));
+  const craterThrow = Number(((kfCrater * Math.pow(chargePerMeter, 2/3)) / Math.max(1, params.stemmingLength || B)).toFixed(1));
+  const riflingThrow = Number((kfRifling * Math.pow(dInches, 2/3)).toFixed(1));
+  const maxFlyrock = Math.max(faceThrow, craterThrow, riflingThrow);
+  const safetyFactor = 2.0; // ISEE Safety Guideline
+  const personnelEvacM = Math.round(maxFlyrock * safetyFactor);
+  const equipmentEvacM = Math.round(maxFlyrock * 1.35);
+
+  // Energy & Greenhouse Gas Metrics
+  const rockDensityTPerM3 = rockMass.density || 2.65;
+  const totalVolumeM3 = volumePerHole * (params.numberOfHoles || 1);
+  const totalTonnes = totalVolumeM3 * rockDensityTPerM3;
+  const powderFactorKgPerTonne = Number((K / rockDensityTPerM3).toFixed(3));
+  // ANFO heat of explosion ~ 3.7 MJ/kg
+  const energyFactorMjPerTonne = Number((powderFactorKgPerTonne * 3.7 * (E / 100)).toFixed(2));
+  const specificDrillingM = Number(((H + (params.subdrill || 0.8)) / Math.max(1, volumePerHole)).toFixed(3));
+  // CO2 emissions: ANFO detonation ~ 0.176 kg CO2 / kg explosive
+  const co2PerTonne = Number((powderFactorKgPerTonne * 0.176).toFixed(4));
+  const totalExplosiveKg = Q * (params.numberOfHoles || 1);
+  const totalCo2Kg = Math.round(totalExplosiveKg * 0.176);
+
   return {
     rockFactorA: A,
     meanSizeX50Cm: Number(x50Cm.toFixed(2)),
@@ -145,6 +205,28 @@ export function computeKuzRam(
     p80Mm: evalSizeForP(80),
     p90Mm: evalSizeForP(90),
     curve,
+    kcoResult: {
+      xMaxMm: Number(xMaxMm.toFixed(1)),
+      bParameter: bParam,
+      curve: kcoCurve,
+    },
+    flyrock: {
+      faceBurdenThrowM: faceThrow,
+      crateringThrowM: craterThrow,
+      riflingThrowM: riflingThrow,
+      maxFlyrockDistanceM: maxFlyrock,
+      safetyFactor,
+      personnelEvacuationDistanceM: personnelEvacM,
+      equipmentEvacuationDistanceM: equipmentEvacM,
+    },
+    energy: {
+      powderFactorKgPerM3: Number(K.toFixed(2)),
+      powderFactorKgPerTonne,
+      energyFactorMjPerTonne,
+      specificDrillingMPerM3: specificDrillingM,
+      co2EmissionsKgPerTonne: co2PerTonne,
+      totalCo2EmissionsKg: totalCo2Kg,
+    },
   };
 }
 

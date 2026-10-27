@@ -15,6 +15,8 @@ import {
   HelpCircle,
 } from 'lucide-react';
 
+export type ReferenceObjectShape = 'circle' | 'rectangle' | 'square' | 'none';
+
 export interface ScalePreset {
   id: string;
   nameEn: string;
@@ -25,6 +27,7 @@ export interface ScalePreset {
   descriptionEn: string;
   descriptionFr: string;
   defaultExclusionWidthMm?: number;
+  shape?: ReferenceObjectShape;
 }
 
 export const SCALE_PRESETS: ScalePreset[] = [
@@ -39,6 +42,7 @@ export const SCALE_PRESETS: ScalePreset[] = [
     descriptionEn: 'Standard closed ballpoint pen length (tip to cap base: 145 mm)',
     descriptionFr: 'Longueur totale d’un stylo fermé classique (145 mm)',
     defaultExclusionWidthMm: 15,
+    shape: 'rectangle',
   },
   {
     id: 'marker_chisel',
@@ -50,6 +54,7 @@ export const SCALE_PRESETS: ScalePreset[] = [
     descriptionEn: 'Standard industrial permanent marker (138 mm)',
     descriptionFr: 'Marqueur de chantier standard fermé (138 mm)',
     defaultExclusionWidthMm: 20,
+    shape: 'rectangle',
   },
 
   // Coins
@@ -62,7 +67,8 @@ export const SCALE_PRESETS: ScalePreset[] = [
     icon: '🪙',
     descriptionEn: 'Diameter of 100 FCFA bimetallic coin (26.0 mm)',
     descriptionFr: 'Diamètre de la pièce bimétallique de 100 FCFA (26,0 mm)',
-    defaultExclusionWidthMm: 30,
+    defaultExclusionWidthMm: 26,
+    shape: 'circle',
   },
   {
     id: 'coin_500_fcfa',
@@ -73,7 +79,8 @@ export const SCALE_PRESETS: ScalePreset[] = [
     icon: '🪙',
     descriptionEn: 'Diameter of 500 FCFA coin (28.0 mm)',
     descriptionFr: 'Diamètre de la pièce de 500 FCFA (28,0 mm)',
-    defaultExclusionWidthMm: 32,
+    defaultExclusionWidthMm: 28,
+    shape: 'circle',
   },
   {
     id: 'coin_1_eur',
@@ -84,7 +91,8 @@ export const SCALE_PRESETS: ScalePreset[] = [
     icon: '🪙',
     descriptionEn: 'Standard diameter of 1 € coin (23.25 mm)',
     descriptionFr: 'Diamètre officiel de la pièce de 1 € (23,25 mm)',
-    defaultExclusionWidthMm: 28,
+    defaultExclusionWidthMm: 23.25,
+    shape: 'circle',
   },
   {
     id: 'coin_2_eur',
@@ -95,7 +103,8 @@ export const SCALE_PRESETS: ScalePreset[] = [
     icon: '🪙',
     descriptionEn: 'Standard diameter of 2 € coin (25.75 mm)',
     descriptionFr: 'Diamètre officiel de la pièce de 2 € (25,75 mm)',
-    defaultExclusionWidthMm: 30,
+    defaultExclusionWidthMm: 25.75,
+    shape: 'circle',
   },
   {
     id: 'coin_quarter_usd',
@@ -106,7 +115,8 @@ export const SCALE_PRESETS: ScalePreset[] = [
     icon: '🪙',
     descriptionEn: 'Diameter of US Quarter (24.26 mm)',
     descriptionFr: 'Diamètre officiel du quart de dollar US (24,26 mm)',
-    defaultExclusionWidthMm: 28,
+    defaultExclusionWidthMm: 24.26,
+    shape: 'circle',
   },
   {
     id: 'coin_1_usd',
@@ -117,7 +127,8 @@ export const SCALE_PRESETS: ScalePreset[] = [
     icon: '🪙',
     descriptionEn: 'Diameter of Sacagawea / Presidential Dollar (26.5 mm)',
     descriptionFr: 'Diamètre d’une pièce de 1 dollar US (26,5 mm)',
-    defaultExclusionWidthMm: 30,
+    defaultExclusionWidthMm: 26.5,
+    shape: 'circle',
   },
 
   // Mine & field equipment
@@ -131,6 +142,7 @@ export const SCALE_PRESETS: ScalePreset[] = [
     descriptionEn: 'Standard standard outer shell length of safety helmet (280 mm)',
     descriptionFr: 'Longueur de calotte extérieure d’un casque minier (280 mm)',
     defaultExclusionWidthMm: 220,
+    shape: 'rectangle',
   },
   {
     id: 'geo_hammer',
@@ -142,6 +154,7 @@ export const SCALE_PRESETS: ScalePreset[] = [
     descriptionEn: 'Total length of standard geological pick hammer (330 mm)',
     descriptionFr: 'Longueur totale du marteau de géologue standard (330 mm)',
     defaultExclusionWidthMm: 120,
+    shape: 'rectangle',
   },
   {
     id: 'canette_33cl',
@@ -153,6 +166,7 @@ export const SCALE_PRESETS: ScalePreset[] = [
     descriptionEn: 'Height of standard aluminum drink can (115 mm)',
     descriptionFr: 'Hauteur standard d’une canette aluminium (115 mm)',
     defaultExclusionWidthMm: 66,
+    shape: 'rectangle',
   },
   {
     id: 'credit_card',
@@ -164,6 +178,7 @@ export const SCALE_PRESETS: ScalePreset[] = [
     descriptionEn: 'Standard ISO 7810 credit card length (85.6 mm)',
     descriptionFr: 'Longueur standard d’une carte plastique bancaire (85,6 mm)',
     defaultExclusionWidthMm: 54,
+    shape: 'rectangle',
   },
 
   // Standard Rulers & Scale Bars
@@ -177,6 +192,7 @@ export const SCALE_PRESETS: ScalePreset[] = [
     descriptionEn: '30 cm field survey ruler (300 mm)',
     descriptionFr: 'Règle de terrain graduée de 30 centimètres (300 mm)',
     defaultExclusionWidthMm: 35,
+    shape: 'rectangle',
   },
   {
     id: 'scale_bar_50cm',
@@ -188,6 +204,7 @@ export const SCALE_PRESETS: ScalePreset[] = [
     descriptionEn: 'High-contrast black/white 500 mm calibration scale bar',
     descriptionFr: 'Mire bicolore de référence de tir (500 mm)',
     defaultExclusionWidthMm: 45,
+    shape: 'rectangle',
   },
   {
     id: 'scale_bar_100cm',
@@ -199,6 +216,7 @@ export const SCALE_PRESETS: ScalePreset[] = [
     descriptionEn: '1-metre surveyor levelling staff or tape section (1000 mm)',
     descriptionFr: 'Mire de nivellement ou mètre étalonné (1 000 mm)',
     defaultExclusionWidthMm: 50,
+    shape: 'rectangle',
   },
   {
     id: 'scale_sphere_200',
@@ -210,6 +228,7 @@ export const SCALE_PRESETS: ScalePreset[] = [
     descriptionEn: 'Brightly colored 200 mm diameter blast-scale sphere or ball',
     descriptionFr: 'Diamètre d’un ballon ou sphère témoin de tir (200 mm)',
     defaultExclusionWidthMm: 200,
+    shape: 'circle',
   },
 ];
 
@@ -237,6 +256,8 @@ export const ImageScaleCalibrationModal: React.FC<ImageScaleCalibrationModalProp
   const [customDimensionMm, setCustomDimensionMm] = useState<number>(145);
   const [isCustomMode, setIsCustomMode] = useState<boolean>(false);
   const [autoExcludeReferenceObject, setAutoExcludeReferenceObject] = useState<boolean>(true);
+  const [referenceShape, setReferenceShape] = useState<ReferenceObjectShape>('rectangle');
+  const [exclusionWidthMm, setExclusionWidthMm] = useState<number>(15);
 
   // Calibration points in NATURAL image coordinates
   const [points, setPoints] = useState<Point2D[]>(
@@ -276,7 +297,38 @@ export const ImageScaleCalibrationModal: React.FC<ImageScaleCalibrationModalProp
     setSelectedPresetId(preset.id);
     setIsCustomMode(false);
     setCustomDimensionMm(preset.dimensionMm);
+    const targetShape = preset.shape || (preset.category === 'coin' ? 'circle' : 'rectangle');
+    setReferenceShape(targetShape);
+    if (preset.defaultExclusionWidthMm) {
+      setExclusionWidthMm(preset.defaultExclusionWidthMm);
+    }
   };
+
+  // Synchronize state when initialCalibration or modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initialCalibration) {
+      if (initialCalibration.points && initialCalibration.points.length === 2) {
+        setPoints(initialCalibration.points);
+      }
+      if (initialCalibration.realWorldDistanceMm && initialCalibration.realWorldDistanceMm > 0) {
+        const savedMm = initialCalibration.realWorldDistanceMm;
+        setCustomDimensionMm(savedMm);
+        const match = SCALE_PRESETS.find((p) => Math.abs(p.dimensionMm - savedMm) < 0.2);
+        if (match) {
+          setSelectedPresetId(match.id);
+          setIsCustomMode(false);
+          setReferenceShape(match.shape || (match.category === 'coin' ? 'circle' : 'rectangle'));
+          if (match.defaultExclusionWidthMm) {
+            setExclusionWidthMm(match.defaultExclusionWidthMm);
+          }
+        } else {
+          setIsCustomMode(true);
+          setSelectedPresetId('custom');
+        }
+      }
+    }
+  }, [isOpen, initialCalibration]);
 
   // Load Image
   useEffect(() => {
@@ -356,6 +408,30 @@ export const ImageScaleCalibrationModal: React.FC<ImageScaleCalibrationModalProp
       y: originY + (pt.y / imgH) * drawH,
     });
 
+    // Draw Live Reference Object Exclusion Preview
+    if (autoExcludeReferenceObject && referenceShape !== 'none' && points.length === 2 && pxPerMm > 0) {
+      const autoExcl = computeAutoExclusionPolygon();
+      if (autoExcl && autoExcl.length >= 3) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
+        ctx.strokeStyle = '#EF4444';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        const startP = toScreen(autoExcl[0]);
+        ctx.moveTo(startP.x, startP.y);
+        for (let i = 1; i < autoExcl.length; i++) {
+          const sp = toScreen(autoExcl[i]);
+          ctx.lineTo(sp.x, sp.y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
     // Draw Line and Pins if we have points
     if (points.length >= 1) {
       const s0 = toScreen(points[0]);
@@ -427,6 +503,10 @@ export const ImageScaleCalibrationModal: React.FC<ImageScaleCalibrationModalProp
     cursorPos,
     activeDimensionMm,
     pixelDistance,
+    autoExcludeReferenceObject,
+    referenceShape,
+    exclusionWidthMm,
+    pxPerMm,
   ]);
 
   // Draw Pin icon helper
@@ -679,7 +759,9 @@ export const ImageScaleCalibrationModal: React.FC<ImageScaleCalibrationModalProp
 
   // Generate Exclusion Polygon around the reference object
   const computeAutoExclusionPolygon = (): Point2D[] | undefined => {
-    if (!autoExcludeReferenceObject || points.length < 2 || pxPerMm <= 0) return undefined;
+    if (!autoExcludeReferenceObject || referenceShape === 'none' || points.length < 2 || pxPerMm <= 0) {
+      return undefined;
+    }
 
     const p0 = points[0];
     const p1 = points[1];
@@ -689,18 +771,50 @@ export const ImageScaleCalibrationModal: React.FC<ImageScaleCalibrationModalProp
     const len = Math.hypot(dx, dy);
     if (len === 0) return undefined;
 
-    // Direction unit vector and normal
+    const midX = (p0.x + p1.x) / 2;
+    const midY = (p0.y + p1.y) / 2;
+
+    if (referenceShape === 'circle') {
+      // Circle / Disc (Coins, Spheres, Cans, Pipe ends):
+      // Segment AB represents the diameter across the circular reference body
+      const radiusPx = len / 2 + 4; // 4px padding
+      const numPoints = 24;
+      const circlePoly: Point2D[] = [];
+      for (let i = 0; i < numPoints; i++) {
+        const theta = (i / numPoints) * Math.PI * 2;
+        circlePoly.push({
+          x: Math.round(midX + Math.cos(theta) * radiusPx),
+          y: Math.round(midY + Math.sin(theta) * radiusPx),
+        });
+      }
+      return circlePoly;
+    }
+
+    if (referenceShape === 'square') {
+      // Square: length = distance AB, width = length
+      const ux = dx / len;
+      const uy = dy / len;
+      const nx = -uy;
+      const ny = ux;
+      const halfSizePx = len / 2 + 4;
+      return [
+        { x: Math.round(midX - ux * halfSizePx - nx * halfSizePx), y: Math.round(midY - uy * halfSizePx - ny * halfSizePx) },
+        { x: Math.round(midX + ux * halfSizePx - nx * halfSizePx), y: Math.round(midY + uy * halfSizePx - ny * halfSizePx) },
+        { x: Math.round(midX + ux * halfSizePx + nx * halfSizePx), y: Math.round(midY + uy * halfSizePx + ny * halfSizePx) },
+        { x: Math.round(midX - ux * halfSizePx + nx * halfSizePx), y: Math.round(midY - uy * halfSizePx + ny * halfSizePx) },
+      ];
+    }
+
+    // Default: Rectangle / Bar (Pens, Rulers, Tape)
     const ux = dx / len;
     const uy = dy / len;
     const nx = -uy;
     const ny = ux;
 
-    // Exclusion width in pixels (derived from object type or default)
-    const objWidthMm = activePreset?.defaultExclusionWidthMm || 25;
-    const halfWidthPx = (objWidthMm / 2) * pxPerMm + 6; // 6px safety padding
-    const capExtensionPx = 8; // Slight padding on ends
+    const objWidthMm = exclusionWidthMm > 0 ? exclusionWidthMm : (activePreset?.defaultExclusionWidthMm || 15);
+    const halfWidthPx = (objWidthMm / 2) * pxPerMm + 4; // 4px padding
+    const capExtensionPx = 6; // Slight padding on ends
 
-    // Compute 4 corners of oriented bounding box around reference object
     const startX = p0.x - ux * capExtensionPx;
     const startY = p0.y - uy * capExtensionPx;
     const endX = p1.x + ux * capExtensionPx;
@@ -927,8 +1041,8 @@ export const ImageScaleCalibrationModal: React.FC<ImageScaleCalibrationModalProp
               )}
             </div>
 
-            {/* Auto-Exclude Reference Object Option */}
-            <div className="p-3 bg-slate-800/50 border border-slate-700/80 rounded-xl space-y-2">
+            {/* Auto-Exclude Reference Object & Shape Options */}
+            <div className="p-3.5 bg-slate-800/60 border border-slate-700/80 rounded-xl space-y-3">
               <label className="flex items-start gap-2.5 cursor-pointer text-xs">
                 <input
                   type="checkbox"
@@ -944,11 +1058,111 @@ export const ImageScaleCalibrationModal: React.FC<ImageScaleCalibrationModalProp
                   </span>
                   <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
                     {isFrench
-                      ? 'Empêche l’application de compter le stylo ou la pièce elle-même comme un caillou ou un bloc de roche.'
-                      : 'Prevents the pen or coin from being mistakenly identified and measured as a rock fragment.'}
+                      ? 'Empêche l’application de compter le stylo, la pièce ou la mire comme un caillou.'
+                      : 'Prevents the reference pen, coin, or scale bar from being measured as a rock fragment.'}
                   </p>
                 </div>
               </label>
+
+              {autoExcludeReferenceObject && (
+                <div className="space-y-2.5 pt-2 border-t border-slate-700/60 text-xs">
+                  <div className="font-bold text-slate-300 text-[11px]">
+                    {isFrench ? "Forme géométrique de l'objet :" : "Reference Object Geometry:"}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setReferenceShape('circle')}
+                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition ${
+                        referenceShape === 'circle'
+                          ? 'bg-blue-600 border-blue-400 text-white shadow'
+                          : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <span>🪙</span>
+                      <span>{isFrench ? 'Cercle / Pièce' : 'Circle / Coin'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setReferenceShape('rectangle')}
+                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition ${
+                        referenceShape === 'rectangle'
+                          ? 'bg-blue-600 border-blue-400 text-white shadow'
+                          : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <span>📏</span>
+                      <span>{isFrench ? 'Barre / Stylo' : 'Rectangle / Bar'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setReferenceShape('square')}
+                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition ${
+                        referenceShape === 'square'
+                          ? 'bg-blue-600 border-blue-400 text-white shadow'
+                          : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <span>🔲</span>
+                      <span>{isFrench ? 'Carré' : 'Square'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setReferenceShape('none')}
+                      className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition ${
+                        referenceShape === 'none'
+                          ? 'bg-amber-600 border-amber-400 text-white shadow'
+                          : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                      }`}
+                    >
+                      <span>🚫</span>
+                      <span>{isFrench ? 'Aucun masque' : 'No Mask'}</span>
+                    </button>
+                  </div>
+
+                  {referenceShape === 'circle' && (
+                    <div className="text-[11px] text-blue-300 bg-blue-950/40 p-2 rounded-lg border border-blue-800/60">
+                      {isFrench
+                        ? `Masque circulaire centré sur le segment A-B (Diamètre = ${activeDimensionMm} mm).`
+                        : `Circular mask centered on segment A-B (Diameter = ${activeDimensionMm} mm).`}
+                    </div>
+                  )}
+
+                  {referenceShape === 'square' && (
+                    <div className="text-[11px] text-blue-300 bg-blue-950/40 p-2 rounded-lg border border-blue-800/60">
+                      {isFrench
+                        ? `Masque carré aligné sur A-B (${activeDimensionMm} × ${activeDimensionMm} mm).`
+                        : `Square mask aligned on A-B (${activeDimensionMm} × ${activeDimensionMm} mm).`}
+                    </div>
+                  )}
+
+                  {referenceShape === 'rectangle' && (
+                    <div className="p-2 bg-slate-900/90 rounded-lg border border-slate-700 space-y-1.5">
+                      <div className="flex justify-between items-center text-[11px] text-slate-300 font-bold">
+                        <span>{isFrench ? "Largeur / Épaisseur de l'objet :" : "Object Width / Thickness:"}</span>
+                        <span className="font-mono text-emerald-400 font-bold">{exclusionWidthMm} mm</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="2"
+                        max={Math.max(50, Math.round(activeDimensionMm))}
+                        step="1"
+                        value={exclusionWidthMm}
+                        onChange={(e) => setExclusionWidthMm(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full accent-blue-500 cursor-pointer"
+                      />
+                      <div className="flex gap-1.5 justify-between text-[10px] text-slate-400">
+                        <span>Fin (10mm)</span>
+                        <span>Moyen (25mm)</span>
+                        <span>Large (50mm+)</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Instructions help */}

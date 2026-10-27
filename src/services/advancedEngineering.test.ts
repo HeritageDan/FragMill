@@ -7,11 +7,15 @@ import {
 import {
   generateSimulatedBeltFrame,
   DEFAULT_BELT_CONFIG,
+  calculateCEMACapacity,
 } from './beltVision/beltAnalyzer';
 import {
   generatePatternTiming,
   calculateUSBMPPV,
   generateFaceProfile,
+  calculateAirblastOverpressure,
+  checkPatternFaceRelief,
+  simulateDetonatorScatter,
 } from './timing/initiationSimulator';
 import {
   calculateBondSpecificEnergy,
@@ -19,11 +23,15 @@ import {
   estimateMineralRecovery,
   simulateComminutionCircuit,
   generateEconomicTradeoffCurve,
+  simulatePrimaryCrusher,
 } from './comminution/bondMorrellEngine';
 import {
   sphericalVariogram,
+  exponentialVariogram,
+  gaussianVariogram,
   interpolateIDW,
   computeKrigingGrid,
+  solveOrdinaryKriging,
   DEFAULT_VARIOGRAM,
   generateDemoBoreholes,
 } from './geostatistics/krigingEngine';
@@ -31,7 +39,17 @@ import {
   generateIREDESXml,
   generateDrillPatternCsv,
   generateDrillTelemetryFromBlast,
+  calculateTealeSpecificEnergy,
 } from './telemetry/iredesGenerator';
+import {
+  computeKuzRam,
+} from './kuzram';
+import {
+  fitGatesGaudinSchuhmann,
+  computeStandardSieveMeshPassing,
+  calculateCumulativeDistribution,
+  computeFragmentationMetrics,
+} from './statistics';
 import {
   generateBlastPdfReport,
   exportBlastWorkbookXlsx,
@@ -429,6 +447,145 @@ describe('Advanced Mining Suite Tests', () => {
       expect(activeBlast2.blastId).toBe('BL-2026-002');
       expect(pf2).toBeCloseTo(0.452, 2);
       expect(activeBlast2.rockMass.rockType).toBe('Schist');
+    });
+  });
+
+  // 9. Industrial Standards Verification Suite
+  describe('Tier-1 Industrial Mining Standards Suite', () => {
+    // A. Gates-Gaudin-Schuhmann & Standard ASTM Sieve Analysis
+    it('fits Gates-Gaudin-Schuhmann (GGS) distribution and computes ASTM sieve mesh points', () => {
+      const sampleCurve = [
+        { sizeMm: 2.36, passingPercent: 5.2 },
+        { sizeMm: 4.75, passingPercent: 12.4 },
+        { sizeMm: 12.5, passingPercent: 28.6 },
+        { sizeMm: 25.0, passingPercent: 44.0 },
+        { sizeMm: 50.0, passingPercent: 68.2 },
+        { sizeMm: 75.0, passingPercent: 84.5 },
+        { sizeMm: 100.0, passingPercent: 96.0 },
+      ];
+
+      const ggs = fitGatesGaudinSchuhmann(sampleCurve);
+      expect(ggs.k).toBeGreaterThan(50);
+      expect(ggs.m).toBeGreaterThan(0.3);
+      expect(ggs.r2).toBeGreaterThan(0.8);
+      expect(ggs.aic).toBeDefined();
+
+      const sieves = computeStandardSieveMeshPassing(sampleCurve);
+      expect(sieves.length).toBe(15);
+      const mesh4 = sieves.find(s => s.meshName.includes('No. 4'));
+      expect(mesh4).toBeDefined();
+      expect(mesh4!.passingPercent).toBeCloseTo(12.4, 0);
+    });
+
+    // B. KCO Model & Flyrock Hazard Radius
+    it('computes KCO (Swebrec) blast model and Richards-Moore flyrock exclusion zones', () => {
+      const blastParams: any = {
+        benchHeight: 6.0,
+        burden: 2.4,
+        spacing: 2.8,
+        holeDiameter: 89,
+        drillingDeviationEstimate: 0.1,
+        chargePerHole: 24.0,
+        rws: 100,
+        bottomChargeLength: 2.5,
+        columnChargeLength: 2.5,
+        stemmingLength: 2.0,
+        numberOfHoles: 20,
+      };
+      const rockMass: any = {
+        density: 2.68,
+        meanJointSpacing: 0.6,
+        jointOrientation: 'strike_perpendicular',
+        ucsMPa: 120,
+      };
+
+      const res = computeKuzRam(blastParams, rockMass);
+      expect(res.kcoResult).toBeDefined();
+      expect(res.kcoResult!.xMaxMm).toBeGreaterThan(res.p50Mm);
+      expect(res.kcoResult!.bParameter).toBeGreaterThan(0);
+      expect(res.kcoResult!.curve.length).toBeGreaterThan(10);
+
+      // Flyrock verification
+      expect(res.flyrock).toBeDefined();
+      expect(res.flyrock!.maxFlyrockDistanceM).toBeGreaterThan(20);
+      expect(res.flyrock!.personnelEvacuationDistanceM).toBeGreaterThan(res.flyrock!.maxFlyrockDistanceM);
+      expect(res.flyrock!.safetyFactor).toBe(2.0);
+
+      // Energy & CO2 verification
+      expect(res.energy).toBeDefined();
+      expect(res.energy!.powderFactorKgPerM3).toBeGreaterThan(0.3);
+      expect(res.energy!.co2EmissionsKgPerTonne).toBeGreaterThan(0);
+      expect(res.energy!.totalCo2EmissionsKg).toBeGreaterThan(50);
+    });
+
+    // C. Environmental Airblast Overpressure & Face Velocity Relief
+    it('predicts airblast overpressure and detects tight under-relieved rows', () => {
+      const airblastFar = calculateAirblastOverpressure(500, 25.0);
+      expect(airblastFar.peakOverpressureDbl).toBeLessThan(125);
+      expect(airblastFar.isCompliant).toBe(true);
+
+      const airblastNear = calculateAirblastOverpressure(20, 200.0);
+      expect(airblastNear.peakOverpressureDbl).toBeGreaterThan(134);
+      expect(airblastNear.isCompliant).toBe(false);
+
+      const holes = generatePatternTiming(3, 4, 2.4, 2.8, 22.0, 'v_echelon', 25, 400);
+      const reliefChecks = checkPatternFaceRelief(holes, 2.4);
+      expect(reliefChecks.length).toBe(12);
+      expect(['optimal', 'under_relieved', 'over_relieved']).toContain(reliefChecks[0].status);
+
+      // Electronic vs Nonel scatter check
+      const electronicSim = simulateDetonatorScatter(holes, 'electronic');
+      expect(electronicSim.maxScatterMs).toBeLessThan(2.0);
+      expect(electronicSim.outOfSequenceCount).toBe(0);
+    });
+
+    // D. Primary Crusher & Comminution Power
+    it('simulates primary jaw/gyratory crusher power and product reduction ratio', () => {
+      const crusher = simulatePrimaryCrusher(350, 110, 450);
+      expect(crusher.crusherProductP80Mm).toBe(93.5);
+      expect(crusher.reductionRatio).toBeGreaterThan(3.0);
+      expect(crusher.powerDrawKW).toBeGreaterThan(25);
+      expect(crusher.capacityRatingTPH).toBeGreaterThan(100);
+    });
+
+    // E. True Matrix Ordinary Kriging (BLUE system)
+    it('solves Ordinary Kriging linear system and computes theoretical variogram models', () => {
+      const expVar = exponentialVariogram(20, DEFAULT_VARIOGRAM);
+      expect(expVar).toBeGreaterThan(DEFAULT_VARIOGRAM.nugget);
+
+      const gaussVar = gaussianVariogram(20, DEFAULT_VARIOGRAM);
+      expect(gaussVar).toBeGreaterThan(DEFAULT_VARIOGRAM.nugget);
+
+      const boreholes = generateDemoBoreholes();
+      const krig = solveOrdinaryKriging(25, 15, boreholes, 'ucsMPa', DEFAULT_VARIOGRAM);
+      expect(krig.estimate).toBeGreaterThan(50);
+      expect(krig.variance).toBeGreaterThanOrEqual(0);
+      expect(krig.weights.length).toBe(boreholes.length);
+      const sumWeights = krig.weights.reduce((a, b) => a + b, 0);
+      expect(sumWeights).toBeCloseTo(1.0, 2);
+    });
+
+    // F. CEMA Conveyor Volumetric Capacity & Choke Impact Timer
+    it('calculates CEMA 35-degree trough cross-section and dynamic time-to-choke', () => {
+      const cema = calculateCEMACapacity(1.2, 2.2, 35, 20, 1.85);
+      expect(cema.maxCrossSectionAreaM2).toBeGreaterThan(0.05);
+      expect(cema.maxThroughputTPH).toBeGreaterThan(500);
+
+      const frame = generateSimulatedBeltFrame(DEFAULT_BELT_CONFIG, 110, 1.0); // 100% oversize
+      expect(frame.stats.timeToChokeSeconds).toBeDefined();
+      expect(frame.stats.timeToChokeSeconds).toBeGreaterThan(0);
+      expect(frame.stats.cemaTroughAngleDeg).toBe(35);
+    });
+
+    // G. Teale Specific Energy of Drilling & MWD Telemetry
+    it('calculates Teale MWD specific energy and classifies rock drillability hardness', () => {
+      const soft = calculateTealeSpecificEnergy(89, 1.8, 25, 400, 140);
+      expect(soft.specificEnergyMpa).toBeLessThan(250);
+      expect(['very_soft', 'soft']).toContain(soft.hardnessClass);
+
+      const hard = calculateTealeSpecificEnergy(89, 0.25, 65, 1200, 95);
+      expect(hard.specificEnergyMpa).toBeGreaterThan(400);
+      expect(['hard', 'extreme']).toContain(hard.hardnessClass);
     });
   });
 });

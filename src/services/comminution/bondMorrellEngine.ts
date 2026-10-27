@@ -65,6 +65,33 @@ export function estimateMineralRecovery(
 }
 
 /**
+ * Primary Jaw / Gyratory Crusher Power & Capacity Model (Lynch & Taggart):
+ * Models power draw, closed-side setting (CSS), and product size P80.
+ */
+export function simulatePrimaryCrusher(
+  f80Mm: number,
+  cssMm = 110,
+  targetThroughputTph = 500,
+  wiCrushing = 12.0
+): { crusherProductP80Mm: number; powerDrawKW: number; capacityRatingTPH: number; reductionRatio: number } {
+  // Crusher product P80 is approximately 0.85 * CSS for standard jaw/gyratory crushers
+  const crusherProductP80Mm = parseFloat((cssMm * 0.85).toFixed(1));
+  const reductionRatio = parseFloat((f80Mm / Math.max(10, crusherProductP80Mm)).toFixed(2));
+
+  // Taggart specific crushing energy
+  const specEnergy = 10 * wiCrushing * (1 / Math.sqrt(crusherProductP80Mm * 1000) - 1 / Math.sqrt(f80Mm * 1000));
+  const powerDrawKW = Math.round(Math.max(25, specEnergy * targetThroughputTph * 1.15));
+  const capacityRatingTPH = Math.round(180 * Math.pow(cssMm / 100, 1.25));
+
+  return {
+    crusherProductP80Mm,
+    powerDrawKW,
+    capacityRatingTPH,
+    reductionRatio,
+  };
+}
+
+/**
  * Full Circuit Simulation: Crushing, SAG Milling, Ball Milling, and Recovery
  */
 export function simulateComminutionCircuit(params: BondCircuitParams): CircuitSimulationResult {
@@ -73,6 +100,7 @@ export function simulateComminutionCircuit(params: BondCircuitParams): CircuitSi
 
   // 1. Primary Crushing Specific Energy (Bond)
   const crushingEnergy = calculateBondSpecificEnergy(params.f80Mm, primaryCrusherProductMm * 1000, params.bondWorkIndexKWhPerT * 0.6);
+  const crusherModel = simulatePrimaryCrusher(params.f80Mm, 110, params.targetDailyThroughputTonnes / params.plantOperatingHoursPerDay, params.bondWorkIndexKWhPerT * 0.6);
 
   // 2. Grinding Specific Energy (Ball Mill / SAG)
   const grindingEnergyBond = calculateBondSpecificEnergy(primaryCrusherProductMm, targetP80Microns, params.bondWorkIndexKWhPerT);
@@ -85,14 +113,18 @@ export function simulateComminutionCircuit(params: BondCircuitParams): CircuitSi
   const achievableThroughputTPH = Math.round((installedPowerKW * 0.9) / totalSpecificEnergy);
   const dailyThroughputTonnes = achievableThroughputTPH * params.plantOperatingHoursPerDay;
 
-  // Steel ball wear: ~ 0.04 kg/kWh in quartz granodiorite
+  // Steel ball wear: ~ 0.04 kg/kWh in quartz granodiorite; Mill liner wear ~ 0.012 kg/t
   const grindingMediaWearKgPerT = parseFloat((totalSpecificEnergy * 0.042).toFixed(3));
+  const linerWearKgPerT = parseFloat((totalSpecificEnergy * 0.012).toFixed(3));
 
   // Costs
   const dailyPowerCostUSD = Math.round(dailyThroughputTonnes * totalSpecificEnergy * params.electricityCostPerKWhUSD);
   const powderFactorKgPerT = 0.65 / 2.65; // ~0.245 kg/t
   const dailyDrillBlastCostUSD = Math.round(dailyThroughputTonnes * powderFactorKgPerT * params.explosiveCostPerKgUSD * 2.1); // explosives + accessories
   const totalComminutionCostPerTonneUSD = parseFloat((totalSpecificEnergy * params.electricityCostPerKWhUSD + powderFactorKgPerT * params.explosiveCostPerKgUSD * 2.1).toFixed(2));
+
+  // Carbon emissions: scope 2 electricity generation factor (~0.45 kg CO2/kWh grid average)
+  const millingCo2KgPerT = parseFloat((totalSpecificEnergy * 0.45).toFixed(2));
 
   // Liberation & Recovery
   const { liberationPercent, recoveryPercent } = estimateMineralRecovery(targetP80Microns);
@@ -111,6 +143,10 @@ export function simulateComminutionCircuit(params: BondCircuitParams): CircuitSi
     totalComminutionCostPerTonneUSD,
     mineralLiberationPercent: liberationPercent,
     estimatedGoldRecoveryPercent: recoveryPercent,
+    crusherPowerKW: crusherModel.powerDrawKW,
+    crusherCapacityTPH: crusherModel.capacityRatingTPH,
+    smcEnergyKwhPerT: grindingEnergyMorrell,
+    millingCo2KgPerT,
   };
 }
 

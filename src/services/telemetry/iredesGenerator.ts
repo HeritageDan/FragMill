@@ -53,7 +53,42 @@ export function generateDrillPatternCsv(holes: IREDESHole[]): string {
 }
 
 /**
- * Procedural generation of realistic drill telemetry for QA/QC compliance auditing
+ * Teale (1965) Specific Energy of Rock Drilling:
+ * e = (F / A) + (2 * pi * N * T) / (A * u)
+ * F = Pulldown thrust (N), A = borehole area (m2), N = RPM (rev/s), T = Torque (N*m), u = Penetration rate (m/s)
+ * Output in MegaPascals (MPa). Directly correlates with UCS and rock mass drillability.
+ */
+export function calculateTealeSpecificEnergy(
+  holeDiameterMm: number,
+  penetrationRateMPerMin: number,
+  thrustKn = 45.0,
+  torqueNm = 850.0,
+  rpm = 120.0
+): { specificEnergyMpa: number; hardnessClass: 'very_soft' | 'soft' | 'medium' | 'hard' | 'extreme' } {
+  const radiusM = (holeDiameterMm / 1000) / 2;
+  const areaM2 = Math.PI * radiusM * radiusM;
+  const uMPerS = Math.max(0.001, penetrationRateMPerMin / 60);
+  const nRevPerS = rpm / 60;
+  const thrustN = thrustKn * 1000;
+
+  // Thrust component (axial energy) + Rotary component (torsional energy)
+  const axialEnergy = thrustN / areaM2; // Pa
+  const torsionalEnergy = (2 * Math.PI * nRevPerS * torqueNm) / (areaM2 * uMPerS); // Pa
+  const totalEnergyPa = axialEnergy + torsionalEnergy;
+  const specificEnergyMpa = Math.round(totalEnergyPa / 1e6);
+
+  let hardnessClass: 'very_soft' | 'soft' | 'medium' | 'hard' | 'extreme' = 'medium';
+  if (specificEnergyMpa < 120) hardnessClass = 'very_soft';
+  else if (specificEnergyMpa < 240) hardnessClass = 'soft';
+  else if (specificEnergyMpa < 380) hardnessClass = 'medium';
+  else if (specificEnergyMpa < 600) hardnessClass = 'hard';
+  else hardnessClass = 'extreme';
+
+  return { specificEnergyMpa, hardnessClass };
+}
+
+/**
+ * Procedurally generation of realistic drill telemetry for QA/QC compliance auditing
  */
 export function generateDrillTelemetryFromBlast(blast: Blast): IREDESHole[] {
   const holes: IREDESHole[] = [];
@@ -64,6 +99,7 @@ export function generateDrillTelemetryFromBlast(blast: Blast): IREDESHole[] {
   const burden = blast.parameters.burden || 2.4;
   const spacing = blast.parameters.spacing || 2.8;
   const depth = blast.parameters.holeDepth || 6.8;
+  const diam = blast.parameters.holeDiameter || 89;
 
   const seedBase = blast.blastId.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) + 42;
   const pseudoRandom = (seed: number): number => {
@@ -93,6 +129,13 @@ export function generateDrillTelemetryFromBlast(blast: Blast): IREDESHole[] {
     const actualX = plannedX + (collarErrorMm / 1000) * (r4 > 0.5 ? 1 : -1);
     const actualY = plannedY + (collarErrorMm / 1000) * (r5 > 0.5 ? 1 : -1);
 
+    // In-hole trajectory deviation (toe wander accumulates down-hole)
+    const angularDriftDeg = parseFloat((0.8 + r2 * 2.2).toFixed(2));
+    const toeWanderMm = Math.round(collarErrorMm + actualDepthM * Math.tan((angularDriftDeg * Math.PI) / 180) * 1000);
+
+    const penetrationRate = parseFloat((0.85 + r3 * 0.45).toFixed(2));
+    const teale = calculateTealeSpecificEnergy(diam, penetrationRate, 40 + r1 * 15, 800 + r2 * 200, 110 + r3 * 20);
+
     holes.push({
       holeId: `DH-${(i + 1).toString().padStart(3, '0')}`,
       plannedX,
@@ -107,7 +150,11 @@ export function generateDrillTelemetryFromBlast(blast: Blast): IREDESHole[] {
       actualDepthM,
       collarDeviationMm: collarErrorMm,
       depthDeviationM: depthDriftM,
-      penetrationRateMPerMin: parseFloat((0.85 + r3 * 0.45).toFixed(2)),
+      penetrationRateMPerMin: penetrationRate,
+      mwdSpecificEnergyMpa: teale.specificEnergyMpa,
+      rockHardnessClass: teale.hardnessClass,
+      toeDeviationMm: toeWanderMm,
+      angularDeviationDeg: angularDriftDeg,
     });
   }
 

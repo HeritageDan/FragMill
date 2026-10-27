@@ -13,6 +13,41 @@ export const DEFAULT_BELT_CONFIG: BeltVisionConfig = {
 };
 
 /**
+ * CEMA Standard Conveyor Capacity Calculation (3-Roll Idlers, 20°, 35°, 45°):
+ * Computes theoretical maximum cross-sectional area and volumetric capacity
+ */
+export function calculateCEMACapacity(
+  beltWidthM: number,
+  beltSpeedMPerS: number,
+  troughAngleDeg = 35,
+  surchargeAngleDeg = 20,
+  bulkDensityTPerM3 = 1.85
+): { maxCrossSectionAreaM2: number; maxVolumetricCapacityM3PerH: number; maxThroughputTPH: number } {
+  const b = beltWidthM;
+  const l = (b / 3) * 0.9; // Center roll length
+  const troughRad = (troughAngleDeg * Math.PI) / 180;
+  const surchargeRad = (surchargeAngleDeg * Math.PI) / 180;
+
+  // Trapezoidal trough area
+  const h = l * Math.sin(troughRad);
+  const topWidth = l + 2 * l * Math.cos(troughRad);
+  const troughArea = ((l + topWidth) / 2) * h;
+
+  // Circular segment surcharge area
+  const surchargeArea = (Math.pow(topWidth, 2) / (8 * Math.sin(surchargeRad))) * (2 * surchargeRad - Math.sin(2 * surchargeRad));
+
+  const maxCrossSectionAreaM2 = parseFloat((troughArea + surchargeArea).toFixed(4));
+  const maxVolumetricCapacityM3PerH = Math.round(maxCrossSectionAreaM2 * beltSpeedMPerS * 3600);
+  const maxThroughputTPH = Math.round(maxVolumetricCapacityM3PerH * bulkDensityTPerM3);
+
+  return {
+    maxCrossSectionAreaM2,
+    maxVolumetricCapacityM3PerH,
+    maxThroughputTPH,
+  };
+}
+
+/**
  * Procedurally simulates a frame of rocks passing on a conveyor belt
  */
 export function generateSimulatedBeltFrame(
@@ -73,6 +108,9 @@ export function generateSimulatedBeltFrame(
   const beltUtilization = Math.min(100, Math.round((bedDepthM / 0.35) * 100));
 
   const currentAlert = oversizeCount > 0;
+  // Distance from edge vision camera to primary crusher dump chute: ~ 12 meters
+  const cameraToChuteDistanceM = 12.0;
+  const timeToChokeSeconds = currentAlert ? parseFloat((cameraToChuteDistanceM / Math.max(0.5, config.beltSpeedMPerS)).toFixed(1)) : undefined;
 
   let chokeEvent: CrusherChokeEvent | undefined;
   if (currentAlert) {
@@ -99,6 +137,9 @@ export function generateSimulatedBeltFrame(
       totalRocksDetected: rockCount,
       oversizeCount,
       currentAlert,
+      timeToChokeSeconds,
+      cemaTroughAngleDeg: 35,
+      volumetricFlowM3PerH: Math.round(volumetricFlowM3PerS * 3600),
     },
     chokeEvent,
   };

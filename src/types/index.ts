@@ -173,6 +173,8 @@ export interface FitParametersSwebrec {
   b: number;
   r2: number;
   rmse: number;
+  aic?: number;
+  bic?: number;
 }
 
 export interface FitParametersRosinRammler {
@@ -180,6 +182,24 @@ export interface FitParametersRosinRammler {
   n: number;
   r2: number;
   rmse: number;
+  aic?: number;
+  bic?: number;
+}
+
+export interface FitParametersGGS {
+  k: number; // Size modulus (mm)
+  m: number; // Distribution modulus (slope)
+  r2: number;
+  rmse: number;
+  aic?: number;
+  bic?: number;
+}
+
+export interface StandardSieveMesh {
+  standard: 'ASTM' | 'Tyler' | 'ISO';
+  meshName: string;
+  apertureMm: number;
+  passingPercent: number;
 }
 
 // PROPOSAL 1: 3D Depth & Stereology
@@ -253,6 +273,9 @@ export interface FragmentationMetrics {
   bootstrapCI: BootstrapConfidenceInterval;
   swebrecFit?: FitParametersSwebrec;
   rosinRammlerFit?: FitParametersRosinRammler;
+  ggsFit?: FitParametersGGS;
+  bestFitModel?: 'swebrec' | 'rosin_rammler' | 'ggs';
+  standardSievePassing?: StandardSieveMesh[];
   rawCurve: CumulativePoint[];
   correctedCurve: CumulativePoint[];
   stereologicalCorrectionApplied?: boolean;
@@ -423,6 +446,28 @@ export interface KuzRamResult {
   p80Mm: number;
   p90Mm: number;
   curve: CumulativePoint[];
+  kcoResult?: {
+    xMaxMm: number;
+    bParameter: number;
+    curve: CumulativePoint[];
+  };
+  flyrock?: {
+    faceBurdenThrowM: number;
+    crateringThrowM: number;
+    riflingThrowM: number;
+    maxFlyrockDistanceM: number;
+    safetyFactor: number;
+    personnelEvacuationDistanceM: number;
+    equipmentEvacuationDistanceM: number;
+  };
+  energy?: {
+    powderFactorKgPerM3: number;
+    powderFactorKgPerTonne: number;
+    energyFactorMjPerTonne: number;
+    specificDrillingMPerM3: number;
+    co2EmissionsKgPerTonne: number;
+    totalCo2EmissionsKg: number;
+  };
 }
 
 export interface BayesianCalibrationResult {

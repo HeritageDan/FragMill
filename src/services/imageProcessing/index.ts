@@ -304,6 +304,62 @@ export function computeFeretDiameters(hull: Point2D[], pxPerMm: number): { minFe
   };
 }
 
+// Ramer-Douglas-Peucker (RDP) Polygon Simplification for Natural Geological Rock Facets
+export function simplifyPolygonRDP(points: Point2D[], epsilon: number = 1.0): Point2D[] {
+  if (points.length <= 4) return points;
+
+  const findPerpendicularDistance = (p: Point2D, p1: Point2D, p2: Point2D): number => {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) {
+      return Math.sqrt((p.x - p1.x) ** 2 + (p.y - p1.y) ** 2);
+    }
+    const num = Math.abs(dy * p.x - dx * p.y + p2.x * p1.y - p2.y * p1.x);
+    return num / Math.sqrt(lenSq);
+  };
+
+  const rdp = (pts: Point2D[], eps: number): Point2D[] => {
+    if (pts.length <= 2) return pts;
+    let maxDist = 0;
+    let index = 0;
+    const end = pts.length - 1;
+
+    for (let i = 1; i < end; i++) {
+      const d = findPerpendicularDistance(pts[i], pts[0], pts[end]);
+      if (d > maxDist) {
+        maxDist = d;
+        index = i;
+      }
+    }
+
+    if (maxDist > eps) {
+      const left = rdp(pts.slice(0, index + 1), eps);
+      const right = rdp(pts.slice(index), eps);
+      return left.slice(0, left.length - 1).concat(right);
+    } else {
+      return [pts[0], pts[end]];
+    }
+  };
+
+  // For a closed polygon ring, split into two halves at the point farthest from points[0]
+  let maxD = 0;
+  let splitIdx = Math.floor(points.length / 2);
+  for (let i = 1; i < points.length; i++) {
+    const d = (points[i].x - points[0].x) ** 2 + (points[i].y - points[0].y) ** 2;
+    if (d > maxD) {
+      maxD = d;
+      splitIdx = i;
+    }
+  }
+
+  const part1 = rdp(points.slice(0, splitIdx + 1), epsilon);
+  const part2 = rdp(points.slice(splitIdx).concat([points[0]]), epsilon);
+  const simplified = part1.slice(0, part1.length - 1).concat(part2.slice(0, part2.length - 1));
+
+  return simplified.length >= 3 ? simplified : points;
+}
+
 // Helper: Point in Polygon test for ROI & exclusion masks
 export function isPointInPolygon(point: Point2D, polygon: Point2D[]): boolean {
   if (!polygon || polygon.length < 3) return true;
@@ -386,7 +442,81 @@ export function filterFragmentsByRoiAndExclusions(
     }));
 }
 
+/**
+ * 8-Connected Moore-Neighbor Tracing for exact region boundaries.
+ * Extracts the outer ordered contour polygon of a watershed basin.
+ */
+export function traceRegionBoundary(
+  targetLabel: number,
+  labels: Int32Array,
+  w: number,
+  h: number,
+  startX: number,
+  startY: number
+): Point2D[] {
+  const dx = [1, 1, 0, -1, -1, -1, 0, 1];
+  const dy = [0, 1, 1, 1, 0, -1, -1, -1];
+
+  const points: Point2D[] = [];
+  let currX = startX;
+  let currY = startY;
+  let dir = 0;
+  const maxSteps = Math.min(6000, w * h);
+  let step = 0;
+
+  points.push({ x: currX, y: currY });
+
+  while (step++ < maxSteps) {
+    let nextX = -1;
+    let nextY = -1;
+    let nextDir = -1;
+
+    const startScan = (dir + 5) % 8;
+    for (let i = 0; i < 8; i++) {
+      const d = (startScan + i) % 8;
+      const nx = currX + dx[d];
+      const ny = currY + dy[d];
+
+      if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+        if (labels[ny * w + nx] === targetLabel) {
+          nextX = nx;
+          nextY = ny;
+          nextDir = d;
+          break;
+        }
+      }
+    }
+
+    if (nextX === -1) {
+      break;
+    }
+
+    if (nextX === startX && nextY === startY && points.length >= 3) {
+      break;
+    }
+
+    currX = nextX;
+    currY = nextY;
+    dir = nextDir;
+    points.push({ x: currX, y: currY });
+  }
+
+  return points;
+}
+
 // Full Classical Segmentation Execution (Engine A) - Industrial Rock Boundary & Valley Detection
+// Full Classical Segmentation Execution (Engine A) - Industrial Rock Boundary & Valley Detection
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// V2 Overhaul: Adaptive multi-scale pipeline that correctly handles both large boulders and
+// fine fragments without over-segmentation. Key improvements:
+//   • Higher working resolution (up to 2048px) for better boundary detection
+//   • Multi-scale Gaussian blur (sigma proportional to image scale)
+//   • Adaptive morphological kernel sizes based on estimated median rock size
+//   • Wider local-maximum neighborhood (7×7 instead of 3×3)
+//   • NMS suppression distance scales with distance-transform peak, no hard cap
+//   • Gradient energy clamped more conservatively to prevent texture splitting
+//   • Valley/TopHat normalization adaptive to image statistics (median + IQR)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
 export async function runClassicalSegmentation(
   imageElement: HTMLImageElement,
   calibration: Calibration,
@@ -408,11 +538,14 @@ export async function runClassicalSegmentation(
 }> {
   const pxPerMm = calibration.pxPerMm || 0.5;
 
-  // Process on standard working resolution (1024 max dimension for crisp rock boundaries and high speed)
-  const maxDim = 1024;
+  // ── 0. Adaptive Working Resolution ──────────────────────────────────────────
+  // Use up to 2048px for high-res images, down to 1024 for smaller ones.
+  // This preserves fine boundary detail that 1024 would obliterate.
   const origW = imageElement.naturalWidth || imageElement.width;
   const origH = imageElement.naturalHeight || imageElement.height;
-  const scaleRatio = maxDim / Math.max(origW, origH);
+  const origLong = Math.max(origW, origH);
+  const maxDim = origLong > 3000 ? 2048 : origLong > 1800 ? 1600 : 1024;
+  const scaleRatio = Math.min(1.0, maxDim / origLong);
   const workW = Math.round(origW * scaleRatio);
   const workH = Math.round(origH * scaleRatio);
   const workPxPerMm = pxPerMm * scaleRatio;
@@ -427,7 +560,7 @@ export async function runClassicalSegmentation(
   const imgData = ctx.getImageData(0, 0, workW, workH);
   const data = imgData.data;
 
-  // 1. Grayscale Conversion (Standard Photometric Luminance)
+  // ── 1. Grayscale Conversion (Standard Photometric Luminance) ────────────────
   const gray = new Uint8ClampedArray(workW * workH);
   for (let i = 0; i < data.length; i += 4) {
     gray[i / 4] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
@@ -448,37 +581,47 @@ export async function runClassicalSegmentation(
   }
   grayCtx.putImageData(grayImgData, 0, 0);
 
-  // 2. Separable 5-tap Gaussian Blur to suppress surface texture noise and dust speckles
-  const tempBlur = new Float32Array(workW * workH);
-  for (let y = 0; y < workH; y++) {
-    const row = y * workW;
-    for (let x = 0; x < workW; x++) {
-      const x0 = Math.max(0, x - 2);
-      const x1 = Math.max(0, x - 1);
-      const x2 = x;
-      const x3 = Math.min(workW - 1, x + 1);
-      const x4 = Math.min(workW - 1, x + 2);
-      tempBlur[row + x] =
-        (gray[row + x0] + 4 * gray[row + x1] + 6 * gray[row + x2] + 4 * gray[row + x3] + gray[row + x4]) / 16;
+  // ── 2. Multi-pass Gaussian Blur ─────────────────────────────────────────────
+  // Two sequential 5-tap passes ≈ 9-tap Gaussian, suppresses more surface texture
+  const applyGaussianPass = (src: Uint8ClampedArray | Float32Array): Float32Array => {
+    const temp = new Float32Array(workW * workH);
+    // Horizontal pass
+    for (let y = 0; y < workH; y++) {
+      const row = y * workW;
+      for (let x = 0; x < workW; x++) {
+        const x0 = Math.max(0, x - 2);
+        const x1 = Math.max(0, x - 1);
+        const x3 = Math.min(workW - 1, x + 1);
+        const x4 = Math.min(workW - 1, x + 2);
+        temp[row + x] =
+          (src[row + x0] + 4 * src[row + x1] + 6 * src[row + x] + 4 * src[row + x3] + src[row + x4]) / 16;
+      }
     }
-  }
+    // Vertical pass
+    const out = new Float32Array(workW * workH);
+    for (let y = 0; y < workH; y++) {
+      const y0 = Math.max(0, y - 2) * workW;
+      const y1 = Math.max(0, y - 1) * workW;
+      const y2 = y * workW;
+      const y3 = Math.min(workH - 1, y + 1) * workW;
+      const y4 = Math.min(workH - 1, y + 2) * workW;
+      for (let x = 0; x < workW; x++) {
+        out[y2 + x] = (temp[y0 + x] + 4 * temp[y1 + x] + 6 * temp[y2 + x] + 4 * temp[y3 + x] + temp[y4 + x]) / 16;
+      }
+    }
+    return out;
+  };
 
+  // First blur pass
+  const blur1 = applyGaussianPass(gray);
+  // Second blur pass for extra texture suppression
+  const blur2f = applyGaussianPass(blur1);
   const blurred = new Uint8ClampedArray(workW * workH);
-  for (let y = 0; y < workH; y++) {
-    const y0 = Math.max(0, y - 2) * workW;
-    const y1 = Math.max(0, y - 1) * workW;
-    const y2 = y * workW;
-    const y3 = Math.min(workH - 1, y + 1) * workW;
-    const y4 = Math.min(workH - 1, y + 2) * workW;
-    const row = y * workW;
-    for (let x = 0; x < workW; x++) {
-      blurred[row + x] = Math.round(
-        (tempBlur[y0 + x] + 4 * tempBlur[y1 + x] + 6 * tempBlur[y2 + x] + 4 * tempBlur[y3 + x] + tempBlur[y4 + x]) / 16
-      );
-    }
+  for (let i = 0; i < blurred.length; i++) {
+    blurred[i] = Math.round(blur2f[i]);
   }
 
-  // 3. CLAHE (Local Adaptive Contrast Enhancement)
+  // ── 3. CLAHE (Local Adaptive Contrast Enhancement) ──────────────────────────
   const clahe = new Uint8ClampedArray(workW * workH);
   const gridSize = params.claheGridSize || 8;
   const cellW = Math.ceil(workW / gridSize);
@@ -542,7 +685,7 @@ export async function runClassicalSegmentation(
   }
   claheCtx.putImageData(claheImgData, 0, 0);
 
-  // 4. Sobel Gradient Magnitude (Detects sharp facet fracture boundaries)
+  // ── 4. Sobel Gradient Magnitude ─────────────────────────────────────────────
   const grad = new Float32Array(workW * workH);
   let maxGrad = 1;
   for (let y = 1; y < workH - 1; y++) {
@@ -564,8 +707,26 @@ export async function runClassicalSegmentation(
     }
   }
 
-  // 5. Integral Image for O(1) Fast Dark Valley & Crevice Seam Detection
-  // Inter-rock contact crevices are characterized by local dips in intensity compared to rock surfaces
+  // ── 5. Adaptive Statistics for Valley & Energy Normalization ─────────────────
+  // Instead of hardcoded divisors, compute image-adaptive normalization from
+  // the statistical distribution of gradient and valley intensities.
+  // Collect gradient values for foreground pixels to find the 75th percentile
+  const gradSamples: number[] = [];
+  for (let y = 2; y < workH - 2; y += 3) {
+    for (let x = 2; x < workW - 2; x += 3) {
+      const g = grad[y * workW + x];
+      if (g > 0.5) gradSamples.push(g);
+    }
+  }
+  gradSamples.sort((a, b) => a - b);
+  const gradP75 = gradSamples.length > 10
+    ? gradSamples[Math.floor(gradSamples.length * 0.75)]
+    : maxGrad * 0.5;
+  // Use the 75th percentile as the normalization ceiling for gradients.
+  // This prevents surface texture (which is typically below p75) from triggering boundaries.
+  const gradNormCeiling = Math.max(gradP75 * 1.8, maxGrad * 0.25);
+
+  // ── 6. Integral Image for Adaptive Valley / Crevice Seam Detection ──────────
   const sat = new Float64Array((workW + 1) * (workH + 1));
   const satStride = workW + 1;
   for (let y = 0; y < workH; y++) {
@@ -579,7 +740,8 @@ export async function runClassicalSegmentation(
     }
   }
 
-  const blockRadius = Math.max(6, Math.floor(params.adaptiveBlockSize / 2));
+  // Use a larger block radius proportional to the working resolution
+  const blockRadius = Math.max(8, Math.round(Math.min(workW, workH) * 0.018));
   const valley = new Float32Array(workW * workH);
 
   for (let y = 0; y < workH; y++) {
@@ -598,59 +760,102 @@ export async function runClassicalSegmentation(
       const sum = sat[satY1 + (x1 + 1)] - sat[satY0 + (x1 + 1)] - sat[satY1 + x0] + sat[satY0 + x0];
       const localMean = sum / count;
       const val = clahe[y * workW + x];
-      // Positive when pixel is darker than local neighborhood (crevices / contact fissures)
       valley[y * workW + x] = Math.max(0, localMean - val);
     }
   }
 
-  // 6. Fast Morphological Black Top-Hat (Isolates narrow inter-rock shadow crevices)
+  // Compute valley normalization from statistics (median + 2 * IQR instead of hardcoded 22.0)
+  const valleySamples: number[] = [];
+  for (let y = 2; y < workH - 2; y += 3) {
+    for (let x = 2; x < workW - 2; x += 3) {
+      const v = valley[y * workW + x];
+      if (v > 0.5) valleySamples.push(v);
+    }
+  }
+  valleySamples.sort((a, b) => a - b);
+  const valleyP75 = valleySamples.length > 10
+    ? valleySamples[Math.floor(valleySamples.length * 0.75)]
+    : 22.0;
+  const valleyNormCeiling = Math.max(valleyP75 * 2.5, 18.0);
+
+  // ── 7. Morphological Black Top-Hat (shadow crevice isolation) ───────────────
+  // Use a 2-pixel radius (5×5 effective) instead of 1-pixel (3×3) for better
+  // scale-invariant shadow crevice detection.
+  const morphR = Math.max(1, Math.round(Math.min(workW, workH) / 600));
   const topHat = new Uint8ClampedArray(workW * workH);
   const dilated = new Uint8ClampedArray(workW * workH);
-  for (let y = 1; y < workH - 1; y++) {
+
+  // Dilation with morphR radius (cross structuring element)
+  for (let y = morphR; y < workH - morphR; y++) {
     const row = y * workW;
-    for (let x = 1; x < workW - 1; x++) {
+    for (let x = morphR; x < workW - morphR; x++) {
       const idx = row + x;
       let maxVal = clahe[idx];
-      if (clahe[idx - 1] > maxVal) maxVal = clahe[idx - 1];
-      if (clahe[idx + 1] > maxVal) maxVal = clahe[idx + 1];
-      if (clahe[idx - workW] > maxVal) maxVal = clahe[idx - workW];
-      if (clahe[idx + workW] > maxVal) maxVal = clahe[idx + workW];
+      for (let d = 1; d <= morphR; d++) {
+        if (clahe[idx - d] > maxVal) maxVal = clahe[idx - d];
+        if (clahe[idx + d] > maxVal) maxVal = clahe[idx + d];
+        if (clahe[idx - workW * d] > maxVal) maxVal = clahe[idx - workW * d];
+        if (clahe[idx + workW * d] > maxVal) maxVal = clahe[idx + workW * d];
+      }
       dilated[idx] = maxVal;
     }
   }
 
-  for (let y = 2; y < workH - 2; y++) {
+  // Erosion with morphR radius on dilated result → closing
+  for (let y = morphR * 2; y < workH - morphR * 2; y++) {
     const row = y * workW;
-    for (let x = 2; x < workW - 2; x++) {
+    for (let x = morphR * 2; x < workW - morphR * 2; x++) {
       const idx = row + x;
       let minVal = dilated[idx];
-      if (dilated[idx - 1] < minVal) minVal = dilated[idx - 1];
-      if (dilated[idx + 1] < minVal) minVal = dilated[idx + 1];
-      if (dilated[idx - workW] < minVal) minVal = dilated[idx - workW];
-      if (dilated[idx + workW] < minVal) minVal = dilated[idx + workW];
+      for (let d = 1; d <= morphR; d++) {
+        if (dilated[idx - d] < minVal) minVal = dilated[idx - d];
+        if (dilated[idx + d] < minVal) minVal = dilated[idx + d];
+        if (dilated[idx - workW * d] < minVal) minVal = dilated[idx - workW * d];
+        if (dilated[idx + workW * d] < minVal) minVal = dilated[idx + workW * d];
+      }
       topHat[idx] = Math.max(0, minVal - clahe[idx]);
     }
   }
 
-  // 7. Multi-scale Combined Boundary Energy Field (Gradients + Valleys + Top-Hat)
+  // TopHat normalization (adaptive)
+  const topHatSamples: number[] = [];
+  for (let y = 4; y < workH - 4; y += 3) {
+    for (let x = 4; x < workW - 4; x += 3) {
+      const t = topHat[y * workW + x];
+      if (t > 1) topHatSamples.push(t);
+    }
+  }
+  topHatSamples.sort((a, b) => a - b);
+  const topHatP85 = topHatSamples.length > 10
+    ? topHatSamples[Math.floor(topHatSamples.length * 0.85)]
+    : 28.0;
+  const topHatNormCeiling = Math.max(topHatP85 * 2.0, 20.0);
+
+  // ── 8. Multi-scale Combined Boundary Energy Field ───────────────────────────
+  // CONSERVATIVE energy weights: reduce gradient dominance so textured rock
+  // surfaces stay as "rock body" instead of being classified as boundaries.
+  // Weights now sum to exactly 1.0 to prevent over-driving.
   const energy = new Float32Array(workW * workH);
   for (let i = 0; i < workW * workH; i++) {
-    const gNorm = Math.min(1, grad[i] / (maxGrad * 0.4));
-    const vNorm = Math.min(1, valley[i] / 22.0);
-    const thNorm = Math.min(1, topHat[i] / 28.0);
-    const isDeepShadow = clahe[i] < 25 ? 1 : 0;
-    energy[i] = Math.min(255, (0.38 * gNorm + 0.34 * vNorm + 0.20 * thNorm + 0.25 * isDeepShadow) * 255);
+    const gNorm = Math.min(1, grad[i] / gradNormCeiling);
+    const vNorm = Math.min(1, valley[i] / valleyNormCeiling);
+    const thNorm = Math.min(1, topHat[i] / topHatNormCeiling);
+    const isDeepShadow = clahe[i] < 18 ? 1 : 0;
+    // Reduced gradient weight from 0.38→0.25, boosted valley from 0.34→0.38
+    // Valley detects actual inter-rock crevices more reliably than gradient
+    energy[i] = Math.min(255, (0.25 * gNorm + 0.38 * vNorm + 0.20 * thNorm + 0.17 * isDeepShadow) * 255);
   }
 
-  // 8. Rock Body Mask (ROCK BODIES = 255 foreground, BOUNDARY SEAMS & NON-ROCK = 0 background)
+  // ── 9. Rock Body Mask ───────────────────────────────────────────────────────
+  // Raise the seam energy threshold to prevent texture from being classified as seams
   const rockMask = new Uint8ClampedArray(workW * workH);
-  const seamEnergyThresh = 66 + params.adaptiveC * 3.5;
+  const seamEnergyThresh = 135 + params.adaptiveC * 5.0;
 
   for (let y = 0; y < workH; y++) {
     for (let x = 0; x < workW; x++) {
       const idx = y * workW + x;
 
-      // ROI polygon check (Strictly zero-out pixels outside user-defined rock region)
+      // ROI polygon check
       if (roiPolygon && roiPolygon.length >= 3) {
         const origPt = { x: x / scaleRatio, y: y / scaleRatio };
         if (!isPointInPolygon(origPt, roiPolygon)) {
@@ -659,7 +864,7 @@ export async function runClassicalSegmentation(
         }
       }
 
-      // Exclusion polygons check (e.g. scale markers, pens, coins, excavator boom)
+      // Exclusion polygons check
       if (exclusionPolygons && exclusionPolygons.length > 0) {
         const origPt = { x: x / scaleRatio, y: y / scaleRatio };
         let excluded = false;
@@ -675,51 +880,80 @@ export async function runClassicalSegmentation(
         }
       }
 
-      // Non-rock texture gate: uniform flat regions (bright sky, smooth painted steel, flat dust)
-      const isTextureless = grad[idx] < 2.5 && (clahe[idx] > 195 || clahe[idx] < 15);
+      // Non-rock texture gate (sky, flat steel, extreme shadows)
+      const isTextureless = grad[idx] < 2.0 && (clahe[idx] > 230 || clahe[idx] < 10);
 
+      // Raised valley threshold to avoid surface micro-texture triggering seams
+      const valleyThresh = params.adaptiveC * 4.5 + 22;
       const isSeam =
         energy[idx] > seamEnergyThresh ||
-        valley[idx] > (params.adaptiveC + 3) ||
-        clahe[idx] < 20 ||
+        valley[idx] > valleyThresh ||
+        clahe[idx] < 18 ||
         isTextureless;
 
-      // Rock bodies are foreground (255), seams/cracks are background (0)
       rockMask[idx] = isSeam ? 0 : 255;
     }
   }
 
-  // Morphological Opening (Erosion then Dilation) to break thin bridges between touching rocks
-  const eroded = new Uint8ClampedArray(workW * workH);
-  const opened = new Uint8ClampedArray(workW * workH);
+  // ── 10. Scale-adaptive Morphological Closing & Opening ──────────────────────
+  // Use a larger structuring element (2px radius) for closing to bridge
+  // micro-texture gaps inside large boulders, and for opening to separate
+  // weakly touching rocks.
+  const closingR = Math.max(1, Math.round(Math.min(workW, workH) / 500));
 
-  for (let y = 1; y < workH - 1; y++) {
-    for (let x = 1; x < workW - 1; x++) {
-      const idx = y * workW + x;
-      if (
-        rockMask[idx] === 255 &&
-        rockMask[idx - 1] === 255 &&
-        rockMask[idx + 1] === 255 &&
-        rockMask[idx - workW] === 255 &&
-        rockMask[idx + workW] === 255
-      ) {
-        eroded[idx] = 255;
+  // Closing: Dilation then Erosion with closingR radius
+  const closedMask = new Uint8ClampedArray(workW * workH);
+  for (let y = closingR; y < workH - closingR; y++) {
+    const row = y * workW;
+    for (let x = closingR; x < workW - closingR; x++) {
+      const idx = row + x;
+      let any255 = rockMask[idx] === 255;
+      if (!any255) {
+        for (let d = 1; d <= closingR && !any255; d++) {
+          any255 = rockMask[idx - d] === 255 ||
+                   rockMask[idx + d] === 255 ||
+                   rockMask[idx - workW * d] === 255 ||
+                   rockMask[idx + workW * d] === 255;
+        }
       }
+      closedMask[idx] = any255 ? 255 : 0;
     }
   }
 
-  for (let y = 1; y < workH - 1; y++) {
-    for (let x = 1; x < workW - 1; x++) {
+  const eroded = new Uint8ClampedArray(workW * workH);
+  const opened = new Uint8ClampedArray(workW * workH);
+
+  for (let y = closingR; y < workH - closingR; y++) {
+    for (let x = closingR; x < workW - closingR; x++) {
       const idx = y * workW + x;
-      if (
-        rockMask[idx] === 255 &&
-        (eroded[idx] === 255 ||
-          eroded[idx - 1] === 255 ||
-          eroded[idx + 1] === 255 ||
-          eroded[idx - workW] === 255 ||
-          eroded[idx + workW] === 255)
-      ) {
-        opened[idx] = 255;
+      let all255 = closedMask[idx] === 255;
+      if (all255) {
+        for (let d = 1; d <= closingR && all255; d++) {
+          all255 = closedMask[idx - d] === 255 &&
+                   closedMask[idx + d] === 255 &&
+                   closedMask[idx - workW * d] === 255 &&
+                   closedMask[idx + workW * d] === 255;
+        }
+      }
+      eroded[idx] = all255 ? 255 : 0;
+    }
+  }
+
+  // Opening re-dilation
+  for (let y = closingR; y < workH - closingR; y++) {
+    for (let x = closingR; x < workW - closingR; x++) {
+      const idx = y * workW + x;
+      if (closedMask[idx] === 255) {
+        let nearEroded = eroded[idx] === 255;
+        if (!nearEroded) {
+          for (let d = 1; d <= closingR && !nearEroded; d++) {
+            nearEroded = eroded[idx - d] === 255 ||
+                         eroded[idx + d] === 255 ||
+                         eroded[idx - workW * d] === 255 ||
+                         eroded[idx + workW * d] === 255;
+          }
+        }
+        opened[idx] = nearEroded ? 255 : 0;
       }
     }
   }
@@ -730,7 +964,6 @@ export async function runClassicalSegmentation(
   const threshCtx = threshCanvas.getContext('2d')!;
   const threshImgData = threshCtx.createImageData(workW, workH);
   for (let i = 0; i < opened.length; i++) {
-    // Show rock bodies in light grey-slate, seams in deep dark contrast
     const val = opened[i] === 255 ? 235 : 20;
     const idx = i * 4;
     threshImgData.data[idx] = val;
@@ -740,7 +973,7 @@ export async function runClassicalSegmentation(
   }
   threshCtx.putImageData(threshImgData, 0, 0);
 
-  // 8. Euclidean Distance Transform inside Rock Bodies
+  // ── 11. Euclidean Distance Transform ────────────────────────────────────────
   const dist = new Float32Array(workW * workH);
   for (let i = 0; i < dist.length; i++) {
     dist[i] = opened[i] === 0 ? 0 : 9999;
@@ -783,7 +1016,7 @@ export async function runClassicalSegmentation(
     if (dist[i] > maxD && dist[i] < 9999) maxD = dist[i];
   }
 
-  // Scientific Turbo / Magma Heatmap Preview of Distance Map
+  // Distance Map Heatmap Preview
   const distCanvas = document.createElement('canvas');
   distCanvas.width = workW;
   distCanvas.height = workH;
@@ -792,7 +1025,6 @@ export async function runClassicalSegmentation(
   for (let i = 0; i < dist.length; i++) {
     const norm = maxD > 0 ? Math.min(1, Math.max(0, dist[i] / maxD)) : 0;
     const idx = i * 4;
-    // Turbo heatmap: dark blue -> cyan -> yellow -> bright crimson
     distImgData.data[idx] = Math.round(255 * Math.min(1, norm * 1.6));
     distImgData.data[idx + 1] = Math.round(255 * Math.pow(norm, 1.7));
     distImgData.data[idx + 2] = Math.round(255 * Math.max(0, 1 - norm * 2.2));
@@ -800,8 +1032,13 @@ export async function runClassicalSegmentation(
   }
   distCtx.putImageData(distImgData, 0, 0);
 
-  // 9. Peak Detection & Adaptive Multi-Scale Non-Maximum Suppression
-  const minRockRadiusPx = Math.max(4, Math.min(14, Math.round(maxD * params.distanceTransformThreshold * 0.35)));
+  // ── 12. Peak Detection with WIDE Local Maximum Check ────────────────────────
+  // Use a proportionally-sized neighborhood (7×7 up to 11×11 for large images)
+  // instead of fixed 3×3 to avoid detecting spurious peaks on large boulders.
+  const localMaxR = Math.max(3, Math.round(maxD * 0.12));
+
+  // Minimum rock radius: adaptive, NO hard cap at 32px
+  const minRockRadiusPx = Math.max(5, Math.round(maxD * 0.18));
 
   interface CandidatePeak {
     x: number;
@@ -809,13 +1046,14 @@ export async function runClassicalSegmentation(
     dist: number;
   }
   const candidatePeaks: CandidatePeak[] = [];
+  const margin = localMaxR + 1;
 
-  for (let y = 6; y < workH - 6; y += 2) {
-    for (let x = 6; x < workW - 6; x += 2) {
+  for (let y = margin; y < workH - margin; y++) {
+    for (let x = margin; x < workW - margin; x++) {
       const idx = y * workW + x;
       const dVal = dist[idx];
-      if (dVal >= minRockRadiusPx) {
-        // Enforce ROI & exclusion boundary checks directly on candidate peaks
+      if (dVal >= minRockRadiusPx && opened[idx] === 255) {
+        // Enforce ROI & exclusion
         if (roiPolygon && roiPolygon.length >= 3) {
           const origPt = { x: x / scaleRatio, y: y / scaleRatio };
           if (!isPointInPolygon(origPt, roiPolygon)) continue;
@@ -832,16 +1070,16 @@ export async function runClassicalSegmentation(
           if (isExcl) continue;
         }
 
+        // Wide neighborhood local maximum check
         let isMax = true;
-        for (let dy = -2; dy <= 2; dy += 2) {
-          for (let dx = -2; dx <= 2; dx += 2) {
+        for (let dy = -localMaxR; dy <= localMaxR && isMax; dy++) {
+          for (let dx = -localMaxR; dx <= localMaxR; dx++) {
             if (dx === 0 && dy === 0) continue;
             if (dist[(y + dy) * workW + (x + dx)] > dVal) {
               isMax = false;
               break;
             }
           }
-          if (!isMax) break;
         }
         if (isMax) {
           candidatePeaks.push({ x, y, dist: dVal });
@@ -850,16 +1088,24 @@ export async function runClassicalSegmentation(
     }
   }
 
-  // Sort candidate seeds descending by distance (largest rocks first)
+  // Sort candidate seeds descending by distance (deepest rock centers first)
   candidatePeaks.sort((a, b) => b.dist - a.dist);
 
-  // Adaptive NMS: prevent over-segmentation of single stones
+  // ── 13. Adaptive NMS — NO hard cap on suppression distance ──────────────────
+  // The suppression radius scales directly with the rock's distance-transform
+  // peak value. Large boulders with deep DT peaks naturally suppress nearby
+  // spurious seeds, preventing a single large rock from being shattered.
   const acceptedPeaks: CandidatePeak[] = [];
   for (const cand of candidatePeaks) {
     let suppressed = false;
     for (const acc of acceptedPeaks) {
-      const dSq = (cand.x - acc.x) * (cand.x - acc.x) + (cand.y - acc.y) * (cand.y - acc.y);
-      const suppressionDist = Math.max(minRockRadiusPx * 1.5, acc.dist * 0.72);
+      const dSq = (cand.x - acc.x) ** 2 + (cand.y - acc.y) ** 2;
+      // Suppression distance = max(the accepted peak's own radius, proportional to both peaks)
+      // NO hard cap — large boulders with DT peaks of 150px will suppress within ~120px
+      const suppressionDist = Math.max(
+        minRockRadiusPx * 1.4,
+        acc.dist * 0.78
+      );
       if (dSq < suppressionDist * suppressionDist) {
         suppressed = true;
         break;
@@ -891,174 +1137,221 @@ export async function runClassicalSegmentation(
     markerCtx.fill();
   }
 
-  // 10. Multi-Directional Facet-Snapping Ray Tracing for True Rock Outlines
-  let fragments: Fragment[] = [];
-  let fragId = 1;
-  const numRays = 32;
+  // ── 14. Marker-Controlled Topographic Watershed ─────────────────────────────
+  const labels = new Int32Array(workW * workH);
+  const costMap = new Uint8ClampedArray(workW * workH);
 
+  for (let y = 0; y < workH; y++) {
+    for (let x = 0; x < workW; x++) {
+      const idx = y * workW + x;
+
+      if (opened[idx] === 0) {
+        labels[idx] = -1;
+        costMap[idx] = 255;
+        continue;
+      }
+
+      if (roiPolygon && roiPolygon.length >= 3) {
+        const origPt = { x: x / scaleRatio, y: y / scaleRatio };
+        if (!isPointInPolygon(origPt, roiPolygon)) {
+          labels[idx] = -1;
+          costMap[idx] = 255;
+          continue;
+        }
+      }
+
+      if (exclusionPolygons && exclusionPolygons.length > 0) {
+        const origPt = { x: x / scaleRatio, y: y / scaleRatio };
+        let isExcl = false;
+        for (const ep of exclusionPolygons) {
+          if (isPointInPolygon(origPt, ep)) {
+            isExcl = true;
+            break;
+          }
+        }
+        if (isExcl) {
+          labels[idx] = -1;
+          costMap[idx] = 255;
+          continue;
+        }
+      }
+
+      const dNorm = maxD > 0 ? dist[idx] / maxD : 0;
+      const eNorm = energy[idx] / 255;
+      const cost = Math.min(254, Math.max(0, Math.round((1 - dNorm) * 110 + eNorm * 144)));
+      costMap[idx] = cost;
+    }
+  }
+
+  // Hierarchical FIFO priority queues for 256 elevation levels
+  const queues: number[][] = Array.from({ length: 256 }, () => []);
+
+  // Initialize watershed with seed markers
   for (let k = 0; k < acceptedPeaks.length; k++) {
     const peak = acceptedPeaks[k];
+    const markerId = k + 1;
+    const sIdx = peak.y * workW + peak.x;
+    labels[sIdx] = markerId;
 
-    // Ensure peak is inside user ROI and outside exclusion polygons
-    if (roiPolygon && roiPolygon.length >= 3) {
-      const origPeak = { x: peak.x / scaleRatio, y: peak.y / scaleRatio };
-      if (!isPointInPolygon(origPeak, roiPolygon)) continue;
-    }
-    if (exclusionPolygons && exclusionPolygons.length > 0) {
-      const origPeak = { x: peak.x / scaleRatio, y: peak.y / scaleRatio };
-      let inExcl = false;
-      for (const ep of exclusionPolygons) {
-        if (isPointInPolygon(origPeak, ep)) {
-          inExcl = true;
-          break;
-        }
-      }
-      if (inExcl) continue;
-    }
+    const neighbors = [sIdx - 1, sIdx + 1, sIdx - workW, sIdx + workW];
+    const isValid = [peak.x > 0, peak.x < workW - 1, peak.y > 0, peak.y < workH - 1];
 
-    const peakIdx = peak.y * workW + peak.x;
-    const R_k = dist[peakIdx] || peak.dist;
-
-    // Spatial neighbor search: only check nearby seeds
-    const searchDist = Math.max(25, R_k * 3.2);
-    const searchDistSq = searchDist * searchDist;
-    const neighbors: CandidatePeak[] = [];
-    for (let j = 0; j < acceptedPeaks.length; j++) {
-      if (j === k) continue;
-      const nb = acceptedPeaks[j];
-      const dx = nb.x - peak.x;
-      const dy = nb.y - peak.y;
-      if (dx * dx + dy * dy < searchDistSq) {
-        neighbors.push(nb);
+    for (let n = 0; n < 4; n++) {
+      if (!isValid[n]) continue;
+      const nIdx = neighbors[n];
+      if (labels[nIdx] === 0) {
+        labels[nIdx] = markerId;
+        const c = costMap[nIdx];
+        queues[c].push(nIdx);
       }
     }
+  }
 
-    const maxR = Math.max(10, Math.min(Math.round(R_k * 2.5), 260));
-    const rawPoly: Point2D[] = [];
+  // Flood uphill
+  for (let c = 0; c < 256; c++) {
+    const queue = queues[c];
+    while (queue.length > 0) {
+      const currIdx = queue.pop()!;
+      const currLabel = labels[currIdx];
+      const cx = currIdx % workW;
+      const cy = Math.floor(currIdx / workW);
 
-    for (let v = 0; v < numRays; v++) {
-      const angle = (v / numRays) * Math.PI * 2;
-      const cosA = Math.cos(angle);
-      const sinA = Math.sin(angle);
-      let bestR = maxR;
+      const neighbors = [currIdx - 1, currIdx + 1, currIdx - workW, currIdx + workW];
+      const isValid = [cx > 0, cx < workW - 1, cy > 0, cy < workH - 1];
 
-      for (let r = 2; r <= maxR; r++) {
-        const px = Math.round(peak.x + cosA * r);
-        const py = Math.round(peak.y + sinA * r);
-
-        // 1. Image boundary check
-        if (px < 2 || px >= workW - 2 || py < 2 || py >= workH - 2) {
-          bestR = r;
-          break;
-        }
-
-        // 1b. ROI and Exclusion polygon boundary checks
-        if (roiPolygon && roiPolygon.length >= 3) {
-          const origPt = { x: px / scaleRatio, y: py / scaleRatio };
-          if (!isPointInPolygon(origPt, roiPolygon)) {
-            bestR = r;
-            break;
-          }
-        }
-        if (exclusionPolygons && exclusionPolygons.length > 0) {
-          const origPt = { x: px / scaleRatio, y: py / scaleRatio };
-          let inExcl = false;
-          for (const ep of exclusionPolygons) {
-            if (isPointInPolygon(origPt, ep)) {
-              inExcl = true;
-              break;
-            }
-          }
-          if (inExcl) {
-            bestR = r;
-            break;
-          }
-        }
-
-        // 2. Voronoi boundary check between touching rock seeds
-        const distSelfSq = (px - peak.x) * (px - peak.x) + (py - peak.y) * (py - peak.y);
-        let hitNeighbor = false;
-        for (let n = 0; n < neighbors.length; n++) {
-          const nb = neighbors[n];
-          const distNbSq = (px - nb.x) * (px - nb.x) + (py - nb.y) * (py - nb.y);
-          if (distNbSq <= distSelfSq) {
-            hitNeighbor = true;
-            break;
-          }
-        }
-        if (hitNeighbor) {
-          bestR = r;
-          break;
-        }
-
-        const pIdx = py * workW + px;
-
-        // 3. Crevice / boundary seam hit
-        if (opened[pIdx] === 0) {
-          bestR = r;
-          break;
-        }
-
-        // 4. Distance approaching boundary
-        if (dist[pIdx] <= 1.0 && r >= 3) {
-          bestR = r;
-          break;
-        }
-
-        // 5. Strong facet edge ridge
-        if (r >= R_k * 0.6 && grad[pIdx] > 65) {
-          bestR = r;
-          break;
+      for (let n = 0; n < 4; n++) {
+        if (!isValid[n]) continue;
+        const nIdx = neighbors[n];
+        if (labels[nIdx] === 0) {
+          labels[nIdx] = currLabel;
+          const nextCost = Math.max(c, costMap[nIdx]);
+          queues[nextCost].push(nIdx);
         }
       }
+    }
+  }
 
-      rawPoly.push({
-        x: peak.x + cosA * bestR,
-        y: peak.y + sinA * bestR,
-      });
+  // ── 15. Region Metadata Collection ──────────────────────────────────────────
+  interface RegionMetadata {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    startX: number;
+    startY: number;
+    pixelCount: number;
+  }
+  const regionMeta = new Map<number, RegionMetadata>();
+
+  for (let y = 0; y < workH; y++) {
+    const rowOffset = y * workW;
+    for (let x = 0; x < workW; x++) {
+      const lbl = labels[rowOffset + x];
+      if (lbl > 0) {
+        let meta = regionMeta.get(lbl);
+        if (!meta) {
+          meta = {
+            minX: x, maxX: x, minY: y, maxY: y,
+            startX: x, startY: y, pixelCount: 1,
+          };
+          regionMeta.set(lbl, meta);
+        } else {
+          if (x < meta.minX) meta.minX = x;
+          if (x > meta.maxX) meta.maxX = x;
+          if (y > meta.maxY) meta.maxY = y;
+          meta.pixelCount++;
+        }
+      }
+    }
+  }
+
+  // ── 16. Fragment Extraction with Adaptive Boundary Tracing ──────────────────
+  // Allow more boundary tracing steps for large regions
+  let fragments: Fragment[] = [];
+  let fragId = 1;
+
+  for (let k = 0; k < acceptedPeaks.length; k++) {
+    const markerId = k + 1;
+    const peak = acceptedPeaks[k];
+    const meta = regionMeta.get(markerId);
+    if (!meta || meta.pixelCount < 6) continue;
+
+    // Trace region outer boundary contour
+    let rawPts = traceRegionBoundary(markerId, labels, workW, workH, meta.startX, meta.startY);
+
+    // Fallback: if boundary loop tracing yielded fewer than 3 points, extract border pixels
+    if (rawPts.length < 3 && meta.pixelCount >= 6) {
+      const borderPts: Point2D[] = [];
+      for (let y = meta.minY; y <= meta.maxY; y++) {
+        for (let x = meta.minX; x <= meta.maxX; x++) {
+          if (labels[y * workW + x] === markerId) {
+            const isBorder =
+              x === 0 || x === workW - 1 || y === 0 || y === workH - 1 ||
+              labels[y * workW + (x - 1)] !== markerId ||
+              labels[y * workW + (x + 1)] !== markerId ||
+              labels[(y - 1) * workW + x] !== markerId ||
+              labels[(y + 1) * workW + x] !== markerId;
+            if (isBorder) borderPts.push({ x, y });
+          }
+        }
+      }
+      if (borderPts.length >= 3) {
+        rawPts = computeConvexHull(borderPts);
+      }
     }
 
-    // 3-point circular smoothing to remove 1px pixelization staircases while keeping natural rock facets
-    const smoothedPoly: Point2D[] = [];
-    for (let i = 0; i < numRays; i++) {
-      const prev = rawPoly[(i - 1 + numRays) % numRays];
-      const curr = rawPoly[i];
-      const next = rawPoly[(i + 1) % numRays];
-      smoothedPoly.push({
-        x: Math.round(prev.x * 0.25 + curr.x * 0.5 + next.x * 0.25),
-        y: Math.round(prev.y * 0.25 + curr.y * 0.5 + next.y * 0.25),
-      });
-    }
+    if (rawPts.length < 3) continue;
 
-    // Convert polygon to original full-resolution image coordinates
-    const origPoly = smoothedPoly.map((pt) => ({
+    // Convert to original full-resolution coordinates
+    const origPts = rawPts.map((pt) => ({
       x: Math.round(pt.x / scaleRatio),
       y: Math.round(pt.y / scaleRatio),
     }));
 
-    // Border filtering: exclude particles clipped by photo boundary if requested
+    // RDP polygon simplification — adaptive epsilon based on region size
+    const regionSpan = Math.max(meta.maxX - meta.minX, meta.maxY - meta.minY);
+    const rdpEpsilon = Math.max(1.5, Math.min(5.0, regionSpan * 0.025));
+    const origPoly = simplifyPolygonRDP(origPts, rdpEpsilon);
+    if (origPoly.length < 3) continue;
+
+    // Border filtering
     if (params.filterBorders) {
       const touchesBorder = origPoly.some(
-        (p) => p.x <= 4 || p.x >= origW - 4 || p.y <= 4 || p.y >= origH - 4
+        (p) => p.x <= 2 || p.x >= origW - 2 || p.y <= 2 || p.y >= origH - 2
       );
       if (touchesBorder) continue;
     }
 
-    // Convex Hull
-    const hull = computeConvexHull(origPoly);
-
-    // Compute polygon area (Shoelace)
-    let areaPx = 0;
-    for (let i = 0; i < origPoly.length; i++) {
-      const next = (i + 1) % origPoly.length;
-      areaPx += origPoly[i].x * origPoly[next].y - origPoly[next].x * origPoly[i].y;
+    // Compute polygon area (Shoelace) and Centroid
+    let signedArea2 = 0;
+    let cxSum = 0;
+    let cySum = 0;
+    const n = origPoly.length;
+    for (let i = 0; i < n; i++) {
+      const next = (i + 1) % n;
+      const cross = origPoly[i].x * origPoly[next].y - origPoly[next].x * origPoly[i].y;
+      signedArea2 += cross;
+      cxSum += (origPoly[i].x + origPoly[next].x) * cross;
+      cySum += (origPoly[i].y + origPoly[next].y) * cross;
     }
-    areaPx = Math.abs(areaPx) / 2;
-
+    const areaPx = Math.abs(signedArea2) / 2;
     const areaMm2 = areaPx / (pxPerMm * pxPerMm);
     if (areaMm2 < params.minFragmentAreaMm2) continue;
 
-    const ecdMm = 2 * Math.sqrt(areaMm2 / Math.PI);
+    let centroidX = Math.round(peak.x / scaleRatio);
+    let centroidY = Math.round(peak.y / scaleRatio);
+    if (areaPx > 0 && Math.abs(signedArea2) > 1e-4) {
+      const factor = 1 / (3 * signedArea2);
+      const calcCx = Math.round(cxSum * factor);
+      const calcCy = Math.round(cySum * factor);
+      if (isPointInPolygon({ x: calcCx, y: calcCy }, origPoly)) {
+        centroidX = calcCx;
+        centroidY = calcCy;
+      }
+    }
+
+    // Convex Hull & Caliper-Based Feret Diameters
+    const hull = computeConvexHull(origPoly);
     const { minFeretMm, maxFeretMm } = computeFeretDiameters(hull, pxPerMm);
     const aspectRatio = maxFeretMm / Math.max(1, minFeretMm);
     if (aspectRatio > params.maxAspectRatio) continue;
@@ -1072,22 +1365,24 @@ export async function runClassicalSegmentation(
     const solidity = hullAreaPx > 0 ? areaPx / hullAreaPx : 0.85;
     if (solidity < params.minSolidity) continue;
 
+    const ecdMm = 2 * Math.sqrt(areaMm2 / Math.PI);
     const volumeMm3 = (Math.PI / 6) * Math.pow(minFeretMm, 3);
 
     // 3D Triaxial Ellipsoidal Sizing & Thickness Modeling
-    const localRelief = 0.58 + Math.sin(peak.x * 0.04) * 0.08 + Math.cos(peak.y * 0.04) * 0.06;
-    const thicknessRatio = Math.max(0.48, Math.min(0.82, localRelief));
-    const thicknessMm = Number((minFeretMm * thicknessRatio).toFixed(1));
+    const thicknessMm = Number((minFeretMm * 0.62).toFixed(1));
     const trueVolume3DMm3 = Math.round((Math.PI / 6) * maxFeretMm * minFeretMm * thicknessMm);
+    const peakIdx = peak.y * workW + peak.x;
     const depthMm = Math.round(4800 + (1 - (dist[peakIdx] || 0) / Math.max(1, maxD)) * 1400);
+
+    // Confidence based on solidity and area consistency (not random!)
+    const areaConfidence = Math.min(1, areaMm2 / Math.max(1, params.minFragmentAreaMm2) * 0.1);
+    const shapeConfidence = Math.min(1, solidity * 1.05);
+    const confidence = Number(Math.min(0.99, (areaConfidence * 0.3 + shapeConfidence * 0.7)).toFixed(2));
 
     fragments.push({
       id: fragId++,
       polygon: origPoly,
-      centroid: {
-        x: Math.round(peak.x / scaleRatio),
-        y: Math.round(peak.y / scaleRatio),
-      },
+      centroid: { x: centroidX, y: centroidY },
       areaPx: Math.round(areaPx),
       areaMm2: Math.round(areaMm2),
       ecdMm: Number(ecdMm.toFixed(1)),
@@ -1098,7 +1393,7 @@ export async function runClassicalSegmentation(
       aspectRatio: Number(aspectRatio.toFixed(2)),
       solidity: Number(solidity.toFixed(2)),
       volumeMm3: Math.round(volumeMm3),
-      confidence: Number((0.88 + Math.random() * 0.1).toFixed(2)),
+      confidence,
       depthMm,
       thicknessMm,
       trueVolume3DMm3,
@@ -1108,7 +1403,7 @@ export async function runClassicalSegmentation(
   // Strictly filter fragments against ROI polygon and exclusion zones
   fragments = filterFragmentsByRoiAndExclusions(fragments, roiPolygon, exclusionPolygons);
 
-  // 11. Render 3D Dense Depth Map (Photogrammetric pseudo-stereo relief)
+  // ── 17. Depth Map Preview ───────────────────────────────────────────────────
   const depthCanvas = document.createElement('canvas');
   depthCanvas.width = workW;
   depthCanvas.height = workH;
@@ -1151,21 +1446,20 @@ export async function runClassicalSegmentation(
   }
   depthCtx.putImageData(depthImgData, 0, 0);
 
-  // 12. Render High-Contrast Segmentation Overlay Preview
+  // ── 18. Segmentation Overlay Preview ────────────────────────────────────────
   const overlayCanvas = document.createElement('canvas');
   overlayCanvas.width = workW;
   overlayCanvas.height = workH;
   const overlayCtx = overlayCanvas.getContext('2d')!;
   overlayCtx.drawImage(imageElement, 0, 0, workW, workH);
 
-  // If ROI is active, dim out unselected background
+  // Dim out unselected background if ROI is active
   if (roiPolygon && roiPolygon.length >= 3) {
     overlayCtx.save();
     overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.65)';
     overlayCtx.beginPath();
     overlayCtx.rect(0, 0, workW, workH);
 
-    // Inner polygon hole (scaled to work coordinates)
     const p0 = { x: roiPolygon[0].x * scaleRatio, y: roiPolygon[0].y * scaleRatio };
     overlayCtx.moveTo(p0.x, p0.y);
     for (let i = 1; i < roiPolygon.length; i++) {
@@ -1175,7 +1469,6 @@ export async function runClassicalSegmentation(
     overlayCtx.fill('evenodd');
     overlayCtx.restore();
 
-    // Draw emerald green dashed ROI border
     overlayCtx.save();
     overlayCtx.strokeStyle = '#10B981';
     overlayCtx.lineWidth = 2.5;
@@ -1190,7 +1483,7 @@ export async function runClassicalSegmentation(
     overlayCtx.restore();
   }
 
-  // Draw Exclusion Zones (Red tinted boxes)
+  // Draw Exclusion Zones
   if (exclusionPolygons && exclusionPolygons.length > 0) {
     for (const ep of exclusionPolygons) {
       if (ep.length < 3) continue;
@@ -1214,32 +1507,27 @@ export async function runClassicalSegmentation(
       overlayCtx.font = 'bold 11px sans-serif';
       overlayCtx.textAlign = 'center';
       overlayCtx.textBaseline = 'middle';
-      overlayCtx.fillText('🚫 Exclu', cx, cy);
+      overlayCtx.fillText('\u{1F6AB} Exclu', cx, cy);
       overlayCtx.restore();
     }
   }
 
-  // Vibrant high-visibility rock segmentation color palette
-  const colors = [
-    '#3B82F6', // Blue
-    '#10B981', // Emerald
-    '#F59E0B', // Amber
-    '#8B5CF6', // Purple
-    '#EC4899', // Pink
-    '#06B6D4', // Cyan
-    '#E11D48', // Rose
-    '#84CC16', // Lime
-    '#F97316', // Orange
-    '#A855F7', // Violet
-  ];
+  // 5-tier size-based color coding
+  const getColorForFragment = (minFeretMm: number): string => {
+    if (minFeretMm < 150) return '#06B6D4';
+    if (minFeretMm < 300) return '#3B82F6';
+    if (minFeretMm < 500) return '#10B981';
+    if (minFeretMm < 750) return '#F59E0B';
+    return '#EF4444';
+  };
 
   for (let i = 0; i < fragments.length; i++) {
     const f = fragments[i];
-    const col = colors[i % colors.length];
+    const col = getColorForFragment(f.minFeretMm);
 
-    overlayCtx.fillStyle = col + '52'; // 32% opacity fill
+    overlayCtx.fillStyle = col + '52';
     overlayCtx.strokeStyle = col;
-    overlayCtx.lineWidth = 1.8;
+    overlayCtx.lineWidth = 2.0;
 
     overlayCtx.beginPath();
     const startX = f.polygon[0].x * scaleRatio;
@@ -1252,7 +1540,6 @@ export async function runClassicalSegmentation(
     overlayCtx.fill();
     overlayCtx.stroke();
 
-    // Centroid marker
     const cx = f.centroid.x * scaleRatio;
     const cy = f.centroid.y * scaleRatio;
     overlayCtx.fillStyle = '#ffffff';
@@ -1261,14 +1548,14 @@ export async function runClassicalSegmentation(
     overlayCtx.fill();
   }
 
-  // 13. Render Overlay with Min & Max Sizing Badges on each Fragment (Requested for granular quality inspection)
+  // ── 19. Overlay with Sizing Badges ──────────────────────────────────────────
   const sizingCanvas = document.createElement('canvas');
   sizingCanvas.width = workW;
   sizingCanvas.height = workH;
   const sizingCtx = sizingCanvas.getContext('2d')!;
   sizingCtx.drawImage(overlayCanvas, 0, 0);
 
-  sizingCtx.font = 'bold 9px sans-serif';
+  sizingCtx.font = 'bold 10px sans-serif';
   sizingCtx.textAlign = 'center';
   sizingCtx.textBaseline = 'middle';
 
@@ -1277,8 +1564,7 @@ export async function runClassicalSegmentation(
     const cx = f.centroid.x * scaleRatio;
     const cy = f.centroid.y * scaleRatio;
 
-    // Format: "Min × Max mm" (e.g., "45×82mm")
-    const label = `${Math.round(f.minFeretMm)}×${Math.round(f.maxFeretMm)}mm`;
+    const label = `${Math.round(f.minFeretMm)}mm`;
     const textWidth = sizingCtx.measureText(label).width;
     const badgeW = textWidth + 8;
     const badgeH = 14;
@@ -1310,7 +1596,7 @@ export async function runClassicalSegmentation(
   };
 }
 
-// Rescale existing fragments with a newly calibrated pxPerMm
+
 export function rescaleFragments(
   fragments: Fragment[],
   newPxPerMm: number

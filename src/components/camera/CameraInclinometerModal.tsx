@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Camera,
   CheckCircle2,
@@ -40,6 +40,15 @@ export const CameraInclinometerModal: React.FC<CameraInclinometerModalProps> = (
   const [roll, setRoll] = useState(0); // Left/right tilt in degrees (-30 to +30)
   const [isSimulatorMode, setIsSimulatorMode] = useState(true);
 
+  // Callback ref to reliably attach MediaStream as soon as video DOM node mounts
+  const assignStreamToVideo = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node && streamRef.current) {
+      node.srcObject = streamRef.current;
+      node.play().catch((err) => console.warn('Video play warning:', err));
+    }
+  }, []);
+
   // Initialize camera stream with robust desktop & mobile fallbacks
   const startCamera = async (deviceId?: string) => {
     setIsLoadingCamera(true);
@@ -58,15 +67,21 @@ export const CameraInclinometerModal: React.FC<CameraInclinometerModalProps> = (
 
       let s: MediaStream | null = null;
       try {
+        // Preferred: back-facing environment camera (field mobile/tablet)
         const constraints: MediaStreamConstraints = {
           video: deviceId
             ? { deviceId: { exact: deviceId } }
-            : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+            : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } },
         };
         s = await navigator.mediaDevices.getUserMedia(constraints);
       } catch {
-        // Fallback for laptop webcams / desktop where environment facing constraint fails
-        s = await navigator.mediaDevices.getUserMedia({ video: true });
+        try {
+          // Fallback: standard user webcam
+          s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        } catch {
+          // Ultimate fallback: any available video input
+          s = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
       }
 
       if (s) {
@@ -80,6 +95,7 @@ export const CameraInclinometerModal: React.FC<CameraInclinometerModalProps> = (
           }
         }
         setHasCameraStream(true);
+        setCameraError(null);
         setImportedImage(null);
 
         // Enumerate video devices
@@ -301,37 +317,51 @@ export const CameraInclinometerModal: React.FC<CameraInclinometerModalProps> = (
         )}
 
         {/* Viewfinder Main HUD Display */}
-        <div className="relative bg-black flex justify-center items-center h-80 sm:h-96 overflow-hidden select-none">
-          {importedImage ? (
+        <div className="relative bg-slate-950 flex justify-center items-center h-80 sm:h-96 overflow-hidden select-none">
+          {/* Always mounted video element with callback ref */}
+          <video
+            ref={assignStreamToVideo}
+            autoPlay
+            playsInline
+            muted
+            className={`w-full h-full object-cover transition-opacity duration-200 ${
+              hasCameraStream && !importedImage ? 'opacity-100 block' : 'opacity-0 hidden pointer-events-none'
+            }`}
+          />
+
+          {importedImage && (
             <img src={importedImage} alt="Imported preview" className="w-full h-full object-contain" />
-          ) : hasCameraStream ? (
-            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-b from-stone-900 via-stone-800 to-stone-900 flex flex-col items-center justify-center text-center p-6 space-y-3">
-              <Camera className="w-12 h-12 text-slate-400 opacity-60" />
+          )}
+
+          {!hasCameraStream && !importedImage && (
+            <div className="w-full h-full bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 flex flex-col items-center justify-center text-center p-6 space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                <Camera className="w-8 h-8" />
+              </div>
               <div className="max-w-md">
-                <span className="text-xs text-slate-300 block font-bold mb-1">
-                  {cameraError ? cameraError : (isFr ? 'Caméra en attente ou non autorisée' : 'Camera stream pending or permission required')}
+                <span className="text-sm text-slate-200 block font-bold mb-1">
+                  {cameraError ? cameraError : (isFr ? 'Caméra en attente ou autorisation requise' : 'Camera stream pending or permission required')}
                 </span>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-xs text-slate-400">
                   {isFr
-                    ? 'Cliquez sur « Activer Caméra » pour utiliser votre webcam / caméra de terrain, ou importez un fichier image.'
-                    : 'Click "Start Camera" to grant webcam access, or import an existing rock muckpile image.'}
+                    ? 'Activez votre caméra pour viser le front de tir orthogonalement à 90°, ou importez une photo depuis vos dossiers.'
+                    : 'Activate your camera to align perpendicular to the muckpile face, or import an existing rock image.'}
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2.5 justify-center pt-1">
                 <button
-                  onClick={() => startCamera()}
-                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+                  onClick={() => startCamera(selectedCameraId)}
+                  disabled={isLoadingCamera}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg transition"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  {isFr ? 'Démarrer Caméra' : 'Start Camera'}
+                  <RefreshCw className={`w-4 h-4 ${isLoadingCamera ? 'animate-spin' : ''}`} />
+                  {isFr ? 'Activer / Réessayer Caméra' : 'Start / Retry Camera'}
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5"
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 shadow transition"
                 >
-                  <Upload className="w-3.5 h-3.5" />
+                  <Upload className="w-4 h-4 text-emerald-400" />
                   {isFr ? 'Importer une Photo' : 'Import Photo'}
                 </button>
               </div>

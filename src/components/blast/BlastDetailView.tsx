@@ -261,7 +261,11 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   const handleSaveCalibration = (newCalib: Calibration, autoExclusion?: Point2D[]) => {
     if (!selectedImage) return;
 
-    let updatedExclusions = selectedImage.exclusionPolygons ? [...selectedImage.exclusionPolygons] : [];
+    // Filter out previous scale marker exclusion if one was stored to prevent duplicate overlapping bars
+    const prevScaleExcl = (selectedImage as any).scaleMarkerExclusion as Point2D[] | undefined;
+    let updatedExclusions = (selectedImage.exclusionPolygons || []).filter(
+      (poly) => poly !== prevScaleExcl
+    );
     if (autoExclusion && autoExclusion.length >= 3) {
       updatedExclusions.push(autoExclusion);
     }
@@ -270,12 +274,23 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
       ...selectedImage,
       calibration: newCalib,
       exclusionPolygons: updatedExclusions,
+      ...(autoExclusion && autoExclusion.length >= 3
+        ? { scaleMarkerExclusion: autoExclusion }
+        : { scaleMarkerExclusion: undefined }),
       updatedAt: Date.now(),
     };
 
-    // If an active segmentation run exists with fragments, immediately recalibrate them!
+    // If an active segmentation run exists with fragments, filter & recalibrate them immediately!
     if (activeRun && activeRun.fragments && activeRun.fragments.length > 0) {
-      const rescaledFrags = rescaleFragments(activeRun.fragments, newCalib.pxPerMm);
+      let rescaledFrags = rescaleFragments(activeRun.fragments, newCalib.pxPerMm);
+      // Purge any fragments that now fall into the newly excluded reference object
+      if (updatedExclusions.length > 0 || selectedImage.roiPolygon) {
+        rescaledFrags = filterFragmentsByRoiAndExclusions(
+          rescaledFrags,
+          selectedImage.roiPolygon,
+          updatedExclusions
+        );
+      }
       const newMetrics = computeFragmentationMetrics(
         rescaledFrags,
         settings.defaultSizeDefinition,
@@ -681,8 +696,8 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
 
       {/* Manual Editor Modal */}
       {showManualEditor && selectedImage && activeRun && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-5xl">
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-1 sm:p-2">
+          <div className="w-full h-full max-w-[99vw] max-h-[98vh] flex flex-col">
             <ManualEditor
               imageSrc={selectedImage.dataUrl}
               initialFragments={activeRun.fragments}

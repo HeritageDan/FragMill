@@ -1,6 +1,6 @@
 // 3D Blast Initiation Timing Simulator & Bench Face Profiler
 
-import type { HoleTimingInfo, IsochroneContour, PPVEstimate, FaceProfilePoint } from '../../types/advanced';
+import type { HoleTimingInfo, IsochroneContour, PPVEstimate, FaceProfilePoint, AirblastEstimate, FaceReliefCheck } from '../../types/advanced';
 
 export type InitiationPatternType = 'v_echelon' | 'row_by_row' | 'center_lift' | 'diagonal_cut' | 'electronic_custom';
 
@@ -99,6 +99,31 @@ export function computeIsochroneContours(holes: HoleTimingInfo[], contourInterva
 }
 
 /**
+ * Airblast Overpressure Prediction (OSMRE / USBM RI 8485):
+ * L_dB = 165 - 24 * log10(D / Q^(1/3))
+ * Standard regulatory limit: 134 dBL (linear peak) or 128 dBL for sensitive structures
+ */
+export function calculateAirblastOverpressure(
+  distanceM: number,
+  chargeKg: number,
+  safeLimitDbl = 134.0
+): AirblastEstimate {
+  const scaledDistance = distanceM / Math.pow(Math.max(1, chargeKg), 1 / 3);
+  const peakOverpressureDbl = Math.max(90, Math.min(165, 165 - 24 * Math.log10(Math.max(1, scaledDistance))));
+  // Sound pressure in Pascals: P = 2e-5 * 10^(L / 20)
+  const peakOverpressurePa = 2e-5 * Math.pow(10, peakOverpressureDbl / 20);
+
+  return {
+    distanceM,
+    chargeKg,
+    peakOverpressureDbl: parseFloat(peakOverpressureDbl.toFixed(1)),
+    peakOverpressurePa: parseFloat(peakOverpressurePa.toFixed(2)),
+    safeLimitDbl,
+    isCompliant: peakOverpressureDbl <= safeLimitDbl,
+  };
+}
+
+/**
  * Predict ground vibration (Peak Particle Velocity, PPV) via United States Bureau of Mines (USBM) formula:
  * PPV = K * (D / sqrt(Q))^(-beta)
  * Standard constants for granodiorite/basalt: K = 1140, beta = 1.6
@@ -112,6 +137,7 @@ export function calculateUSBMPPV(
 ): PPVEstimate {
   const scaledDistance = distanceM / Math.sqrt(Math.max(1, maxChargePerDelayKg));
   const estimatedPPVMmS = k * Math.pow(scaledDistance, -beta);
+  const airblast = calculateAirblastOverpressure(distanceM, maxChargePerDelayKg);
 
   return {
     distanceM,
@@ -121,6 +147,100 @@ export function calculateUSBMPPV(
     estimatedPPVMmS: parseFloat(estimatedPPVMmS.toFixed(2)),
     safeLimitMmS: regulatoryLimitMmS,
     isCompliant: estimatedPPVMmS <= regulatoryLimitMmS,
+    airblast,
+  };
+}
+
+/**
+ * Inter-Hole Face Relief Velocity Analysis:
+ * Verifies that the rock burden in front of each hole has adequate velocity (25 - 45 m/s)
+ * and time to detach before the subsequent row fires.
+ */
+export function checkPatternFaceRelief(
+  holes: HoleTimingInfo[],
+  designBurdenM = 2.4
+): FaceReliefCheck[] {
+  const checks: FaceReliefCheck[] = [];
+  const rows = Math.max(...holes.map((h) => h.row));
+
+  for (let r = 1; r <= rows; r++) {
+    const currentRowHoles = holes.filter((h) => h.row === r);
+    const prevRowHoles = holes.filter((h) => h.row === r - 1);
+
+    const avgCurrentFiringTime = currentRowHoles.reduce((s, h) => s + h.firingTimeMs, 0) / Math.max(1, currentRowHoles.length);
+    const avgPrevFiringTime = prevRowHoles.length > 0
+      ? prevRowHoles.reduce((s, h) => s + h.firingTimeMs, 0) / prevRowHoles.length
+      : 0;
+
+    const delayMs = r === 1 ? avgCurrentFiringTime : avgCurrentFiringTime - avgPrevFiringTime;
+    const reliefVelocity = (designBurdenM / Math.max(1, delayMs)) * 1000; // m/s
+
+    for (const h of currentRowHoles) {
+      let status: 'optimal' | 'under_relieved' | 'over_relieved' = 'optimal';
+      let warning: string | undefined = undefined;
+
+      if (r > 1 && delayMs < 12) {
+        status = 'under_relieved';
+        warning = `Critical under-relief: delay (${delayMs} ms) is too fast for ${designBurdenM}m burden. Excessive vibration & backbreak hazard!`;
+      } else if (r > 1 && delayMs > 85) {
+        status = 'over_relieved';
+        warning = `Over-relief warning: delay (${delayMs} ms) is excessively long. Potential cut-off of down-hole lead wires!`;
+      }
+
+      checks.push({
+        holeIndex: h.holeIndex,
+        burdenM: designBurdenM,
+        delayToPreviousRowMs: delayMs,
+        reliefVelocityMPerS: parseFloat(reliefVelocity.toFixed(1)),
+        status,
+        warning,
+      });
+    }
+  }
+
+  return checks;
+}
+
+/**
+ * Monte Carlo Timing Scatter Simulator:
+ * Compares Electronic Detonators (±0.1 ms precision) vs Pyrotechnic Nonel Caps (±15 ms scatter)
+ * Evaluates the probability of out-of-sequence detonations.
+ */
+export function simulateDetonatorScatter(
+  holes: HoleTimingInfo[],
+  detonatorType: 'electronic' | 'nonel_pyrotechnic' = 'electronic'
+): { simulatedHoles: HoleTimingInfo[]; outOfSequenceCount: number; maxScatterMs: number } {
+  const stdScatter = detonatorType === 'electronic' ? 0.1 : 12.5; // ms
+  let maxScatter = 0;
+
+  const simulatedHoles: HoleTimingInfo[] = holes.map((h) => {
+    // Box-Muller gaussian noise
+    const u1 = Math.max(1e-6, Math.random());
+    const u2 = Math.random();
+    const noise = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2) * stdScatter;
+    if (Math.abs(noise) > maxScatter) maxScatter = Math.abs(noise);
+
+    return {
+      ...h,
+      firingTimeMs: Math.max(0, Math.round(h.firingTimeMs + noise)),
+    };
+  });
+
+  // Check out-of-sequence detonations
+  let outOfSequence = 0;
+  for (let i = 0; i < holes.length - 1; i++) {
+    // If original order was h[i] before h[i+1], check if simulated reversed
+    if (holes[i].firingTimeMs < holes[i + 1].firingTimeMs) {
+      if (simulatedHoles[i].firingTimeMs > simulatedHoles[i + 1].firingTimeMs) {
+        outOfSequence++;
+      }
+    }
+  }
+
+  return {
+    simulatedHoles: simulatedHoles.sort((a, b) => a.firingTimeMs - b.firingTimeMs),
+    outOfSequenceCount: outOfSequence,
+    maxScatterMs: parseFloat(maxScatter.toFixed(2)),
   };
 }
 

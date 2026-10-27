@@ -6,10 +6,12 @@ import {
   filterFragmentsByRoiAndExclusions,
   computeConvexHull,
   computeFeretDiameters,
+  simplifyPolygonRDP,
+  traceRegionBoundary,
 } from './imageProcessing';
 import { computeFragmentationMetrics } from './statistics';
 import { SCALE_PRESETS } from '../components/camera/ImageScaleCalibrationModal';
-import type { Fragment } from '../types';
+import type { Fragment, Point2D } from '../types';
 
 describe('Reference Scale Calibration & Known Object Presets', () => {
   it('contains expected standard reference presets (pen, coins, helmet, scale bars)', () => {
@@ -243,4 +245,48 @@ describe('Fragment Filtering by ROI and Exclusion Polygons', () => {
     expect(result.map((f) => f.centroid.x)).toEqual([300, 800]);
   });
 });
+
+describe('Geological Rock Contour & Polygon Processing (Watershed & RDP)', () => {
+  it('simplifies pixel staircases into sharp angular rock facets using Ramer-Douglas-Peucker', () => {
+    // A square with collinear staircases on its edges
+    const staircasedSquare: Point2D[] = [
+      { x: 0, y: 0 },
+      { x: 5, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 5 },
+      { x: 10, y: 10 },
+      { x: 5, y: 10 },
+      { x: 0, y: 10 },
+      { x: 0, y: 5 },
+    ];
+
+    const simplified = simplifyPolygonRDP(staircasedSquare, 0.5);
+    // Collinear intermediate points along the straight edges are collapsed, preserving true corners
+    expect(simplified.length).toBeLessThan(staircasedSquare.length);
+    expect(simplified.length).toBeGreaterThanOrEqual(4);
+    expect(simplified).toContainEqual({ x: 0, y: 0 });
+    expect(simplified).toContainEqual({ x: 10, y: 0 });
+    expect(simplified).toContainEqual({ x: 10, y: 10 });
+    expect(simplified).toContainEqual({ x: 0, y: 10 });
+  });
+
+  it('correctly traces the outer boundary of a labeled region on a discrete pixel grid', () => {
+    // 6x6 image grid with a 2x2 rock region at (2,2) with label 1
+    const w = 6;
+    const h = 6;
+    const labels = new Int32Array(w * h);
+    labels[2 * w + 2] = 1;
+    labels[2 * w + 3] = 1;
+    labels[3 * w + 2] = 1;
+    labels[3 * w + 3] = 1;
+
+    const boundary = traceRegionBoundary(1, labels, w, h, 2, 2);
+    expect(boundary.length).toBeGreaterThanOrEqual(4);
+    // Points visited must belong to the labeled region
+    for (const pt of boundary) {
+      expect(labels[pt.y * w + pt.x]).toBe(1);
+    }
+  });
+});
+
 

@@ -77,6 +77,9 @@ export interface BeltStats {
   totalRocksDetected: number;
   oversizeCount: number;
   currentAlert: boolean;
+  timeToChokeSeconds?: number;
+  cemaTroughAngleDeg?: number;
+  volumetricFlowM3PerH?: number;
 }
 
 export interface CrusherChokeEvent {
@@ -120,6 +123,25 @@ export interface PPVEstimate {
   estimatedPPVMmS: number;
   safeLimitMmS: number;
   isCompliant: boolean;
+  airblast?: AirblastEstimate;
+}
+
+export interface AirblastEstimate {
+  distanceM: number;
+  chargeKg: number;
+  peakOverpressureDbl: number;
+  peakOverpressurePa: number;
+  safeLimitDbl: number;
+  isCompliant: boolean;
+}
+
+export interface FaceReliefCheck {
+  holeIndex: number;
+  burdenM: number;
+  delayToPreviousRowMs: number;
+  reliefVelocityMPerS: number;
+  status: 'optimal' | 'under_relieved' | 'over_relieved';
+  warning?: string;
 }
 
 export interface FaceProfilePoint {
@@ -155,6 +177,10 @@ export interface CircuitSimulationResult {
   totalComminutionCostPerTonneUSD: number;
   mineralLiberationPercent: number;
   estimatedGoldRecoveryPercent: number;
+  crusherPowerKW?: number;
+  crusherCapacityTPH?: number;
+  smcEnergyKwhPerT?: number;
+  millingCo2KgPerT?: number;
 }
 
 export interface EconomicTradeoffPoint {
@@ -211,6 +237,10 @@ export interface IREDESHole {
   collarDeviationMm?: number;
   depthDeviationM?: number;
   penetrationRateMPerMin?: number;
+  mwdSpecificEnergyMpa?: number;
+  rockHardnessClass?: 'very_soft' | 'soft' | 'medium' | 'hard' | 'extreme';
+  toeDeviationMm?: number;
+  angularDeviationDeg?: number;
 }
 
 export interface P2PSyncPeer {
