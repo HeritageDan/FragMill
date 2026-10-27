@@ -10,6 +10,7 @@ import {
   computeFeretDiameters,
   runClassicalSegmentation,
   DEFAULT_CLASSICAL_PARAMS,
+  filterFragmentsByRoiAndExclusions,
 } from '../imageProcessing';
 import { db } from '../../db';
 
@@ -106,7 +107,9 @@ export async function runAiSegmentation(
   imageElement: HTMLImageElement,
   calibration: Calibration,
   params: AiEngineParams,
-  onProgress?: (percent: number, msg: string) => void
+  onProgress?: (percent: number, msg: string) => void,
+  roiPolygon?: Point2D[],
+  exclusionPolygons?: Point2D[][]
 ): Promise<Fragment[]> {
   onProgress?.(15, 'Preparing neural input tensors & point grid...');
   await new Promise((r) => setTimeout(r, 80));
@@ -116,14 +119,20 @@ export async function runAiSegmentation(
 
   onProgress?.(65, 'Decoding rock mask proposals via SAM attention...');
   // Run high-precision image-grounded segmentation
-  const classicalResult = await runClassicalSegmentation(imageElement, calibration, {
-    ...DEFAULT_CLASSICAL_PARAMS,
-    claheClipLimit: 2.4,
-    distanceTransformThreshold: 0.40,
-    minFragmentAreaMm2: params.minMaskRegionAreaMm2 || 40,
-    minSolidity: 0.68,
-    maxAspectRatio: 3.8,
-  });
+  const classicalResult = await runClassicalSegmentation(
+    imageElement,
+    calibration,
+    {
+      ...DEFAULT_CLASSICAL_PARAMS,
+      claheClipLimit: 2.4,
+      distanceTransformThreshold: 0.40,
+      minFragmentAreaMm2: params.minMaskRegionAreaMm2 || 40,
+      minSolidity: 0.68,
+      maxAspectRatio: 3.8,
+    },
+    roiPolygon,
+    exclusionPolygons
+  );
 
   onProgress?.(85, 'Applying Non-Maximum Suppression (NMS) & boundary refinement...');
   await new Promise((r) => setTimeout(r, 80));
@@ -159,13 +168,15 @@ export async function runAiSegmentation(
   }
 
   onProgress?.(100, 'AI segmentation complete.');
-  return filtered;
+  return filterFragmentsByRoiAndExclusions(filtered, roiPolygon, exclusionPolygons);
 }
 
 // Engine C: Hybrid Segmentation (AI large boulder seeds + Classical fine fraction)
 export async function runHybridSegmentation(
   aiFragments: Fragment[],
-  classicalFragments: Fragment[]
+  classicalFragments: Fragment[],
+  roiPolygon?: Point2D[],
+  exclusionPolygons?: Point2D[][]
 ): Promise<Fragment[]> {
   // Take large fragments (minFeret >= 70mm) from AI (cleaner convex rock borders)
   const largeAi = aiFragments.filter((f) => f.minFeretMm >= 70);
@@ -183,5 +194,5 @@ export async function runHybridSegmentation(
   });
 
   const combined = [...largeAi, ...nonOverlappingClassical];
-  return combined.map((f, idx) => ({ ...f, id: idx + 1 }));
+  return filterFragmentsByRoiAndExclusions(combined, roiPolygon, exclusionPolygons);
 }

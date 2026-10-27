@@ -42,10 +42,16 @@ import {
   Maximize2,
   Box,
   Eye,
+  Crop,
+  X,
 } from 'lucide-react';
 import { CameraInclinometerModal } from '../camera/CameraInclinometerModal';
 import { HoleChargingProfileView } from './HoleChargingProfileView';
 import { SendToReportButton } from '../report/SendToReportButton';
+import { ImageScaleCalibrationModal } from '../camera/ImageScaleCalibrationModal';
+import { ImageRoiCropModal } from '../camera/ImageRoiCropModal';
+import { rescaleFragments, filterFragmentsByRoiAndExclusions } from '../../services/imageProcessing';
+import type { Calibration, Point2D } from '../../types';
 
 interface BlastDetailViewProps {
   blast: Blast;
@@ -80,6 +86,9 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   const [showMinMaxSizing, setShowMinMaxSizing] = useState(true);
   const [selectedFragmentId, setSelectedFragmentId] = useState<number | null>(null);
   const [fragmentFilter, setFragmentFilter] = useState<'all' | 'fines' | 'nominal' | 'oversize'>('all');
+  const [showScaleModal, setShowScaleModal] = useState(false);
+  const [showRoiModal, setShowRoiModal] = useState(false);
+  const [uploadBanner, setUploadBanner] = useState<{ show: boolean; imageId: string } | null>(null);
 
   const handleInclinometerCapture = async (dataUrl: string) => {
     const img = new Image();
@@ -87,6 +96,15 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
     img.onload = async () => {
       const qc = await analyzeImageQuality(img);
       const imgId = `img-${Date.now()}`;
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+
+      const p1 = { x: Math.round(w * 0.40), y: Math.round(h * 0.75) };
+      const p2 = { x: Math.round(w * 0.60), y: Math.round(h * 0.75) };
+      const distPx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      const estMm = 200;
+      const initPxPerMm = Number((distPx / estMm).toFixed(4));
+
       const newImage: ImageRecord = {
         id: imgId,
         blastId: blast.id,
@@ -99,10 +117,17 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
         qualityCheck: qc,
         calibration: {
           method: 'two_point',
-          points: [{ x: 100, y: 100 }, { x: 300, y: 100 }],
-          realWorldDistanceMm: 500,
-          pxPerMm: 0.4,
+          points: [p1, p2],
+          realWorldDistanceMm: estMm,
+          pxPerMm: initPxPerMm,
         },
+        roiPolygon: [
+          { x: 0, y: 0 },
+          { x: w, y: 0 },
+          { x: w, y: h },
+          { x: 0, y: h },
+        ],
+        exclusionPolygons: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -113,6 +138,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
       };
       onUpdateBlast(updatedBlast);
       setSelectedImageId(imgId);
+      setUploadBanner({ show: true, imageId: imgId });
     };
   };
 
@@ -183,6 +209,15 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
       img.onload = async () => {
         const qc = await analyzeImageQuality(img);
         const imgId = `img-${Date.now()}`;
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+
+        const p1 = { x: Math.round(w * 0.40), y: Math.round(h * 0.75) };
+        const p2 = { x: Math.round(w * 0.60), y: Math.round(h * 0.75) };
+        const distPx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        const estMm = 200;
+        const initPxPerMm = Number((distPx / estMm).toFixed(4));
+
         const newImage: ImageRecord = {
           id: imgId,
           blastId: blast.id,
@@ -195,10 +230,17 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
           qualityCheck: qc,
           calibration: {
             method: 'two_point',
-            points: [{ x: 100, y: 100 }, { x: 300, y: 100 }],
-            realWorldDistanceMm: 500,
-            pxPerMm: 0.4,
+            points: [p1, p2],
+            realWorldDistanceMm: estMm,
+            pxPerMm: initPxPerMm,
           },
+          roiPolygon: [
+            { x: 0, y: 0 },
+            { x: w, y: 0 },
+            { x: w, y: h },
+            { x: 0, y: h },
+          ],
+          exclusionPolygons: [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
@@ -209,9 +251,110 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
         };
         onUpdateBlast(updatedBlast);
         setSelectedImageId(imgId);
+        setUploadBanner({ show: true, imageId: imgId });
       };
     };
     reader.readAsDataURL(file);
+  };
+
+  // Save scale calibration from ImageScaleCalibrationModal
+  const handleSaveCalibration = (newCalib: Calibration, autoExclusion?: Point2D[]) => {
+    if (!selectedImage) return;
+
+    let updatedExclusions = selectedImage.exclusionPolygons ? [...selectedImage.exclusionPolygons] : [];
+    if (autoExclusion && autoExclusion.length >= 3) {
+      updatedExclusions.push(autoExclusion);
+    }
+
+    const updatedImage: ImageRecord = {
+      ...selectedImage,
+      calibration: newCalib,
+      exclusionPolygons: updatedExclusions,
+      updatedAt: Date.now(),
+    };
+
+    // If an active segmentation run exists with fragments, immediately recalibrate them!
+    if (activeRun && activeRun.fragments && activeRun.fragments.length > 0) {
+      const rescaledFrags = rescaleFragments(activeRun.fragments, newCalib.pxPerMm);
+      const newMetrics = computeFragmentationMetrics(
+        rescaledFrags,
+        settings.defaultSizeDefinition,
+        settings.oversizeThresholdMm,
+        settings.finesThresholdMm
+      );
+
+      const updatedRun: SegmentationRun = {
+        ...activeRun,
+        fragments: rescaledFrags,
+        metrics: newMetrics,
+      };
+
+      updatedImage.segmentationRuns = [updatedRun, ...(selectedImage.segmentationRuns?.slice(1) || [])];
+      onSaveRun(updatedImage, updatedRun);
+    }
+
+    const updatedImages = blast.images.map((img) => (img.id === selectedImage.id ? updatedImage : img));
+    const updatedBlast = {
+      ...blast,
+      images: updatedImages,
+      updatedAt: Date.now(),
+    };
+
+    onUpdateBlast(updatedBlast);
+    setShowScaleModal(false);
+  };
+
+  // Save ROI and Exclusion Polygons from ImageRoiCropModal
+  const handleSaveRoi = (roiPoly?: Point2D[], exclPolys?: Point2D[][]) => {
+    if (!selectedImage) return;
+
+    let updatedRuns = selectedImage.segmentationRuns ? [...selectedImage.segmentationRuns] : [];
+
+    // Immediately filter the active segmentation run so that fragment counts, metrics,
+    // and tables synchronously update WITHOUT waiting or race conditions!
+    if (activeRun && activeRun.fragments && activeRun.fragments.length > 0) {
+      const filteredFrags = filterFragmentsByRoiAndExclusions(activeRun.fragments, roiPoly, exclPolys);
+      const newMetrics = computeFragmentationMetrics(
+        filteredFrags,
+        settings.defaultSizeDefinition,
+        settings.oversizeThresholdMm,
+        settings.finesThresholdMm
+      );
+
+      const updatedRun: SegmentationRun = {
+        ...activeRun,
+        fragments: filteredFrags,
+        metrics: newMetrics,
+      };
+
+      updatedRuns = [updatedRun, ...(selectedImage.segmentationRuns?.slice(1) || [])];
+    }
+
+    const updatedImage: ImageRecord = {
+      ...selectedImage,
+      roiPolygon: roiPoly,
+      exclusionPolygons: exclPolys,
+      segmentationRuns: updatedRuns,
+      updatedAt: Date.now(),
+    };
+
+    const updatedImages = blast.images.map((img) => (img.id === selectedImage.id ? updatedImage : img));
+    const updatedBlast = {
+      ...blast,
+      images: updatedImages,
+      updatedAt: Date.now(),
+    };
+
+    onUpdateBlast(updatedBlast);
+    if (updatedRuns.length > 0) {
+      onSaveRun(updatedImage, updatedRuns[0]);
+    }
+    setShowRoiModal(false);
+
+    // Re-run current engine with updatedImage passed directly to avoid stale closures
+    setTimeout(() => {
+      handleExecuteEngine(activeEngine, updatedImage);
+    }, 150);
   };
 
   // Generate synthetic sample photo for rapid testing
@@ -273,15 +416,19 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   };
 
   // Run selected engine
-  const handleExecuteEngine = async (engine: EngineType) => {
-    if (!selectedImage) return;
+  const handleExecuteEngine = async (engine: EngineType, targetImageOverride?: ImageRecord) => {
+    const targetImage =
+      targetImageOverride ||
+      blast.images.find((i) => i.id === selectedImageId) ||
+      selectedImage;
+    if (!targetImage) return;
     setIsProcessing(true);
     setActiveEngine(engine);
 
     const img = new Image();
-    img.src = selectedImage.dataUrl;
+    img.src = targetImage.dataUrl;
     img.onload = async () => {
-      const calib = selectedImage.calibration || {
+      const calib = targetImage.calibration || {
         method: 'two_point',
         points: [],
         realWorldDistanceMm: 500,
@@ -293,7 +440,13 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
 
       if (engine === 'classical') {
         setProgressMsg(lang === 'fr' ? 'Calcul CLAHE et Ligne de Partage...' : 'Running Classical CLAHE & Watershed...');
-        const res = await runClassicalSegmentation(img, calib, DEFAULT_CLASSICAL_PARAMS);
+        const res = await runClassicalSegmentation(
+          img,
+          calib,
+          DEFAULT_CLASSICAL_PARAMS,
+          targetImage.roiPolygon,
+          targetImage.exclusionPolygons
+        );
         frags = res.fragments;
         stepPreviews = res.stepPreviews;
       } else if (engine === 'ai_sam') {
@@ -310,21 +463,36 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
             minMaskRegionAreaMm2: 50,
             tileOverlapPercent: 20,
           },
-          (_, msg) => setProgressMsg(msg)
+          (_, msg) => setProgressMsg(msg),
+          targetImage.roiPolygon,
+          targetImage.exclusionPolygons
         );
       } else if (engine === 'hybrid') {
         setProgressMsg(lang === 'fr' ? 'Calcul Hybride (Semences IA + Fines Classiques)...' : 'Running Hybrid (AI Seeds + Classical Fines)...');
-        const classicalRes = await runClassicalSegmentation(img, calib);
-        const aiFrags = await runAiSegmentation(img, calib, {
-          modelType: 'slimsam_int8',
-          pointsPerSide: 6,
-          predIouThresh: 0.85,
-          stabilityScoreThresh: 0.88,
-          boxNmsThresh: 0.7,
-          minMaskRegionAreaMm2: 80,
-          tileOverlapPercent: 15,
-        });
-        frags = await runHybridSegmentation(aiFrags, classicalRes.fragments);
+        const classicalRes = await runClassicalSegmentation(
+          img,
+          calib,
+          DEFAULT_CLASSICAL_PARAMS,
+          targetImage.roiPolygon,
+          targetImage.exclusionPolygons
+        );
+        const aiFrags = await runAiSegmentation(
+          img,
+          calib,
+          {
+            modelType: 'slimsam_int8',
+            pointsPerSide: 6,
+            predIouThresh: 0.85,
+            stabilityScoreThresh: 0.88,
+            boxNmsThresh: 0.7,
+            minMaskRegionAreaMm2: 80,
+            tileOverlapPercent: 15,
+          },
+          undefined,
+          targetImage.roiPolygon,
+          targetImage.exclusionPolygons
+        );
+        frags = await runHybridSegmentation(aiFrags, classicalRes.fragments, targetImage.roiPolygon, targetImage.exclusionPolygons);
         stepPreviews = classicalRes.stepPreviews;
       }
 
@@ -337,7 +505,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
 
       const run: SegmentationRun = {
         id: `run-${Date.now()}`,
-        imageId: selectedImage.id,
+        imageId: targetImage.id,
         engine,
         timestamp: Date.now(),
         parameters: DEFAULT_CLASSICAL_PARAMS,
@@ -346,7 +514,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
         stepPreviews,
       };
 
-      onSaveRun(selectedImage, run);
+      onSaveRun(targetImage, run);
       setIsProcessing(false);
       setProgressMsg('');
     };
@@ -545,6 +713,32 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
         </div>
       )}
 
+      {/* Scale Calibration Modal */}
+      {showScaleModal && selectedImage && (
+        <ImageScaleCalibrationModal
+          isOpen={showScaleModal}
+          imageSrc={selectedImage.dataUrl}
+          initialCalibration={selectedImage.calibration}
+          onSave={handleSaveCalibration}
+          onClose={() => setShowScaleModal(false)}
+          lang={lang}
+        />
+      )}
+
+      {/* ROI & Non-Rock Crop Modal */}
+      {showRoiModal && selectedImage && (
+        <ImageRoiCropModal
+          isOpen={showRoiModal}
+          imageSrc={selectedImage.dataUrl}
+          initialRoiPolygon={selectedImage.roiPolygon}
+          initialExclusionPolygons={selectedImage.exclusionPolygons}
+          onSave={handleSaveRoi}
+          onClose={() => setShowRoiModal(false)}
+          lang={lang}
+        />
+      )}
+
+
       {/* EMPTY STATE: If no photos exist for this blast */}
       {blast.images.length === 0 ? (
         <div className="bg-white p-8 rounded-2xl border-2 border-dashed border-slate-300 text-center space-y-5">
@@ -652,6 +846,59 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                 );
               })}
             </div>
+
+            {/* Scale & ROI Setup Guide Banner */}
+            {uploadBanner?.show && (
+              <div className="mt-3 p-4 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 border-2 border-blue-500/80 rounded-2xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 text-white">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/30 shrink-0">
+                    <Sparkles className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-extrabold text-white flex items-center gap-2">
+                      <span>{isFrench ? 'Étalonnage d’échelle & Délimitation de la roche' : 'Reference Scale & Rock Area Setup'}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                        {isFrench ? 'Recommandé' : 'Recommended'}
+                      </span>
+                    </h4>
+                    <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
+                      {isFrench
+                        ? 'Pour obtenir les vraies dimensions des cailloux : 1. Calibrez l’échelle avec un objet témoin (stylo, pièce, mire). 2. Découpez les zones sans roches (ciel, godet de pelle, pistes).'
+                        : 'For accurate millimeter rock sizes: 1. Calibrate reference scale with a known object (pen, coin, ruler). 2. Cut off non-rock areas (sky, excavator, floor).'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowScaleModal(true)}
+                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                  >
+                    <Ruler className="w-3.5 h-3.5 text-amber-300" />
+                    <span>{isFrench ? '1. Calibrer l’Échelle' : '1. Scale Calibration'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowRoiModal(true)}
+                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                  >
+                    <Crop className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>{isFrench ? '2. Délimiter la Roche' : '2. Crop Rock Area'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUploadBanner(null)}
+                    className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
+                    title={isFrench ? 'Fermer' : 'Dismiss'}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Main Grid: Left Image & Segmentation, Right Parameters & Curves */}
@@ -670,6 +917,72 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                     {t('nonGeologicalWarningDesc', lang)}
                   </p>
                 </div>
+              </div>
+            )}
+
+            {/* Interactive Scale Calibration & ROI Crop Tool Bar */}
+            {selectedImage && (
+              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* 1. Scale Calibration Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowScaleModal(true)}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                    title={isFrench ? 'Définir l’échelle avec un objet témoin (stylo, pièce, mire)' : 'Calibrate reference scale with known object (pen, coin, ruler)'}
+                  >
+                    <Ruler className="w-3.5 h-3.5 text-blue-600" />
+                    <span>{isFrench ? 'Échelle :' : 'Scale:'}</span>
+                    <span className="font-extrabold text-blue-900">
+                      {selectedImage.calibration?.pxPerMm
+                        ? `${selectedImage.calibration.pxPerMm.toFixed(3)} px/mm`
+                        : isFrench ? 'Non calibrée' : 'Uncalibrated'}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-600 text-white ml-0.5">
+                      {isFrench ? 'Ajuster' : 'Set'}
+                    </span>
+                  </button>
+
+                  {/* 2. ROI & Non-Rock Crop Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowRoiModal(true)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs border ${
+                      selectedImage.roiPolygon && selectedImage.roiPolygon.length >= 3
+                        ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                    title={isFrench ? 'Découper les zones sans roches (ciel, godet de pelle, pistes)' : 'Cut out non-rock areas (sky, excavator, trucks)'}
+                  >
+                    <Crop className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{isFrench ? 'Zone de roches :' : 'Rock Area:'}</span>
+                    <span className="font-extrabold text-emerald-900">
+                      {selectedImage.roiPolygon && selectedImage.roiPolygon.length >= 3
+                        ? (isFrench ? 'Délimitée' : 'Active ROI')
+                        : (isFrench ? 'Pleine image' : 'Full image')}
+                    </span>
+                    {selectedImage.exclusionPolygons && selectedImage.exclusionPolygons.length > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">
+                        {selectedImage.exclusionPolygons.length} {isFrench ? 'exclus' : 'masked'}
+                      </span>
+                    )}
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white ml-0.5">
+                      {isFrench ? 'Recadrer' : 'Crop'}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Manual Editor shortcut */}
+                {activeRun && (
+                  <button
+                    type="button"
+                    onClick={() => setShowManualEditor(true)}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition border border-slate-200 cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                    <span>{isFrench ? 'Retouche Manuelle' : 'Manual Editor'}</span>
+                  </button>
+                )}
               </div>
             )}
 
@@ -778,12 +1091,30 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
 
               {/* Quality & Scale Pill */}
               {selectedImage && (
-                <div className="flex items-center justify-between px-4 py-2 bg-slate-900 text-xs text-slate-400 border-t border-slate-800">
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1 text-slate-300">
+                <div className="flex flex-wrap items-center justify-between px-4 py-2 bg-slate-900 text-xs text-slate-400 border-t border-slate-800 gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowScaleModal(true)}
+                      className="flex items-center gap-1 text-slate-300 hover:text-white transition cursor-pointer hover:underline"
+                      title={isFrench ? 'Cliquer pour ajuster l’échelle' : 'Click to calibrate scale'}
+                    >
                       <Ruler className="w-3.5 h-3.5 text-blue-400" />
-                      {t('scaleResult', lang)} {selectedImage.calibration?.pxPerMm?.toFixed(3) || '0.400'} px/mm
-                    </span>
+                      <span>{t('scaleResult', lang)} {selectedImage.calibration?.pxPerMm?.toFixed(3) || '0.400'} px/mm</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowRoiModal(true)}
+                      className="flex items-center gap-1 text-slate-300 hover:text-white transition cursor-pointer hover:underline"
+                      title={isFrench ? 'Cliquer pour recadrer la zone' : 'Click to crop rock area'}
+                    >
+                      <Crop className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>
+                        {selectedImage.roiPolygon && selectedImage.roiPolygon.length >= 3
+                          ? (isFrench ? 'Zone délimitée' : 'Custom ROI')
+                          : (isFrench ? 'Pleine image' : 'Full image')}
+                      </span>
+                    </button>
                     <span>Zone: {selectedImage.zone}</span>
                     <span>Lighting: {selectedImage.lighting}</span>
                   </div>

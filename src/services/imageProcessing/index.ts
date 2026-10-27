@@ -306,7 +306,7 @@ export function computeFeretDiameters(hull: Point2D[], pxPerMm: number): { minFe
 
 // Helper: Point in Polygon test for ROI & exclusion masks
 export function isPointInPolygon(point: Point2D, polygon: Point2D[]): boolean {
-  if (polygon.length < 3) return true;
+  if (!polygon || polygon.length < 3) return true;
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const xi = polygon[i].x;
@@ -319,6 +319,71 @@ export function isPointInPolygon(point: Point2D, polygon: Point2D[]): boolean {
     if (intersect) inside = !inside;
   }
   return inside;
+}
+
+/**
+ * Strict filtering of rock fragments against ROI polygon and non-rock exclusion zones.
+ * Guarantees that fragments outside the cropped muckpile boundary or within excluded objects
+ * (excavator, boots, sky, water, scale pens/markers) are strictly purged.
+ */
+export function filterFragmentsByRoiAndExclusions(
+  fragments: Fragment[],
+  roiPolygon?: Point2D[],
+  exclusionPolygons?: Point2D[][]
+): Fragment[] {
+  if (!fragments || fragments.length === 0) return [];
+  const hasRoi = Boolean(roiPolygon && roiPolygon.length >= 3);
+  const hasExcl = Boolean(exclusionPolygons && exclusionPolygons.length > 0);
+
+  if (!hasRoi && !hasExcl) return fragments;
+
+  return fragments
+    .filter((f) => {
+      // 1. Centroid check against ROI polygon
+      if (hasRoi && !isPointInPolygon(f.centroid, roiPolygon!)) {
+        return false;
+      }
+
+      // 2. Vertex containment check: if >= 50% of fragment boundary points fall outside the ROI, discard
+      if (hasRoi && f.polygon && f.polygon.length >= 3) {
+        let insideCount = 0;
+        for (const pt of f.polygon) {
+          if (isPointInPolygon(pt, roiPolygon!)) insideCount++;
+        }
+        if (insideCount / f.polygon.length < 0.5) {
+          return false;
+        }
+      }
+
+      // 3. Exclusion checks: discard if centroid is inside ANY exclusion zone
+      if (hasExcl) {
+        for (const ep of exclusionPolygons!) {
+          if (ep.length >= 3 && isPointInPolygon(f.centroid, ep)) {
+            return false;
+          }
+        }
+
+        // Also discard if more than 30% of vertices fall inside an exclusion zone
+        if (f.polygon && f.polygon.length >= 3) {
+          for (const ep of exclusionPolygons!) {
+            if (ep.length < 3) continue;
+            let inExclCount = 0;
+            for (const pt of f.polygon) {
+              if (isPointInPolygon(pt, ep)) inExclCount++;
+            }
+            if (inExclCount / f.polygon.length > 0.3) {
+              return false;
+            }
+          }
+        }
+      }
+
+      return true;
+    })
+    .map((f, idx) => ({
+      ...f,
+      id: idx + 1,
+    }));
 }
 
 // Full Classical Segmentation Execution (Engine A) - Industrial Rock Boundary & Valley Detection
@@ -538,24 +603,54 @@ export async function runClassicalSegmentation(
     }
   }
 
-  // 6. Multi-scale Combined Boundary Energy Field
+  // 6. Fast Morphological Black Top-Hat (Isolates narrow inter-rock shadow crevices)
+  const topHat = new Uint8ClampedArray(workW * workH);
+  const dilated = new Uint8ClampedArray(workW * workH);
+  for (let y = 1; y < workH - 1; y++) {
+    const row = y * workW;
+    for (let x = 1; x < workW - 1; x++) {
+      const idx = row + x;
+      let maxVal = clahe[idx];
+      if (clahe[idx - 1] > maxVal) maxVal = clahe[idx - 1];
+      if (clahe[idx + 1] > maxVal) maxVal = clahe[idx + 1];
+      if (clahe[idx - workW] > maxVal) maxVal = clahe[idx - workW];
+      if (clahe[idx + workW] > maxVal) maxVal = clahe[idx + workW];
+      dilated[idx] = maxVal;
+    }
+  }
+
+  for (let y = 2; y < workH - 2; y++) {
+    const row = y * workW;
+    for (let x = 2; x < workW - 2; x++) {
+      const idx = row + x;
+      let minVal = dilated[idx];
+      if (dilated[idx - 1] < minVal) minVal = dilated[idx - 1];
+      if (dilated[idx + 1] < minVal) minVal = dilated[idx + 1];
+      if (dilated[idx - workW] < minVal) minVal = dilated[idx - workW];
+      if (dilated[idx + workW] < minVal) minVal = dilated[idx + workW];
+      topHat[idx] = Math.max(0, minVal - clahe[idx]);
+    }
+  }
+
+  // 7. Multi-scale Combined Boundary Energy Field (Gradients + Valleys + Top-Hat)
   const energy = new Float32Array(workW * workH);
   for (let i = 0; i < workW * workH; i++) {
     const gNorm = Math.min(1, grad[i] / (maxGrad * 0.4));
     const vNorm = Math.min(1, valley[i] / 22.0);
-    const isDeepShadow = clahe[i] < 28 ? 1 : 0;
-    energy[i] = Math.min(255, (0.45 * gNorm + 0.45 * vNorm + 0.35 * isDeepShadow) * 255);
+    const thNorm = Math.min(1, topHat[i] / 28.0);
+    const isDeepShadow = clahe[i] < 25 ? 1 : 0;
+    energy[i] = Math.min(255, (0.38 * gNorm + 0.34 * vNorm + 0.20 * thNorm + 0.25 * isDeepShadow) * 255);
   }
 
-  // 7. Rock Body Mask (ROCK BODIES = 255 foreground, BOUNDARY SEAMS = 0 background)
+  // 8. Rock Body Mask (ROCK BODIES = 255 foreground, BOUNDARY SEAMS & NON-ROCK = 0 background)
   const rockMask = new Uint8ClampedArray(workW * workH);
-  const seamEnergyThresh = 68 + params.adaptiveC * 3.5;
+  const seamEnergyThresh = 66 + params.adaptiveC * 3.5;
 
   for (let y = 0; y < workH; y++) {
     for (let x = 0; x < workW; x++) {
       const idx = y * workW + x;
 
-      // ROI polygon check
+      // ROI polygon check (Strictly zero-out pixels outside user-defined rock region)
       if (roiPolygon && roiPolygon.length >= 3) {
         const origPt = { x: x / scaleRatio, y: y / scaleRatio };
         if (!isPointInPolygon(origPt, roiPolygon)) {
@@ -564,7 +659,7 @@ export async function runClassicalSegmentation(
         }
       }
 
-      // Exclusion polygons check (e.g., scale balls, safety boots)
+      // Exclusion polygons check (e.g. scale markers, pens, coins, excavator boom)
       if (exclusionPolygons && exclusionPolygons.length > 0) {
         const origPt = { x: x / scaleRatio, y: y / scaleRatio };
         let excluded = false;
@@ -580,10 +675,14 @@ export async function runClassicalSegmentation(
         }
       }
 
+      // Non-rock texture gate: uniform flat regions (bright sky, smooth painted steel, flat dust)
+      const isTextureless = grad[idx] < 2.5 && (clahe[idx] > 195 || clahe[idx] < 15);
+
       const isSeam =
         energy[idx] > seamEnergyThresh ||
         valley[idx] > (params.adaptiveC + 3) ||
-        clahe[idx] < 22;
+        clahe[idx] < 20 ||
+        isTextureless;
 
       // Rock bodies are foreground (255), seams/cracks are background (0)
       rockMask[idx] = isSeam ? 0 : 255;
@@ -613,11 +712,12 @@ export async function runClassicalSegmentation(
     for (let x = 1; x < workW - 1; x++) {
       const idx = y * workW + x;
       if (
-        eroded[idx] === 255 ||
-        eroded[idx - 1] === 255 ||
-        eroded[idx + 1] === 255 ||
-        eroded[idx - workW] === 255 ||
-        eroded[idx + workW] === 255
+        rockMask[idx] === 255 &&
+        (eroded[idx] === 255 ||
+          eroded[idx - 1] === 255 ||
+          eroded[idx + 1] === 255 ||
+          eroded[idx - workW] === 255 ||
+          eroded[idx + workW] === 255)
       ) {
         opened[idx] = 255;
       }
@@ -715,6 +815,23 @@ export async function runClassicalSegmentation(
       const idx = y * workW + x;
       const dVal = dist[idx];
       if (dVal >= minRockRadiusPx) {
+        // Enforce ROI & exclusion boundary checks directly on candidate peaks
+        if (roiPolygon && roiPolygon.length >= 3) {
+          const origPt = { x: x / scaleRatio, y: y / scaleRatio };
+          if (!isPointInPolygon(origPt, roiPolygon)) continue;
+        }
+        if (exclusionPolygons && exclusionPolygons.length > 0) {
+          const origPt = { x: x / scaleRatio, y: y / scaleRatio };
+          let isExcl = false;
+          for (const ep of exclusionPolygons) {
+            if (isPointInPolygon(origPt, ep)) {
+              isExcl = true;
+              break;
+            }
+          }
+          if (isExcl) continue;
+        }
+
         let isMax = true;
         for (let dy = -2; dy <= 2; dy += 2) {
           for (let dx = -2; dx <= 2; dx += 2) {
@@ -775,12 +892,30 @@ export async function runClassicalSegmentation(
   }
 
   // 10. Multi-Directional Facet-Snapping Ray Tracing for True Rock Outlines
-  const fragments: Fragment[] = [];
+  let fragments: Fragment[] = [];
   let fragId = 1;
   const numRays = 32;
 
   for (let k = 0; k < acceptedPeaks.length; k++) {
     const peak = acceptedPeaks[k];
+
+    // Ensure peak is inside user ROI and outside exclusion polygons
+    if (roiPolygon && roiPolygon.length >= 3) {
+      const origPeak = { x: peak.x / scaleRatio, y: peak.y / scaleRatio };
+      if (!isPointInPolygon(origPeak, roiPolygon)) continue;
+    }
+    if (exclusionPolygons && exclusionPolygons.length > 0) {
+      const origPeak = { x: peak.x / scaleRatio, y: peak.y / scaleRatio };
+      let inExcl = false;
+      for (const ep of exclusionPolygons) {
+        if (isPointInPolygon(origPeak, ep)) {
+          inExcl = true;
+          break;
+        }
+      }
+      if (inExcl) continue;
+    }
+
     const peakIdx = peak.y * workW + peak.x;
     const R_k = dist[peakIdx] || peak.dist;
 
@@ -815,6 +950,29 @@ export async function runClassicalSegmentation(
         if (px < 2 || px >= workW - 2 || py < 2 || py >= workH - 2) {
           bestR = r;
           break;
+        }
+
+        // 1b. ROI and Exclusion polygon boundary checks
+        if (roiPolygon && roiPolygon.length >= 3) {
+          const origPt = { x: px / scaleRatio, y: py / scaleRatio };
+          if (!isPointInPolygon(origPt, roiPolygon)) {
+            bestR = r;
+            break;
+          }
+        }
+        if (exclusionPolygons && exclusionPolygons.length > 0) {
+          const origPt = { x: px / scaleRatio, y: py / scaleRatio };
+          let inExcl = false;
+          for (const ep of exclusionPolygons) {
+            if (isPointInPolygon(origPt, ep)) {
+              inExcl = true;
+              break;
+            }
+          }
+          if (inExcl) {
+            bestR = r;
+            break;
+          }
         }
 
         // 2. Voronoi boundary check between touching rock seeds
@@ -947,6 +1105,9 @@ export async function runClassicalSegmentation(
     });
   }
 
+  // Strictly filter fragments against ROI polygon and exclusion zones
+  fragments = filterFragmentsByRoiAndExclusions(fragments, roiPolygon, exclusionPolygons);
+
   // 11. Render 3D Dense Depth Map (Photogrammetric pseudo-stereo relief)
   const depthCanvas = document.createElement('canvas');
   depthCanvas.width = workW;
@@ -996,6 +1157,67 @@ export async function runClassicalSegmentation(
   overlayCanvas.height = workH;
   const overlayCtx = overlayCanvas.getContext('2d')!;
   overlayCtx.drawImage(imageElement, 0, 0, workW, workH);
+
+  // If ROI is active, dim out unselected background
+  if (roiPolygon && roiPolygon.length >= 3) {
+    overlayCtx.save();
+    overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    overlayCtx.beginPath();
+    overlayCtx.rect(0, 0, workW, workH);
+
+    // Inner polygon hole (scaled to work coordinates)
+    const p0 = { x: roiPolygon[0].x * scaleRatio, y: roiPolygon[0].y * scaleRatio };
+    overlayCtx.moveTo(p0.x, p0.y);
+    for (let i = 1; i < roiPolygon.length; i++) {
+      overlayCtx.lineTo(roiPolygon[i].x * scaleRatio, roiPolygon[i].y * scaleRatio);
+    }
+    overlayCtx.closePath();
+    overlayCtx.fill('evenodd');
+    overlayCtx.restore();
+
+    // Draw emerald green dashed ROI border
+    overlayCtx.save();
+    overlayCtx.strokeStyle = '#10B981';
+    overlayCtx.lineWidth = 2.5;
+    overlayCtx.setLineDash([8, 4]);
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(p0.x, p0.y);
+    for (let i = 1; i < roiPolygon.length; i++) {
+      overlayCtx.lineTo(roiPolygon[i].x * scaleRatio, roiPolygon[i].y * scaleRatio);
+    }
+    overlayCtx.closePath();
+    overlayCtx.stroke();
+    overlayCtx.restore();
+  }
+
+  // Draw Exclusion Zones (Red tinted boxes)
+  if (exclusionPolygons && exclusionPolygons.length > 0) {
+    for (const ep of exclusionPolygons) {
+      if (ep.length < 3) continue;
+      overlayCtx.save();
+      overlayCtx.fillStyle = 'rgba(239, 68, 68, 0.40)';
+      overlayCtx.strokeStyle = '#EF4444';
+      overlayCtx.lineWidth = 2;
+      overlayCtx.setLineDash([4, 4]);
+      overlayCtx.beginPath();
+      overlayCtx.moveTo(ep[0].x * scaleRatio, ep[0].y * scaleRatio);
+      for (let i = 1; i < ep.length; i++) {
+        overlayCtx.lineTo(ep[i].x * scaleRatio, ep[i].y * scaleRatio);
+      }
+      overlayCtx.closePath();
+      overlayCtx.fill();
+      overlayCtx.stroke();
+
+      const cx = (ep.reduce((acc, p) => acc + p.x, 0) / ep.length) * scaleRatio;
+      const cy = (ep.reduce((acc, p) => acc + p.y, 0) / ep.length) * scaleRatio;
+      overlayCtx.fillStyle = '#EF4444';
+      overlayCtx.font = 'bold 11px sans-serif';
+      overlayCtx.textAlign = 'center';
+      overlayCtx.textBaseline = 'middle';
+      overlayCtx.fillText('🚫 Exclu', cx, cy);
+      overlayCtx.restore();
+    }
+  }
 
   // Vibrant high-visibility rock segmentation color palette
   const colors = [
@@ -1087,3 +1309,38 @@ export async function runClassicalSegmentation(
     },
   };
 }
+
+// Rescale existing fragments with a newly calibrated pxPerMm
+export function rescaleFragments(
+  fragments: Fragment[],
+  newPxPerMm: number
+): Fragment[] {
+  if (newPxPerMm <= 0) return fragments;
+
+  return fragments.map((f) => {
+    const areaMm2 = f.areaPx / (newPxPerMm * newPxPerMm);
+    const hull = computeConvexHull(f.polygon);
+    const { minFeretMm, maxFeretMm } = computeFeretDiameters(hull, newPxPerMm);
+    const ecdMm = 2 * Math.sqrt(areaMm2 / Math.PI);
+    const aspectRatio = maxFeretMm / Math.max(1, minFeretMm);
+    const volumeMm3 = (Math.PI / 6) * Math.pow(minFeretMm, 3);
+    const thicknessRatio = f.thicknessMm && f.minFeretMm > 0 ? f.thicknessMm / f.minFeretMm : 0.65;
+    const thicknessMm = Number((minFeretMm * thicknessRatio).toFixed(1));
+    const trueVolume3DMm3 = Math.round((Math.PI / 6) * maxFeretMm * minFeretMm * thicknessMm);
+
+    return {
+      ...f,
+      areaMm2: Math.round(areaMm2),
+      ecdMm: Number(ecdMm.toFixed(1)),
+      minFeretMm: Number(minFeretMm.toFixed(1)),
+      maxFeretMm: Number(maxFeretMm.toFixed(1)),
+      bboxWidthMm: Number((maxFeretMm * 0.9).toFixed(1)),
+      bboxHeightMm: Number((minFeretMm * 1.1).toFixed(1)),
+      aspectRatio: Number(aspectRatio.toFixed(2)),
+      volumeMm3: Math.round(volumeMm3),
+      thicknessMm,
+      trueVolume3DMm3,
+    };
+  });
+}
+
