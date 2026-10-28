@@ -19,8 +19,48 @@ import {
   HelpCircle,
   Activity,
   CheckCircle2,
+  Eye,
+  Crosshair,
+  ShieldAlert,
 } from 'lucide-react';
 import { SendToReportButton } from '../report/SendToReportButton';
+
+export type KrigingDisplayMode = 'heatmap' | 'variance' | 'domains';
+
+export const ATTRIBUTE_METADATA: Record<
+  keyof Pick<BoreholeSample, 'ucsMPa' | 'rqdPercent' | 'jointSpacingM' | 'densityTPerM3' | 'goldGradeGPT'>,
+  { nameEn: string; nameFr: string; unit: string; defaultSoft: number; defaultHard: number; step: number }
+> = {
+  ucsMPa: { nameEn: 'Rock Strength (UCS)', nameFr: 'Résistance UCS', unit: 'MPa', defaultSoft: 75, defaultHard: 125, step: 5 },
+  rqdPercent: { nameEn: 'Rock Quality (RQD)', nameFr: 'Qualité RQD', unit: '%', defaultSoft: 50, defaultHard: 75, step: 5 },
+  jointSpacingM: { nameEn: 'Joint Spacing', nameFr: 'Espacement des Diaclases', unit: 'm', defaultSoft: 0.35, defaultHard: 0.75, step: 0.05 },
+  densityTPerM3: { nameEn: 'Rock Density', nameFr: 'Densité Roche', unit: 't/m³', defaultSoft: 2.62, defaultHard: 2.70, step: 0.02 },
+  goldGradeGPT: { nameEn: 'Gold Grade', nameFr: 'Teneur en Or', unit: 'g/t Au', defaultSoft: 1.0, defaultHard: 2.5, step: 0.1 },
+};
+
+function interpolateRgb(c1: number[], c2: number[], t: number): string {
+  const r = Math.round(c1[0] + t * (c2[0] - c1[0]));
+  const g = Math.round(c1[1] + t * (c2[1] - c1[1]));
+  const b = Math.round(c1[2] + t * (c2[2] - c1[2]));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+// Turbo Geological Heatmap (Low: Navy Blue -> Cyan -> Emerald Green -> Amber -> High: Red)
+function getTurboHeatmapColor(t: number): string {
+  const c = Math.max(0, Math.min(1, t));
+  if (c < 0.25) return interpolateRgb([30, 58, 138], [6, 182, 212], c / 0.25);
+  if (c < 0.50) return interpolateRgb([6, 182, 212], [16, 185, 129], (c - 0.25) / 0.25);
+  if (c < 0.75) return interpolateRgb([16, 185, 129], [245, 158, 11], (c - 0.50) / 0.25);
+  return interpolateRgb([245, 158, 11], [239, 68, 68], (c - 0.75) / 0.25);
+}
+
+// Variance Heatmap (Low error / high confidence: Dark Navy -> Purple -> High error: Coral/Rose)
+function getVarianceHeatmapColor(t: number): string {
+  const c = Math.max(0, Math.min(1, t));
+  if (c < 0.35) return interpolateRgb([15, 23, 42], [59, 130, 246], c / 0.35);
+  if (c < 0.70) return interpolateRgb([59, 130, 246], [168, 85, 247], (c - 0.35) / 0.35);
+  return interpolateRgb([168, 85, 247], [244, 63, 94], (c - 0.70) / 0.30);
+}
 
 interface BlockModelKrigingViewProps {
   blast?: Blast;
@@ -43,6 +83,9 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
     keyof Pick<BoreholeSample, 'ucsMPa' | 'rqdPercent' | 'jointSpacingM' | 'densityTPerM3' | 'goldGradeGPT'>
   >('ucsMPa');
 
+  // Visualization Mode: 'heatmap' (continuous values), 'variance' (Kriging uncertainty), 'domains' (blast zonation)
+  const [displayMode, setDisplayMode] = useState<KrigingDisplayMode>('heatmap');
+
   // Interactive Variogram Parameters
   const [variogramParams, setVariogramParams] = useState<VariogramParams>(DEFAULT_VARIOGRAM);
   const [gridResolution, setGridResolution] = useState<{ cols: number; rows: number }>({ cols: 20, rows: 14 });
@@ -54,9 +97,77 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
   const [interPF, setInterPF] = useState<number>(0.65);
   const [hardPF, setHardPF] = useState<number>(0.85);
 
-  const [showExplanation, setShowExplanation] = useState<boolean>(false);
+  const [showExplanation, setShowExplanation] = useState<boolean>(true);
   const [krigingGrid, setKrigingGrid] = useState<KrigingGridNode[]>([]);
+  const [hoveredCell, setHoveredCell] = useState<{
+    xM: number;
+    yM: number;
+    value: number;
+    variance: number;
+    stdError: number;
+    domain: string;
+    col: number;
+    row: number;
+  } | null>(null);
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // When switching attribute, automatically adapt domain thresholds
+  const handleAttributeChange = (
+    newAttr: keyof Pick<BoreholeSample, 'ucsMPa' | 'rqdPercent' | 'jointSpacingM' | 'densityTPerM3' | 'goldGradeGPT'>
+  ) => {
+    setSelectedAttribute(newAttr);
+    const meta = ATTRIBUTE_METADATA[newAttr];
+    if (meta) {
+      setSoftCutoff(meta.defaultSoft);
+      setHardCutoff(meta.defaultHard);
+    }
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas || krigingGrid.length === 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clientX = (e.clientX - rect.left) * scaleX;
+    const clientY = (e.clientY - rect.top) * scaleY;
+
+    const cols = gridResolution.cols;
+    const rows = gridResolution.rows;
+    const cellW = canvas.width / cols;
+    const cellH = canvas.height / rows;
+
+    const col = Math.min(cols - 1, Math.max(0, Math.floor(clientX / cellW)));
+    const row = Math.min(rows - 1, Math.max(0, Math.floor(clientY / cellH)));
+    const index = row * cols + col;
+    const node = krigingGrid[index];
+
+    if (node) {
+      const val = node.estimatedValue;
+      const domain =
+        val > hardCutoff
+          ? (isFrench ? 'Domaine Dur / Massif' : 'Hard / Massive Domain')
+          : val >= softCutoff
+          ? (isFrench ? 'Domaine Intermédiaire' : 'Intermediate Domain')
+          : (isFrench ? 'Domaine Tendre / Fracturé' : 'Soft / Fractured Domain');
+
+      setHoveredCell({
+        xM: Number(node.x.toFixed(1)),
+        yM: Number(node.y.toFixed(1)),
+        value: Number(node.estimatedValue.toFixed(2)),
+        variance: Number(node.estimationVariance.toFixed(2)),
+        stdError: Number(Math.sqrt(Math.max(0, node.estimationVariance)).toFixed(2)),
+        domain,
+        col,
+        row,
+      });
+    }
+  };
+
+  const handleCanvasMouseLeave = () => {
+    setHoveredCell(null);
+  };
 
   // Recalculate Kriging grid whenever parameters or boreholes change
   useEffect(() => {
@@ -76,7 +187,7 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
     }
   }, [boreholes, selectedAttribute, variogramParams, gridResolution]);
 
-  // Render Kriging Heatmap on Canvas
+  // Render Kriging Heatmap on Canvas (Heatmap, Variance, or Domain Zonation)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || krigingGrid.length === 0) return;
@@ -91,36 +202,85 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
     const minVal = Math.min(...vals);
     const maxVal = Math.max(...vals);
 
+    const vars = krigingGrid.map((n) => n.estimationVariance);
+    const minVar = Math.min(...vars);
+    const maxVar = Math.max(...vars);
+
     const cols = gridResolution.cols;
     const rows = gridResolution.rows;
     const cellW = width / cols;
     const cellH = height / rows;
 
+    // 1. Draw Cells according to active Display Mode
     krigingGrid.forEach((node, idx) => {
       const c = idx % cols;
       const r = Math.floor(idx / cols);
 
-      const ratio = Math.max(0, Math.min(1, (node.estimatedValue - minVal) / (maxVal - minVal || 1)));
-
       let color = '#3b82f6';
-      if (node.estimatedValue > hardCutoff) color = '#ef4444';
-      else if (node.estimatedValue >= softCutoff) color = '#10b981';
-      else color = '#3b82f6';
 
-      // Slight intensity gradient
+      if (displayMode === 'heatmap') {
+        const ratio = maxVal > minVal ? (node.estimatedValue - minVal) / (maxVal - minVal) : 0.5;
+        color = getTurboHeatmapColor(ratio);
+      } else if (displayMode === 'variance') {
+        const ratio = maxVar > minVar ? (node.estimationVariance - minVar) / (maxVar - minVar) : 0.5;
+        color = getVarianceHeatmapColor(ratio);
+      } else {
+        // Domains mode (discrete 3-tier zonation)
+        if (node.estimatedValue > hardCutoff) color = '#ef4444';
+        else if (node.estimatedValue >= softCutoff) color = '#10b981';
+        else color = '#3b82f6';
+      }
+
       ctx.fillStyle = color;
       ctx.fillRect(c * cellW, r * cellH, cellW + 1, cellH + 1);
 
-      // Light grid line
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      // Subtle cell boundary
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 0.5;
       ctx.strokeRect(c * cellW, r * cellH, cellW, cellH);
     });
 
-    // Draw borehole collar positions
+    // 2. Draw 10-meter Coordinate Grid Overlay
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    // Vertical grid lines (every 10m out of 60m)
+    for (let xM = 10; xM < 60; xM += 10) {
+      const px = (xM / 60) * width;
+      ctx.beginPath();
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, height);
+      ctx.stroke();
+    }
+    // Horizontal grid lines (every 10m out of 40m)
+    for (let yM = 10; yM < 40; yM += 10) {
+      const py = (yM / 40) * height;
+      ctx.beginPath();
+      ctx.moveTo(0, py);
+      ctx.lineTo(width, py);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 3. Highlight Hovered Cell
+    if (hoveredCell) {
+      const c = hoveredCell.col;
+      const r = hoveredCell.row;
+      ctx.save();
+      ctx.strokeStyle = '#fde047'; // Bright yellow
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(c * cellW, r * cellH, cellW, cellH);
+      ctx.restore();
+    }
+
+    // 4. Draw Borehole Collars with Assayed Values
+    const unit = ATTRIBUTE_METADATA[selectedAttribute]?.unit || '';
     boreholes.forEach((bh) => {
       const px = (bh.easting / 60) * width;
       const py = (bh.northing / 40) * height;
 
+      // Collar circle
       ctx.beginPath();
       ctx.arc(px, py, 7, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
@@ -129,14 +289,32 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
       ctx.lineWidth = 2.5;
       ctx.stroke();
 
+      // Inner bullseye
+      ctx.beginPath();
+      ctx.arc(px, py, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+
+      // Borehole label tag (ID + Assayed Value)
+      const assayVal = bh[selectedAttribute];
+      const labelText = `${bh.id}: ${assayVal}${unit}`;
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 1;
+      const textW = ctx.measureText(labelText).width;
+      ctx.beginPath();
+      ctx.roundRect(px + 10, py - 8, textW + 8, 16, 4);
+      ctx.fill();
+      ctx.stroke();
+
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 10px sans-serif';
-      ctx.shadowColor = '#000000';
-      ctx.shadowBlur = 4;
-      ctx.fillText(bh.id, px + 9, py + 4);
-      ctx.shadowBlur = 0;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(labelText, px + 14, py);
     });
-  }, [krigingGrid, boreholes, gridResolution, softCutoff, hardCutoff]);
+  }, [krigingGrid, boreholes, gridResolution, softCutoff, hardCutoff, displayMode, hoveredCell, selectedAttribute]);
 
   // Statistics summaries
   const stats = useMemo(() => {
@@ -249,12 +427,13 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
           {/* Attribute Selector */}
           <select
             value={selectedAttribute}
-            onChange={(e) => setSelectedAttribute(e.target.value as any)}
+            onChange={(e) => handleAttributeChange(e.target.value as any)}
             className="bg-slate-100 text-slate-800 border border-slate-300 px-3 py-2 rounded-xl text-xs font-bold"
           >
             <option value="ucsMPa">{isFrench ? 'Résistance UCS (MPa)' : 'Rock Strength (UCS MPa)'}</option>
             <option value="rqdPercent">{isFrench ? 'Qualité RQD (%)' : 'Rock Quality RQD (%)'}</option>
-            <option value="jointSpacingM">{isFrench ? 'Espacement des Diaclases (m)' : 'Joint Spacing (m)'}</option>
+            <option value="jointSpacingM">{isFrench ? 'Espacement Diaclases (m)' : 'Joint Spacing (m)'}</option>
+            <option value="densityTPerM3">{isFrench ? 'Densité Roche (t/m³)' : 'Rock Density (t/m³)'}</option>
             <option value="goldGradeGPT">{isFrench ? 'Teneur en Or (g/t Au)' : 'Gold Grade (g/t Au)'}</option>
           </select>
 
@@ -294,8 +473,8 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
               hardPF,
               boreholesCount: boreholes.length,
             })}
-            summaryFr={`Krigeage ordinaire (${variogramParams.model}, portée ${variogramParams.rangeM}m) : ${stats.mean} ${selectedAttribute === 'ucsMPa' ? 'MPa' : '%'} moyen, ${stats.hardPct}% dur / ${stats.softPct}% tendre.`}
-            summaryEn={`Ordinary Kriging (${variogramParams.model}, range ${variogramParams.rangeM}m): mean ${stats.mean}, ${stats.hardPct}% hard / ${stats.softPct}% soft.`}
+            summaryFr={`Krigeage ordinaire (${variogramParams.model}, portée ${variogramParams.rangeM}m) : ${stats.mean} ${ATTRIBUTE_METADATA[selectedAttribute]?.unit} moyen, ${stats.hardPct}% dur / ${stats.softPct}% tendre.`}
+            summaryEn={`Ordinary Kriging (${variogramParams.model}, range ${variogramParams.rangeM}m): mean ${stats.mean} ${ATTRIBUTE_METADATA[selectedAttribute]?.unit}, ${stats.hardPct}% hard / ${stats.softPct}% soft.`}
           />
         </div>
       </div>
@@ -307,8 +486,8 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
             <h3 className="text-sm font-black text-blue-950 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-blue-600" />
               {isFrench
-                ? 'Comment fonctionne le Krigeage Géostatistique dans FragMill ?'
-                : 'How Does Geostatistical Kriging Function in FragMill?'}
+                ? 'Fonctionnement du Module Géostatistique & Interprétation'
+                : 'How Geostatistics & Kriging Function in FragMill'}
             </h3>
             <button
               onClick={() => setShowExplanation(false)}
@@ -317,35 +496,45 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
               ✕ {isFrench ? 'Masquer' : 'Dismiss'}
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-blue-900 leading-relaxed">
-            <div className="p-3 bg-white/80 rounded-xl border border-blue-100">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs text-blue-900 leading-relaxed">
+            <div className="p-3 bg-white/90 rounded-xl border border-blue-100">
               <span className="font-extrabold block text-blue-950 mb-1">
-                1. {isFrench ? 'Le Semi-Variogramme' : 'The Semi-Variogram'}
+                📍 {isFrench ? 'Sur quelle surface ?' : 'Which Surface?'}
               </span>
               <p>
                 {isFrench
-                  ? 'Mesure la continuité spatiale de la roche. La portée (a) est la distance au-delà de laquelle deux points sont indépendants. Le palier (C) est la variance géologique totale, et la pépite (C0) représente le bruit de mesure à petite échelle.'
-                  : 'Measures spatial correlation. Range (a) is the distance beyond which samples are independent. Sill (C) represents total spatial variance, and Nugget (C0) captures small-scale measurement uncertainty.'}
+                  ? 'Le krigeage est appliqué au plan horizontal du gradin d’abattage (cote 840 RL) sur un polygone de 60m (Est-Ouest) × 40m (Nord-Sud). La grille découpe le banc en mailles discrètes pour cartographier le massif avant foration.'
+                  : 'Kriging interpolates the 2D horizontal mining excavation bench plane (elevation 840 RL) across a 60m (Easting) × 40m (Northing) pattern to characterize the bench prior to drill & blast.'}
               </p>
             </div>
-            <div className="p-3 bg-white/80 rounded-xl border border-blue-100">
+            <div className="p-3 bg-white/90 rounded-xl border border-blue-100">
               <span className="font-extrabold block text-blue-950 mb-1">
-                2. {isFrench ? 'L’Estimateur BLUE' : 'The BLUE Estimator'}
+                🔬 {isFrench ? 'Quelles variables ?' : 'What Variables?'}
               </span>
               <p>
                 {isFrench
-                  ? 'Le Krigeage calcule les poids optimaux garantissant une estimation sans biais et à variance minimale. Contrairement à une simple moyenne, il prend en compte le regroupement des sondages et la structure géologique.'
-                  : 'Ordinary Kriging computes optimal weights for Best Linear Unbiased Estimation (BLUE). Unlike simple distance averages, it accounts for sample clustering and structural directionality.'}
+                  ? 'Vous pouvez interpoler la résistance UCS (MPa), la qualité RQD (%), l’espacement des joints (m), la densité rocheuse (t/m³) ou la teneur minérale (g/t Au) mesurées sur les sondages d’exploration.'
+                  : 'Interpolates compressive strength UCS (MPa), Rock Quality Designation RQD (%), Joint Spacing (m), in-situ Density (t/m³), or Ore Grade (g/t Au) from exploratory borehole assays.'}
               </p>
             </div>
-            <div className="p-3 bg-white/80 rounded-xl border border-blue-100">
+            <div className="p-3 bg-white/90 rounded-xl border border-blue-100">
               <span className="font-extrabold block text-blue-950 mb-1">
-                3. {isFrench ? 'Zonage Intelligent du Tir' : 'Blast Domain Zonation'}
+                📈 {isFrench ? 'Impact du Variogramme' : 'Variogram Parameters'}
               </span>
               <p>
                 {isFrench
-                  ? 'Plutôt que d’appliquer un dosage explosif uniforme (ex: 0.65 kg/m³) sur tout le gradin, FragMill affecte un dosage sur-mesure : 0.45 kg/m³ dans les zones tendres (économie d’ANFO, moins de fines) et 0.85 kg/m³ dans les granites massifs (zéro bloc).'
-                  : 'Instead of blind uniform charging across the bench, FragMill adapts explosive powder factors: lower charge in fractured zones saves explosive, while higher charge in massive rock eliminates oversize boulders.'}
+                  ? 'La portée (a) définit la distance d’influence : plus elle est grande, plus l’interpolation est lissée. La pépite (C0) règle le bruit local : une pépite élevée tire vers la moyenne du gradin. Le palier (C) fixe la dispersion totale.'
+                  : 'Range (a) sets spatial reach: larger range creates smoother global interpolation; smaller range localizes borehole impact. Nugget (C0) models measurement noise: higher nugget pulls toward bench mean. Sill (C) scales kriging variance.'}
+              </p>
+            </div>
+            <div className="p-3 bg-white/90 rounded-xl border border-blue-100">
+              <span className="font-extrabold block text-blue-950 mb-1">
+                🎯 {isFrench ? 'Zonage Intelligent du Tir' : 'Blast Domain Zonation'}
+              </span>
+              <p>
+                {isFrench
+                  ? 'Associe chaque maille à un domaine (Tendre, Intermédiaire, Dur) pour adapter le dosage d’explosif (ex: 0.45 kg/m³ en zone fracturée vs 0.85 kg/m³ en roche massive), optimisant fragmentation et coût d’ANFO.'
+                  : 'Assigns each block to a blast domain (Soft, Intermediate, Hard) to vary explosive powder factor (e.g. 0.45 kg/m³ in fractured rock vs 0.85 kg/m³ in massive ground), minimizing oversize & fines.'}
               </p>
             </div>
           </div>
@@ -496,46 +685,156 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column (7 cols): Kriging Heatmap Canvas */}
         <div className="lg:col-span-7 bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3">
-          <div className="flex justify-between items-center text-xs text-slate-400">
+          <div className="flex flex-wrap justify-between items-center text-xs text-slate-400 gap-2">
             <span className="font-semibold flex items-center gap-1.5">
               <Compass className="w-4 h-4 text-blue-400" />
               {isFrench ? 'Carte d’Interpolation Krigée (Gradin 840 RL)' : 'Kriged Spatial Heatmap (Bench 840 RL)'}
             </span>
-            <span className="text-slate-400">
-              {isFrench ? 'Échelle : 60m × 40m' : 'Scale: 60m × 40m'} • {boreholes.length} {isFrench ? 'sondages' : 'boreholes'}
+            <span className="text-slate-400 font-mono text-[11px]">
+              {isFrench ? 'Étendue : 60m × 40m' : 'Extent: 60m × 40m'} • {boreholes.length} {isFrench ? 'sondages' : 'boreholes'}
             </span>
           </div>
 
-          <div className="relative aspect-16/10 rounded-xl overflow-hidden bg-slate-900 border border-slate-800">
+          {/* Visualization Mode Selector */}
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800">
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setDisplayMode('heatmap')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                  displayMode === 'heatmap'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <Activity className="w-3.5 h-3.5" />
+                <span>{isFrench ? 'Carte Continue (Turbo)' : 'Continuous Heatmap'}</span>
+              </button>
+              <button
+                onClick={() => setDisplayMode('variance')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                  displayMode === 'variance'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>{isFrench ? 'Incertitude Krigeage (σ²)' : 'Kriging Variance (σ²)'}</span>
+              </button>
+              <button
+                onClick={() => setDisplayMode('domains')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                  displayMode === 'domains'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <Crosshair className="w-3.5 h-3.5" />
+                <span>{isFrench ? 'Zonage Domaines' : 'Blast Domains'}</span>
+              </button>
+            </div>
+
+            <span className="text-[10px] text-slate-400 font-mono pr-1 hidden sm:inline">
+              {displayMode === 'heatmap' && (isFrench ? '● Gradient continu de la variable' : '● Continuous attribute heatmap')}
+              {displayMode === 'variance' && (isFrench ? '● Erreur d’estimation BLUE σ²' : '● BLUE Kriging uncertainty σ²')}
+              {displayMode === 'domains' && (isFrench ? '● 3 domaines de charge' : '● 3 explosive loading domains')}
+            </span>
+          </div>
+
+          <div className="relative aspect-16/10 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 cursor-crosshair">
             <canvas
               ref={canvasRef}
               width={720}
               height={450}
+              onMouseMove={handleCanvasMouseMove}
+              onMouseLeave={handleCanvasMouseLeave}
               className="w-full h-full object-cover"
             />
-            {/* Legend Overlay */}
-            <div className="absolute bottom-3 left-3 bg-black/85 backdrop-blur-xs px-3 py-1.5 rounded-lg text-[10px] text-white flex items-center gap-3 border border-white/10">
-              <span className="text-blue-400 font-bold">
-                ■ {isFrench ? `Tendre (< ${softCutoff} MPa)` : `Soft (< ${softCutoff} MPa)`} ({stats.softPct}%)
-              </span>
-              <span className="text-emerald-400 font-bold">
-                ■ {isFrench ? 'Intermédiaire' : 'Intermediate'} ({stats.interPct}%)
-              </span>
-              <span className="text-red-400 font-bold">
-                ■ {isFrench ? `Massif (> ${hardCutoff} MPa)` : `Hard (> ${hardCutoff} MPa)`} ({stats.hardPct}%)
-              </span>
+
+            {/* Dynamic Legend Overlay */}
+            <div className="absolute bottom-3 left-3 right-3 sm:right-auto bg-black/85 backdrop-blur-xs px-3 py-2 rounded-xl text-[10px] text-white border border-white/10 shadow-lg">
+              {displayMode === 'heatmap' && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] font-mono text-slate-300 gap-4">
+                    <span>Min: <strong className="text-cyan-400">{stats.min} {ATTRIBUTE_METADATA[selectedAttribute]?.unit}</strong></span>
+                    <span>Moy: <strong className="text-emerald-400">{stats.mean} {ATTRIBUTE_METADATA[selectedAttribute]?.unit}</strong></span>
+                    <span>Max: <strong className="text-red-400">{stats.max} {ATTRIBUTE_METADATA[selectedAttribute]?.unit}</strong></span>
+                  </div>
+                  <div className="w-48 sm:w-64 h-2.5 rounded-full bg-gradient-to-r from-blue-700 via-emerald-400 to-red-500 border border-white/20" />
+                </div>
+              )}
+
+              {displayMode === 'variance' && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] font-mono text-slate-300 gap-4">
+                    <span className="text-blue-400">Faible Incertitude (Proche sondage)</span>
+                    <span className="text-rose-400">Forte Incertitude (Zone isolée)</span>
+                  </div>
+                  <div className="w-48 sm:w-64 h-2.5 rounded-full bg-gradient-to-r from-slate-900 via-blue-500 via-purple-500 to-rose-500 border border-white/20" />
+                </div>
+              )}
+
+              {displayMode === 'domains' && (
+                <div className="flex items-center gap-3">
+                  <span className="text-blue-400 font-bold">
+                    ■ {isFrench ? `Tendre (< ${softCutoff} ${ATTRIBUTE_METADATA[selectedAttribute]?.unit})` : `Soft (< ${softCutoff} ${ATTRIBUTE_METADATA[selectedAttribute]?.unit})`} ({stats.softPct}%)
+                  </span>
+                  <span className="text-emerald-400 font-bold">
+                    ■ {isFrench ? 'Intermédiaire' : 'Intermediate'} ({stats.interPct}%)
+                  </span>
+                  <span className="text-red-400 font-bold">
+                    ■ {isFrench ? `Massif (> ${hardCutoff} ${ATTRIBUTE_METADATA[selectedAttribute]?.unit})` : `Hard (> ${hardCutoff} ${ATTRIBUTE_METADATA[selectedAttribute]?.unit})`} ({stats.hardPct}%)
+                  </span>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Interactive Cell Hover Inspector HUD */}
+          {hoveredCell ? (
+            <div className="bg-slate-900/90 border border-amber-500/40 p-2.5 rounded-xl flex flex-wrap items-center justify-between text-xs text-white gap-2 shadow-inner">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                <span className="text-slate-300 font-mono text-[11px]">
+                  X = <strong>{hoveredCell.xM} m</strong>, Y = <strong>{hoveredCell.yM} m</strong>
+                </span>
+                <span className="text-slate-500">|</span>
+                <span className="text-slate-200">
+                  {isFrench ? ATTRIBUTE_METADATA[selectedAttribute]?.nameFr : ATTRIBUTE_METADATA[selectedAttribute]?.nameEn}:{' '}
+                  <strong className="text-amber-400 font-mono text-sm">
+                    {hoveredCell.value} {ATTRIBUTE_METADATA[selectedAttribute]?.unit}
+                  </strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-2 font-mono text-[11px]">
+                <span className="text-purple-300">
+                  Var σ²: <strong>{hoveredCell.variance}</strong> (±{hoveredCell.stdError})
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-200 border border-slate-700 font-bold text-[10px]">
+                  {hoveredCell.domain}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-[11px] text-slate-500 text-center italic py-1">
+              {isFrench
+                ? 'Survolez la carte au curseur pour inspecter la valeur krigée et l’incertitude locale (σ²).'
+                : 'Hover over the grid map to inspect local kriged estimate and kriging variance (σ²).'}
+            </div>
+          )}
 
           {/* Quick Summary Pill Bar */}
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             <div className="p-2 bg-slate-900 rounded-xl border border-slate-800">
               <span className="text-slate-400 text-[10px] block">{isFrench ? 'Moyenne Krigée' : 'Kriged Mean'}</span>
-              <strong className="text-white text-sm">{stats.mean} {selectedAttribute === 'ucsMPa' ? 'MPa' : '%'}</strong>
+              <strong className="text-white text-sm">
+                {stats.mean} {ATTRIBUTE_METADATA[selectedAttribute]?.unit}
+              </strong>
             </div>
             <div className="p-2 bg-slate-900 rounded-xl border border-slate-800">
               <span className="text-slate-400 text-[10px] block">{isFrench ? 'Étendue (Min - Max)' : 'Range (Min - Max)'}</span>
-              <strong className="text-blue-400 text-sm">{stats.min} - {stats.max}</strong>
+              <strong className="text-blue-400 text-sm">
+                {stats.min} - {stats.max} {ATTRIBUTE_METADATA[selectedAttribute]?.unit}
+              </strong>
             </div>
             <div className="p-2 bg-slate-900 rounded-xl border border-slate-800">
               <span className="text-slate-400 text-[10px] block">{isFrench ? 'Zonage Dominant' : 'Dominant Domain'}</span>
@@ -580,11 +879,12 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
+                      step={ATTRIBUTE_METADATA[selectedAttribute]?.step || 1}
                       value={softCutoff}
-                      onChange={(e) => setSoftCutoff(parseInt(e.target.value) || 75)}
-                      className="w-14 px-1.5 py-0.5 text-right font-bold text-blue-900 bg-white border border-blue-300 rounded-md text-xs"
+                      onChange={(e) => setSoftCutoff(parseFloat(e.target.value) || 0)}
+                      className="w-16 px-1.5 py-0.5 text-right font-bold text-blue-900 bg-white border border-blue-300 rounded-md text-xs"
                     />
-                    <span>MPa ({stats.softPct}% de la surface)</span>
+                    <span>{ATTRIBUTE_METADATA[selectedAttribute]?.unit} ({stats.softPct}% {isFrench ? 'du gradin' : 'of bench'})</span>
                   </div>
                 </div>
               </div>
@@ -608,7 +908,7 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-emerald-700">
                   <span>{isFrench ? 'Plage standard :' : 'Standard band:'}</span>
-                  <span>{softCutoff} - {hardCutoff} MPa ({stats.interPct}% de la surface)</span>
+                  <span>{softCutoff} - {hardCutoff} {ATTRIBUTE_METADATA[selectedAttribute]?.unit} ({stats.interPct}% {isFrench ? 'du gradin' : 'of bench'})</span>
                 </div>
               </div>
 
@@ -634,11 +934,12 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
+                      step={ATTRIBUTE_METADATA[selectedAttribute]?.step || 1}
                       value={hardCutoff}
-                      onChange={(e) => setHardCutoff(parseInt(e.target.value) || 125)}
-                      className="w-14 px-1.5 py-0.5 text-right font-bold text-red-900 bg-white border border-red-300 rounded-md text-xs"
+                      onChange={(e) => setHardCutoff(parseFloat(e.target.value) || 0)}
+                      className="w-16 px-1.5 py-0.5 text-right font-bold text-red-900 bg-white border border-red-300 rounded-md text-xs"
                     />
-                    <span>MPa ({stats.hardPct}% de la surface)</span>
+                    <span>{ATTRIBUTE_METADATA[selectedAttribute]?.unit} ({stats.hardPct}% {isFrench ? 'du gradin' : 'of bench'})</span>
                   </div>
                 </div>
               </div>
