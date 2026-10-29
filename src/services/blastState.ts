@@ -390,9 +390,28 @@ export function getBlastState(
   const availableChargeLengthM = Math.max(0, holeDepth - stemmingLength);
   const holeChargeCapacityKg = Number((linearLoadingKgPerM * availableChargeLengthM).toFixed(2));
 
-  const chargePerHole = p.chargePerHole || Math.min(holeChargeCapacityKg, Number((0.45 * holeVolumeM3).toFixed(1)));
-  const totalExplosiveKg = Number((chargePerHole * numberOfHoles).toFixed(1));
-  const powderFactorKgPerM3 = Number((chargePerHole / Math.max(0.1, holeVolumeM3)).toFixed(2));
+  let chargePerHole = p.chargePerHole || Math.min(holeChargeCapacityKg, Number((0.45 * holeVolumeM3).toFixed(1)));
+  let totalExplosiveKg = Number((chargePerHole * numberOfHoles).toFixed(1));
+  let powderFactorKgPerM3 = Number((chargePerHole / Math.max(0.1, holeVolumeM3)).toFixed(2));
+
+  // If detailed drillholes are imported from Excel/CSV, derive true aggregated values
+  if (blast.drillHoles && blast.drillHoles.length > 0) {
+    let sumExp = 0;
+    let sumVol = 0;
+    for (const h of blast.drillHoles) {
+      const hCharge = h.totalChargeKg || (h.toeChargeKg + h.columnChargeKg) || 0;
+      const hVol = (h.burdenM || burden) * (h.spacingM || spacing) * benchHeight;
+      sumExp += hCharge;
+      sumVol += hVol;
+    }
+    if (sumExp > 0) {
+      totalExplosiveKg = Number(sumExp.toFixed(1));
+      chargePerHole = Number((sumExp / blast.drillHoles.length).toFixed(1));
+      if (sumVol > 0) {
+        powderFactorKgPerM3 = Number((sumExp / sumVol).toFixed(3));
+      }
+    }
+  }
 
   const isCapacityExceeded = chargePerHole > holeChargeCapacityKg + 0.2;
   const capacityDeficitKg = Number((chargePerHole - holeChargeCapacityKg).toFixed(2));

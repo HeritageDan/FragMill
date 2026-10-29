@@ -95,6 +95,7 @@ export interface CrusherChokeEvent {
 // 3. 3D Blast Timing Simulator & Face Profiler
 export interface HoleTimingInfo {
   holeIndex: number;
+  holeId?: string;
   row: number;
   col: number;
   x: number; // Bench Easting (m)
@@ -107,6 +108,9 @@ export interface HoleTimingInfo {
   spacingM: number;
   faceDistanceM: number;
   state: 'ready' | 'detonated';
+  isWet?: boolean;
+  waterDepthM?: number;
+  hasCavityOrFault?: boolean;
 }
 
 export interface IsochroneContour {

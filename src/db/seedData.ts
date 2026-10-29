@@ -10,6 +10,7 @@ import type {
   Fragment,
 } from '../types';
 import { BLASTHOLE4_IMAGE_DATA_URL } from '../assets/blasthole4Image';
+import { generateDefaultDrillHolesFromBlast } from '../services/drillHoles/drillHoleService';
 
 // Helper to generate a realistic synthetic rock pile image data URL
 export function createSyntheticMuckpileDataUrl(width = 800, height = 600, coarseFactor = 1.0): {
@@ -1011,6 +1012,13 @@ export async function seedDemoProject(): Promise<string> {
       updatedAt: now,
     },
   ];
+
+  // Attach default detailed drillholes to each seeded blast
+  for (const b of blasts) {
+    if (!b.drillHoles || b.drillHoles.length === 0) {
+      b.drillHoles = generateDefaultDrillHolesFromBlast(b);
+    }
+  }
 
   // Store in Dexie
   await db.transaction('rw', [db.projects, db.sites, db.blasts, db.images, db.segmentationRuns, db.groundTruths, db.millBatches], async () => {

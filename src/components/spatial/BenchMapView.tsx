@@ -36,9 +36,44 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
 }) => {
   const isFr = lang === 'fr';
 
-  const [selectedElevation, setSelectedElevation] = useState<number | 'all'>('all');
+  const [selectedElevation, setSelectedElevation] = useState<number | 'all' | 'upper' | 'lower'>('all');
   const [activeBlastId, setActiveBlastId] = useState<string>(propActiveBlastId || blasts[0]?.id || '');
   const [showExplanation, setShowExplanation] = useState<boolean>(false);
+
+  // Helper to extract realistic bench elevation (RL in meters above sea level) for any blast
+  const getBlastBenchElevation = (b: Blast): number => {
+    if (b.drillHoles && b.drillHoles.length > 0) {
+      const validZ = b.drillHoles
+        .map((h) => h.elevationZ)
+        .filter((z): z is number => typeof z === 'number' && !isNaN(z));
+      if (validZ.length > 0) {
+        const avgZ = validZ.reduce((sum, z) => sum + z, 0) / validZ.length;
+        return Math.round(avgZ / 10) * 10;
+      }
+    }
+    const fallbackBenches: Record<string, number> = {
+      'blast-bl-2026-001': 1240,
+      'blast-bl-2026-002': 1240,
+      'blast-bl-2026-003': 1240,
+      'blast-bl-2026-004': 840,
+      'blast-bl-2026-005': 840,
+    };
+    return fallbackBenches[b.id] ?? 1240;
+  };
+
+  // Pit elevation statistics across all project blasts
+  const benchElevations = useMemo(() => {
+    return Array.from(new Set(blasts.map(getBlastBenchElevation))).sort((a, b) => b - a);
+  }, [blasts]);
+
+  const maxPitElevation = benchElevations.length > 0 ? Math.max(...benchElevations) : 1240;
+  const minPitElevation = benchElevations.length > 0 ? Math.min(...benchElevations) : 840;
+  const medianPitElevation = Math.round((maxPitElevation + minPitElevation) / 2);
+
+  // Open-pit benchmark criterion:
+  // Upper Benches (Gradins Supérieurs / Crête / Découverte): Elevation >= Median Pit Elevation
+  // Lower Benches (Gradins Inférieurs / Fond de Fosse / Front Actif): Elevation < Median Pit Elevation
+  const isUpperBench = (elev: number) => elev >= medianPitElevation;
 
   // Interactive Pattern Geometry Overrides for Active Blast
   const selectedBlast = blasts.find((b) => b.id === activeBlastId) || blasts[0];
@@ -94,14 +129,47 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
     );
   }, [burdenM, spacingM, benchHeightM, numberOfHoles, selectedBlast]);
 
-  // Default coordinate layouts for blasts on the pit bench SVG
-  const blastLayouts: Record<string, { x: number; y: number; w: number; h: number; bench: number }> = {
-    'blast-bl-2026-001': { x: 120, y: 130, w: 110, h: 75, bench: 1240 },
-    'blast-bl-2026-002': { x: 260, y: 135, w: 125, h: 80, bench: 1240 },
-    'blast-bl-2026-003': { x: 410, y: 140, w: 105, h: 70, bench: 1240 },
-    'blast-bl-2026-004': { x: 180, y: 240, w: 130, h: 85, bench: 840 },
-    'blast-bl-2026-005': { x: 340, y: 250, w: 120, h: 80, bench: 840 },
-  };
+  // Dynamic layout calculator: maps real bench RL and blast position onto SVG pit coordinates
+  const computedBlastLayouts = useMemo(() => {
+    const layouts: Record<string, { x: number; y: number; w: number; h: number; bench: number; isUpper: boolean }> = {};
+
+    const blastsByBench: Record<number, Blast[]> = {};
+    blasts.forEach((b) => {
+      const elev = getBlastBenchElevation(b);
+      if (!blastsByBench[elev]) blastsByBench[elev] = [];
+      blastsByBench[elev].push(b);
+    });
+
+    Object.keys(blastsByBench).forEach((key) => {
+      const elev = Number(key);
+      const bList = blastsByBench[elev];
+      const isUpper = isUpperBench(elev);
+      const targetY = isUpper
+        ? (benchElevations.length > 1 && maxPitElevation !== minPitElevation
+            ? 115 + ((maxPitElevation - elev) / (maxPitElevation - minPitElevation)) * 55
+            : 130)
+        : (benchElevations.length > 1 && maxPitElevation !== minPitElevation
+            ? 225 + ((medianPitElevation - elev) / (medianPitElevation - minPitElevation || 1)) * 40
+            : 245);
+
+      const nOnBench = bList.length;
+      const blockWidth = Math.min(130, Math.max(95, 460 / (nOnBench + 0.3)));
+      const startX = 300 - ((nOnBench * (blockWidth + 16)) - 16) / 2;
+
+      bList.forEach((b: Blast, idx: number) => {
+        layouts[b.id] = {
+          x: Math.round(startX + idx * (blockWidth + 16)),
+          y: Math.round(targetY),
+          w: Math.round(blockWidth),
+          h: 75,
+          bench: elev,
+          isUpper,
+        };
+      });
+    });
+
+    return layouts;
+  }, [blasts, benchElevations, maxPitElevation, minPitElevation, medianPitElevation]);
 
   const getP80 = (b: Blast): number => {
     return b.images[0]?.segmentationRuns?.[0]?.metrics?.p80 || (b.blastId === 'BL-2026-001' ? 285 : b.blastId === 'BL-2026-002' ? 195 : 142);
@@ -133,7 +201,7 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
   }));
 
   // Find center of selected blast for drawing the circular flyrock safety buffer
-  const activeLayout = blastLayouts[selectedBlast?.id || ''] || { x: 260, y: 135, w: 125, h: 80, bench: 1240 };
+  const activeLayout = computedBlastLayouts[selectedBlast?.id || ''] || { x: 260, y: 135, w: 125, h: 80, bench: 1240, isUpper: true };
   const centerX = activeLayout.x + activeLayout.w / 2;
   const centerY = activeLayout.y + activeLayout.h / 2;
   // Scaled SVG radius: 300m = ~90px on SVG
@@ -153,7 +221,13 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
                 {isFr ? 'Plan Spatial des Gradins & Réconciliation Fosse' : 'Open-Pit Bench Map & Spatial Blast Reconciliation'}
               </h2>
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">
-                {selectedElevation === 'all' ? (isFr ? 'Fosse Complète' : 'All Pit') : `Gradin ${selectedElevation} RL`}
+                {selectedElevation === 'all'
+                  ? (isFr ? 'Fosse Complète' : 'All Pit')
+                  : selectedElevation === 'upper'
+                  ? (isFr ? `Gradins Supérieurs (≥ ${medianPitElevation}m RL)` : `Upper Benches (≥ ${medianPitElevation}m RL)`)
+                  : selectedElevation === 'lower'
+                  ? (isFr ? `Gradins Inférieurs (< ${medianPitElevation}m RL)` : `Lower Benches (< ${medianPitElevation}m RL)`)
+                  : `Gradin ${selectedElevation} RL`}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -171,14 +245,34 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
             <Layers className="w-3.5 h-3.5 text-blue-600" />
             <select
               value={selectedElevation}
-              onChange={(e) => setSelectedElevation(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'all' || val === 'upper' || val === 'lower') {
+                  setSelectedElevation(val);
+                } else {
+                  setSelectedElevation(parseInt(val));
+                }
+              }}
               className="px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-slate-50"
             >
               <option value="all">{isFr ? 'Tous les Gradins (Fosse Complète)' : 'All Benches (Full Pit)'}</option>
-              <option value={840}>{isFr ? 'Gradin 840 RL (Gradin Pilote Actif)' : 'Bench 840 RL (Active Pilot Bench)'}</option>
-              <option value={1260}>{isFr ? 'Gradin 1260 RL (Crête Rampe)' : 'Bench 1260 RL (Crest)'}</option>
-              <option value={1240}>{isFr ? 'Gradin 1240 RL (Supérieur)' : 'Bench 1240 RL (Upper)'}</option>
-              <option value={1220}>{isFr ? 'Gradin 1220 RL (Front Actif)' : 'Bench 1220 RL (Active Face)'}</option>
+              <option value="upper">
+                {isFr
+                  ? `Gradins Supérieurs (Crête ≥ ${medianPitElevation}m RL)`
+                  : `Upper Benches (Crest ≥ ${medianPitElevation}m RL)`}
+              </option>
+              <option value="lower">
+                {isFr
+                  ? `Gradins Inférieurs (Fond Fosse < ${medianPitElevation}m RL)`
+                  : `Lower Benches (Pit Floor < ${medianPitElevation}m RL)`}
+              </option>
+              {benchElevations.map((elev) => (
+                <option key={elev} value={elev}>
+                  {isFr
+                    ? `Gradin ${elev} RL (${isUpperBench(elev) ? 'Gradin Supérieur' : 'Gradin Inférieur'})`
+                    : `Bench ${elev} RL (${isUpperBench(elev) ? 'Upper Bench' : 'Lower Bench'})`}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -237,7 +331,7 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
               ✕ {isFr ? 'Masquer' : 'Dismiss'}
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-blue-900 leading-relaxed">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs text-blue-900 leading-relaxed">
             <div className="p-3 bg-white/80 rounded-xl border border-blue-100">
               <span className="font-extrabold block text-blue-950 mb-1">
                 1. {isFr ? 'Cartographie des Polygones de Tir' : 'Blast Polygon Mapping'}
@@ -266,6 +360,16 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
                 {isFr
                   ? 'En comparant le P80 observé sur différents gradins, les ingénieurs identifient les zones dures nécessitant un resserrement de maille et évitent d’engorger le concasseur primaire avec des gros blocs.'
                   : 'By tracking P80 across different benches, mining engineers detect hard geological zones requiring tighter patterns to avoid starving or choking primary crushing.'}
+              </p>
+            </div>
+            <div className="p-3 bg-white/80 rounded-xl border border-blue-100">
+              <span className="font-extrabold block text-blue-950 mb-1">
+                4. {isFr ? 'Critère Gradin Supérieur vs Inférieur' : 'Upper vs Lower Bench Criterion'}
+              </span>
+              <p>
+                {isFr
+                  ? `Cote altimétrique RL : la médiane de la fosse est à ${medianPitElevation}m RL. Les tirs à cote ≥ ${medianPitElevation}m RL sont classés en gradins supérieurs (crête / découverture), ceux à cote < ${medianPitElevation}m RL en gradins inférieurs (production active).`
+                  : `Reduced Level (RL): pit median elevation is ${medianPitElevation}m RL. Blasts at RL ≥ ${medianPitElevation}m are classified as Upper Benches (crest/stripping); blasts at RL < ${medianPitElevation}m are Lower Benches (active pit floor).`}
               </p>
             </div>
           </div>
@@ -492,15 +596,18 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
 
               {/* Render blast polygons */}
               {blasts.map((b, idx) => {
-                const layout = blastLayouts[b.id] || {
+                const layout = computedBlastLayouts[b.id] || {
                   x: 100 + (idx % 3) * 140,
                   y: 130 + Math.floor(idx / 3) * 110,
                   w: 115,
                   h: 75,
                   bench: 1240,
+                  isUpper: true,
                 };
 
-                if (selectedElevation !== 'all' && layout.bench !== selectedElevation) {
+                if (selectedElevation === 'upper' && !layout.isUpper) return null;
+                if (selectedElevation === 'lower' && layout.isUpper) return null;
+                if (typeof selectedElevation === 'number' && layout.bench !== selectedElevation) {
                   return null;
                 }
 
@@ -558,6 +665,18 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
                       fontWeight="bold"
                     >
                       P80: {p80} mm
+                    </text>
+
+                    {/* Bench Elevation Label */}
+                    <text
+                      x={layout.x + layout.w / 2}
+                      y={layout.y + 65}
+                      textAnchor="middle"
+                      fill="#CBD5E1"
+                      fontSize="9"
+                      fontWeight="bold"
+                    >
+                      {layout.bench} RL {layout.isUpper ? '▲' : '▼'}
                     </text>
 
                     {/* Powder Factor */}

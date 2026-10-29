@@ -57,6 +57,78 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
   const [holes, setHoles] = useState<HoleTimingInfo[]>([]);
 
   useEffect(() => {
+    if (blast.drillHoles && blast.drillHoles.length > 0) {
+      // Group holes by rowNumber to determine column order along the bench face
+      const rowMap = new Map<number, typeof blast.drillHoles>();
+      blast.drillHoles.forEach((dh) => {
+        const r = dh.rowNumber || 1;
+        if (!rowMap.has(r)) rowMap.set(r, []);
+        rowMap.get(r)!.push(dh);
+      });
+
+      // Sort holes in each row along Easting
+      rowMap.forEach((holesInRow) => {
+        holesInRow.sort((a, b) => a.eastingX - b.eastingX);
+      });
+
+      const totalRows = rowMap.size || 1;
+
+      const timingHoles: HoleTimingInfo[] = blast.drillHoles.map((h, idx) => {
+        const r = (h.rowNumber || 1) - 1;
+        const holesInSameRow = rowMap.get(h.rowNumber || 1) || [];
+        const c = Math.max(0, holesInSameRow.findIndex((dh) => dh.holeId === h.holeId));
+        const numColsInRow = Math.max(1, holesInSameRow.length);
+
+        let firingTimeMs = 0;
+
+        if (patternType === 'v_echelon') {
+          const midCol = (numColsInRow - 1) / 2;
+          const colDistance = Math.abs(c - midCol);
+          firingTimeMs = inHoleDelayMs + r * (surfaceDelayMs * 1.6) + colDistance * surfaceDelayMs;
+        } else if (patternType === 'row_by_row') {
+          firingTimeMs = inHoleDelayMs + r * (surfaceDelayMs * 2.0) + c * (surfaceDelayMs * 0.4);
+        } else if (patternType === 'diagonal_cut') {
+          firingTimeMs = inHoleDelayMs + (r + c) * surfaceDelayMs;
+        } else if (patternType === 'center_lift') {
+          const midR = (totalRows - 1) / 2;
+          const midC = (numColsInRow - 1) / 2;
+          const dist = Math.hypot(r - midR, c - midC);
+          firingTimeMs = inHoleDelayMs + dist * surfaceDelayMs * 1.5;
+        } else {
+          // electronic_custom: prioritize detonator delay from Excel if positive, else 8ms sequential
+          if (h.detonatorDelayMs !== undefined && h.detonatorDelayMs > 0) {
+            firingTimeMs = h.detonatorDelayMs;
+          } else {
+            firingTimeMs = inHoleDelayMs + idx * 8;
+          }
+        }
+
+        return {
+          holeIndex: idx + 1,
+          holeId: h.holeId || `BH-${idx + 1}`,
+          row: r,
+          col: c,
+          x: h.eastingX,
+          y: h.northingY,
+          surfaceDelayMs: surfaceDelayMs,
+          inHoleDelayMs: inHoleDelayMs,
+          firingTimeMs: Math.round(firingTimeMs),
+          chargeKg: h.totalChargeKg || chargeKg,
+          burdenM: h.burdenM || burden,
+          spacingM: h.spacingM || spacing,
+          faceDistanceM: (r + 1) * (h.burdenM || burden),
+          state: 'ready',
+          isWet: h.isWet || (h.waterDepthM !== undefined && h.waterDepthM > 0),
+          waterDepthM: h.waterDepthM || 0,
+          hasCavityOrFault: h.hasCavityOrFault || false,
+        };
+      });
+
+      setHoles(timingHoles);
+      setCurrentTimeMs(0);
+      return;
+    }
+
     const generated = generatePatternTiming(
       rows,
       cols,
@@ -69,7 +141,7 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
     );
     setHoles(generated);
     setCurrentTimeMs(0);
-  }, [rows, cols, burden, spacing, chargeKg, patternType, surfaceDelayMs, inHoleDelayMs]);
+  }, [blast.drillHoles, rows, cols, burden, spacing, chargeKg, patternType, surfaceDelayMs, inHoleDelayMs]);
 
   const maxDurationMs = holes.length > 0 ? Math.max(...holes.map((h) => h.firingTimeMs)) + 30 : 600;
 
@@ -119,6 +191,36 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
     ctx.font = 'bold 10px sans-serif';
     ctx.fillText(isFrench ? 'FRONT DE TAILLE LIBRE (DIRECTION DU TIR)' : 'QUARRY FREE FACE (THROW DIRECTION)', width / 2 - 120, 28);
 
+    // Bounding box for accurate spatial mapping without distortion
+    const minX = Math.min(...holes.map((h) => h.x));
+    const maxX = Math.max(...holes.map((h) => h.x));
+    const minY = Math.min(...holes.map((h) => h.y));
+    const maxY = Math.max(...holes.map((h) => h.y));
+    const spanX = Math.max(1, maxX - minX);
+    const spanY = Math.max(1, maxY - minY);
+
+    const padX = 65;
+    const padY = 70;
+    const availW = width - padX * 2;
+    const availH = height - padY * 2;
+
+    // Uniform aspect ratio scale
+    const scale = Math.min(availW / spanX, availH / spanY);
+    const offsetX = padX + (availW - spanX * scale) / 2;
+    const offsetY = padY + (availH - spanY * scale) / 2;
+
+    // Determine row 0 vs other rows to align row 0 closest to free face at top
+    const row0Holes = holes.filter((h) => h.row === 0);
+    const otherHoles = holes.filter((h) => h.row > 0);
+    const avgRow0Y = row0Holes.length > 0 ? row0Holes.reduce((s, h) => s + h.y, 0) / row0Holes.length : minY;
+    const avgOtherY = otherHoles.length > 0 ? otherHoles.reduce((s, h) => s + h.y, 0) / otherHoles.length : maxY;
+    const row0IsLowerY = avgRow0Y <= avgOtherY;
+
+    const toCanvasX = (x: number) => offsetX + (x - minX) * scale;
+    const toCanvasY = (y: number) => row0IsLowerY
+      ? offsetY + (y - minY) * scale
+      : offsetY + (maxY - y) * scale;
+
     // Isochrones
     const isochrones = computeIsochroneContours(holes, 30);
     isochrones.forEach((iso) => {
@@ -127,8 +229,8 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
         ctx.lineWidth = 2;
         ctx.beginPath();
         iso.points.forEach((pt, idx) => {
-          const px = 60 + (pt.x / (cols * spacing || 1)) * (width - 120);
-          const py = 75 + (pt.y / (rows * burden || 1)) * (height - 120);
+          const px = toCanvasX(pt.x);
+          const py = toCanvasY(pt.y);
           if (idx === 0) ctx.moveTo(px, py);
           else ctx.lineTo(px, py);
         });
@@ -138,8 +240,8 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
 
     // Draw holes
     holes.forEach((h) => {
-      const px = 60 + (h.x / (cols * spacing || 1)) * (width - 120);
-      const py = 75 + (h.y / (rows * burden || 1)) * (height - 120);
+      const px = toCanvasX(h.x);
+      const py = toCanvasY(h.y);
 
       const hasFired = h.firingTimeMs <= currentTimeMs;
       const isJustFiring = Math.abs(h.firingTimeMs - currentTimeMs) < 25;
@@ -161,21 +263,40 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
       // Hole circle
       ctx.beginPath();
       ctx.arc(px, py, 11, 0, Math.PI * 2);
-      ctx.fillStyle = hasFired ? '#ef4444' : '#3b82f6';
+      ctx.fillStyle = hasFired ? '#ef4444' : h.isWet ? '#0284c7' : '#3b82f6';
       ctx.fill();
-      ctx.strokeStyle = hasFired ? '#fbbf24' : '#93c5fd';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = hasFired ? '#fbbf24' : h.isWet ? '#38bdf8' : '#93c5fd';
+      ctx.lineWidth = h.isWet ? 2.5 : 2;
       ctx.stroke();
+
+      // If wet hole, draw central water droplet / dot
+      if (h.isWet && !hasFired) {
+        ctx.beginPath();
+        ctx.arc(px, py, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#67e8f9';
+        ctx.fill();
+      }
 
       // Hole ID and time
       ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 8.5px sans-serif';
+      const label = h.holeId ? h.holeId : `#${h.holeIndex}`;
+      ctx.fillText(label, px - 12, py - 14);
+
+      ctx.fillStyle = hasFired ? '#fca5a5' : '#e2e8f0';
       ctx.font = 'bold 9px sans-serif';
       ctx.fillText(`${h.firingTimeMs}ms`, px - 14, py + 22);
     });
   }, [holes, currentTimeMs, rows, cols, burden, spacing, isFrench]);
 
   const ppvEstimate = calculateUSBMPPV(distanceToStructureM, chargeKg);
-  const faceProfile = generateFaceProfile(blast.parameters.benchHeight || 6.0, burden);
+  const actualBenchHeight = blast.drillHoles && blast.drillHoles.length > 0
+    ? Math.max(...blast.drillHoles.map((h) => h.depthM)) - (blast.drillHoles[0]?.subdrillM || 0)
+    : (blast.parameters.benchHeight || 10.0);
+  const avgBurden = blast.drillHoles && blast.drillHoles.length > 0
+    ? blast.drillHoles.reduce((acc, h) => acc + (h.burdenM || burden), 0) / blast.drillHoles.length
+    : burden;
+  const faceProfile = generateFaceProfile(actualBenchHeight, avgBurden);
   const criticalUnderburdenCount = faceProfile.filter((p) => p.isCriticalUnderburden).length;
 
   return (

@@ -514,6 +514,42 @@ export interface BlastAdvisorRecommendation {
   }[];
 }
 
+export interface DetailedDrillHole {
+  holeId: string;
+  rowNumber: number; // 1 = front free face, 2, 3...
+  eastingX: number; // m
+  northingY: number; // m
+  elevationZ: number; // m RL
+  diameterMm: number; // mm
+  depthM: number; // m
+  burdenM: number; // m
+  spacingM: number; // m
+  subdrillM: number; // m
+  stemmingM: number; // m
+  inclinationDeg: number; // deg (90 = vertical, <90 = inclined)
+  azimuthDeg?: number; // deg (bearing of inclination)
+  waterDepthM: number; // m (0 = dry)
+  isWet?: boolean; // true if waterDepthM > 0 or marked wet
+  toeExplosiveType?: string; // e.g. 'Bulk Emulsion', 'Dynamite', 'ANFO'
+  toeChargeKg: number; // kg
+  columnExplosiveType?: string; // e.g. 'ANFO', 'Heavy ANFO', 'Emulsion'
+  columnChargeKg: number; // kg
+  airDeckM?: number; // m
+  hasCavityOrFault?: boolean;
+  cavityDepthM?: number; // m
+  cavityThicknessM?: number; // m
+  totalChargeKg: number; // kg (toeChargeKg + columnChargeKg)
+  powderFactorKgPerM3?: number; // kg/m3 = totalChargeKg / (burdenM * spacingM * benchHeight)
+  rockType?: string;
+  ucsMPa: number; // MPa
+  rqdPercent?: number; // %
+  densityTPerM3?: number; // t/m3
+  detonatorDelayMs?: number; // ms
+  detonatorType?: string; // 'Electronic' | 'Nonel'
+  status?: 'planned' | 'drilled' | 'loaded' | 'stemmed' | 'blasted';
+  notes?: string;
+}
+
 export interface Blast {
   id: string;
   siteId: string;
@@ -531,6 +567,7 @@ export interface Blast {
   benchElevation?: number; // e.g., 1240 RL
   polygonCoords?: [number, number][]; // 2D bench polygon in local meters [x, y]
   economicParams?: EconomicParameters;
+  drillHoles?: DetailedDrillHole[];
   createdAt: number;
   updatedAt: number;
 }

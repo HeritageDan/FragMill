@@ -84,8 +84,30 @@ export const DrillTelemetryP2PView: React.FC<DrillTelemetryP2PViewProps> = ({
   const [showExplanation, setShowExplanation] = useState<boolean>(false);
 
   useEffect(() => {
-    const data = generateDrillTelemetryFromBlast(blast);
-    setHoles(data);
+    if (blast.drillHoles && blast.drillHoles.length > 0) {
+      const iredesHoles: IREDESHole[] = blast.drillHoles.map((h) => ({
+        holeId: h.holeId,
+        plannedX: h.eastingX,
+        plannedY: h.northingY,
+        plannedZ: h.elevationZ,
+        actualX: h.eastingX,
+        actualY: h.northingY,
+        actualZ: h.elevationZ,
+        plannedDepthM: h.depthM,
+        actualDepthM: h.depthM,
+        plannedBurdenM: h.burdenM,
+        plannedSpacingM: h.spacingM,
+        collarDeviationMm: Math.round(Math.abs(Math.sin(h.eastingX * 2.1) * 35)),
+        depthDeviationM: parseFloat((Math.cos(h.northingY * 1.5) * 0.08).toFixed(2)),
+        penetrationRateMPerMin: parseFloat(Math.max(0.4, 1.35 - (h.ucsMPa - 100) * 0.005).toFixed(2)),
+        mwdSpecificEnergyMpa: parseFloat((h.ucsMPa * 1.85).toFixed(1)),
+        rockHardnessClass: h.ucsMPa > 130 ? 'hard' : (h.ucsMPa < 80 ? 'soft' : 'medium'),
+      }));
+      setHoles(iredesHoles);
+    } else {
+      const data = generateDrillTelemetryFromBlast(blast);
+      setHoles(data);
+    }
   }, [blast]);
 
   // Persist peers to local storage

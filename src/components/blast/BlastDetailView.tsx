@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type {
   Blast,
   ImageRecord,
@@ -47,6 +47,11 @@ import {
 } from 'lucide-react';
 import { CameraInclinometerModal } from '../camera/CameraInclinometerModal';
 import { HoleChargingProfileView } from './HoleChargingProfileView';
+import { DrillHolesManager } from './DrillHolesManager';
+import {
+  calculateDrillHoleSummary,
+  generateDefaultDrillHolesFromBlast,
+} from '../../services/drillHoles/drillHoleService';
 import { SendToReportButton } from '../report/SendToReportButton';
 import { ImageScaleCalibrationModal } from '../camera/ImageScaleCalibrationModal';
 import { ImageRoiCropModal } from '../camera/ImageRoiCropModal';
@@ -151,7 +156,6 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   const [spacing, setSpacing] = useState(blast.parameters.spacing);
   const [stemmingLength, setStemmingLength] = useState(blast.parameters.stemmingLength);
   const [numberOfHoles, setNumberOfHoles] = useState(blast.parameters.numberOfHoles || 30);
-  const [excludedHoles, setExcludedHoles] = useState<number[]>([]);
   const [chargePerHole, setChargePerHole] = useState(blast.parameters.chargePerHole);
   const [explosiveType, setExplosiveType] = useState(blast.parameters.explosiveType);
   const [rockType, setRockType] = useState(blast.rockMass.rockType);
@@ -159,39 +163,97 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   const [meanJointSpacing, setMeanJointSpacing] = useState(blast.rockMass.meanJointSpacing);
   const [jointOrientation, setJointOrientation] = useState(blast.rockMass.jointOrientation);
 
+  // Synchronize local editable fields when blast prop updates (e.g. from Excel/CSV import)
+  useEffect(() => {
+    const initialBench =
+      blast.drillHoles && blast.drillHoles.length > 0
+        ? blast.parameters.benchHeight && blast.parameters.benchHeight > 6
+          ? blast.parameters.benchHeight
+          : calculateDrillHoleSummary(blast.drillHoles, 10.0).inferredBenchHeightM
+        : blast.parameters.benchHeight;
+    setBenchHeight(initialBench);
+    setHoleDiameter(blast.parameters.holeDiameter);
+    setHoleDepth(blast.parameters.holeDepth || 6.8);
+    setSubdrill(blast.parameters.subdrill || 0.8);
+    setBurden(blast.parameters.burden);
+    setSpacing(blast.parameters.spacing);
+    setStemmingLength(blast.parameters.stemmingLength);
+    setNumberOfHoles(blast.parameters.numberOfHoles || 30);
+    setChargePerHole(blast.parameters.chargePerHole);
+    setExplosiveType(blast.parameters.explosiveType);
+    setRockType(blast.rockMass.rockType);
+    setDensity(blast.rockMass.density);
+    setMeanJointSpacing(blast.rockMass.meanJointSpacing);
+    setJointOrientation(blast.rockMass.jointOrientation);
+  }, [blast]);
+
   const selectedImage = blast.images.find((i) => i.id === selectedImageId) || blast.images[0];
   const activeRun = selectedImage
     ? (selectedImage as any).segmentationRuns?.[0] || null
     : null;
 
+  // Check if real drillhole dataset is loaded
+  const hasDrillHoles = Boolean(blast.drillHoles && blast.drillHoles.length > 0);
+  const holesSummary = hasDrillHoles
+    ? calculateDrillHoleSummary(blast.drillHoles!, benchHeight)
+    : null;
+
   // Handle saving blast parameter edits
   const handleSaveBlastParameters = () => {
-    const updated: Blast = {
-      ...blast,
-      parameters: {
-        ...blast.parameters,
-        benchHeight,
-        holeDiameter,
-        holeDepth,
-        subdrill,
-        burden,
-        spacing,
-        stemmingLength,
-        numberOfHoles,
-        chargePerHole,
-        explosiveType,
-        chargingProfile: blast.parameters.chargingProfile,
-      },
-      rockMass: {
-        ...blast.rockMass,
-        rockType,
-        density,
-        meanJointSpacing,
-        jointOrientation,
-      },
-      updatedAt: Date.now(),
-    };
-    onUpdateBlast(updated);
+    if (hasDrillHoles && blast.drillHoles) {
+      const updatedSummary = calculateDrillHoleSummary(blast.drillHoles, benchHeight);
+      const updated: Blast = {
+        ...blast,
+        parameters: {
+          ...blast.parameters,
+          benchHeight,
+          subdrill: updatedSummary.avgSubdrillM,
+          numberOfHoles: updatedSummary.totalHoles,
+          holeDepth: updatedSummary.avgDepthM,
+          holeDiameter: updatedSummary.avgDiameterMm,
+          burden: updatedSummary.avgBurdenM,
+          spacing: updatedSummary.avgSpacingM,
+          chargePerHole: updatedSummary.avgChargePerHoleKg,
+          stemmingLength: updatedSummary.avgStemmingM,
+        },
+        rockMass: {
+          ...blast.rockMass,
+          rockType,
+          density,
+          meanJointSpacing,
+          jointOrientation,
+        },
+        updatedAt: Date.now(),
+      };
+      onUpdateBlast(updated);
+    } else {
+      const updated: Blast = {
+        ...blast,
+        parameters: {
+          ...blast.parameters,
+          benchHeight,
+          holeDiameter,
+          holeDepth,
+          subdrill,
+          burden,
+          spacing,
+          stemmingLength,
+          numberOfHoles,
+          chargePerHole,
+          explosiveType,
+          chargingProfile: blast.parameters.chargingProfile,
+        },
+        rockMass: {
+          ...blast.rockMass,
+          rockType,
+          density,
+          meanJointSpacing,
+          jointOrientation,
+        },
+        updatedAt: Date.now(),
+      };
+      onUpdateBlast(updated);
+    }
     setSaveSuccessMsg(true);
     setTimeout(() => setSaveSuccessMsg(false), 2500);
   };
@@ -536,7 +598,9 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   };
 
   const holeVol = burden * spacing * benchHeight;
-  const computedPowderFactor = chargePerHole / Math.max(0.1, holeVol);
+  const computedPowderFactor = holesSummary
+    ? holesSummary.overallPowderFactorKgM3
+    : chargePerHole / Math.max(0.1, holeVol);
 
   return (
     <div className="space-y-6">
@@ -1348,6 +1412,13 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
       </div>
       )}
 
+      {/* Interactive Drillhole Matrix & Excel/CSV Importer */}
+      <DrillHolesManager
+        blast={blast}
+        onUpdateBlast={onUpdateBlast}
+        lang={lang}
+      />
+
       {/* Editable Blast & Rock Mass Parameters Section */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-wrap justify-between items-center gap-2">
@@ -1357,8 +1428,12 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
             </h3>
             <p className="text-xs text-slate-500">
               {lang === 'fr'
-                ? 'Modifiez les paramètres du tir et recalculez la consommation d’explosif'
-                : 'Edit design parameters and recalculate powder factor live'}
+                ? hasDrillHoles
+                  ? 'Paramètres géotechniques du gradin et métriques globales synchronisées du tir'
+                  : 'Modifiez les paramètres du tir et recalculez la consommation d’explosif'
+                : hasDrillHoles
+                  ? 'Bench geotechnical parameters and synchronized pattern metrics'
+                  : 'Edit design parameters and recalculate powder factor live'}
             </p>
           </div>
 
@@ -1378,198 +1453,416 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('burden', lang)}</label>
-            <input
-              type="number"
-              step="0.1"
-              value={burden}
-              onChange={(e) => setBurden(parseFloat(e.target.value) || 0)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
-            />
-          </div>
+        {hasDrillHoles && holesSummary ? (
+          <div className="space-y-4">
+            {/* Source-of-truth Synchronization Banner */}
+            <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 text-xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <div>
+                  <span className="font-bold text-emerald-950">
+                    {isFrench
+                      ? `Alimenté par la matrice de foration (${holesSummary.totalHoles} trous)`
+                      : `Driven by drillholes matrix (${holesSummary.totalHoles} holes)`}
+                  </span>
+                  <span className="text-emerald-700 text-[11px] block">
+                    {isFrench
+                      ? 'Les coordonnées, mailles réelles, charges et consommations d’explosif proviennent directement de votre fichier importé.'
+                      : 'Coordinates, true spacings, explosive charges, and powder factors are derived directly from your imported file.'}
+                  </span>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                {isFrench ? '✓ 100% Synchronisé' : '✓ 100% Synced'}
+              </span>
+            </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('spacing', lang)}</label>
-            <input
-              type="number"
-              step="0.1"
-              value={spacing}
-              onChange={(e) => setSpacing(parseFloat(e.target.value) || 0)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
-            />
-          </div>
+            {/* Bench & Rock Mass Geotechnical Inputs */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  {isFrench ? 'Paramètres du Gradin & Massif Rocheux' : 'Bench & Rock Mass Geotechnical Design'}
+                </h4>
+                <span className="text-[11px] text-slate-500">
+                  {isFrench ? 'Propriétés structurales du front de taille' : 'Bench-scale structural rock parameters'}
+                </span>
+              </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('benchHeight', lang)}</label>
-            <input
-              type="number"
-              step="0.5"
-              value={benchHeight}
-              onChange={(e) => setBenchHeight(parseFloat(e.target.value) || 0)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
-            />
-          </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+                {/* Bench Height (Read-Only: Inferred directly from drillhole depth - subdrill) */}
+                <div className="bg-slate-50 border border-slate-200 p-2 rounded-xl flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-slate-600 font-bold text-[11px]">
+                      {t('benchHeight', lang)} (m)
+                    </label>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 uppercase font-black">
+                      {isFrench ? 'Déduit' : 'Inferred'}
+                    </span>
+                  </div>
+                  <span className="text-base font-black text-slate-900 mt-0.5">
+                    {holesSummary.inferredBenchHeightM} m
+                  </span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    {isFrench
+                      ? `Prof. ${holesSummary.avgDepthM} m - Sous-forage ${holesSummary.avgSubdrillM} m`
+                      : `Depth ${holesSummary.avgDepthM} m - Subdrill ${holesSummary.avgSubdrillM} m`}
+                  </span>
+                </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('stemmingLength', lang)}</label>
-            <input
-              type="number"
-              step="0.1"
-              value={stemmingLength}
-              onChange={(e) => setStemmingLength(parseFloat(e.target.value) || 0)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
-            />
-          </div>
+                {/* Rock Density (Read-Only: Average directly from Excel rock density column) */}
+                <div className="bg-slate-50 border border-slate-200 p-2 rounded-xl flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-slate-600 font-bold text-[11px]">
+                      {t('density', lang)} (t/m³)
+                    </label>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 uppercase font-black">
+                      {isFrench ? 'Excel' : 'Excel'}
+                    </span>
+                  </div>
+                  <span className="text-base font-black text-slate-900 mt-0.5">
+                    {holesSummary.avgDensityTPerM3} t/m³
+                  </span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    {isFrench ? 'Moyenne de la matrice de foration' : 'Matrix average density'}
+                  </span>
+                </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('holeDiameter', lang)}</label>
-            <input
-              type="number"
-              value={holeDiameter}
-              onChange={(e) => setHoleDiameter(parseFloat(e.target.value) || 0)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
-            />
-          </div>
+                <div>
+                  <label className="block text-slate-600 font-semibold mb-1">{t('rockType', lang)}</label>
+                  <input
+                    type="text"
+                    value={rockType}
+                    onChange={(e) => setRockType(e.target.value)}
+                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800 bg-white"
+                  />
+                </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('chargePerHole', lang)}</label>
-            <input
-              type="number"
-              step="0.5"
-              value={chargePerHole}
-              onChange={(e) => setChargePerHole(parseFloat(e.target.value) || 0)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
-            />
-          </div>
+                <div>
+                  <label className="block text-slate-600 font-semibold mb-1">{t('meanJointSpacing', lang)} (m)</label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={meanJointSpacing}
+                    onChange={(e) => setMeanJointSpacing(parseFloat(e.target.value) || 0.5)}
+                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800 bg-white"
+                  />
+                </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('explosiveType', lang)}</label>
-            <input
-              type="text"
-              value={explosiveType}
-              onChange={(e) => setExplosiveType(e.target.value)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
-            />
-          </div>
+                <div>
+                  <label className="block text-slate-600 font-semibold mb-1">{t('jointOrientation', lang)}</label>
+                  <select
+                    value={jointOrientation}
+                    onChange={(e) => setJointOrientation(e.target.value as any)}
+                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800 bg-white"
+                  >
+                    <option value="dip_out_of_face">{t('dipOutOfFace', lang)}</option>
+                    <option value="strike_perpendicular">{t('strikePerpendicular', lang)}</option>
+                    <option value="dip_into_face">{t('dipIntoFace', lang)}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
 
-          <div className="bg-blue-50 border border-blue-200 p-2 rounded flex flex-col justify-center">
-            <span className="text-[10px] text-blue-700 font-bold uppercase">{t('computedPowderFactor', lang)}</span>
-            <span className="text-base font-black text-blue-950">
-              {computedPowderFactor.toFixed(2)} kg/m³
-            </span>
-          </div>
+            {/* Pattern-Aggregated Drill & Blast Indicators (Read-Only) */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  {isFrench ? 'Métriques Agrégées du Tir (Calculées depuis la Matrice)' : 'Pattern Aggregated Metrics (Derived from Matrix)'}
+                </h4>
+                <span className="text-[11px] text-blue-600 font-medium">
+                  {isFrench ? 'Pour modifier un trou individuel, utilisez le tableau ci-dessus' : 'To edit individual holes, use the drillhole table above'}
+                </span>
+              </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('rockType', lang)}</label>
-            <input
-              type="text"
-              value={rockType}
-              onChange={(e) => setRockType(e.target.value)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
-            />
-          </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 text-xs">
+                <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">{t('numberOfHoles', lang)}</span>
+                  <span className="text-sm font-black text-slate-900">{holesSummary.totalHoles}</span>
+                  {holesSummary.wetHolesCount > 0 ? (
+                    <span className="text-[10px] text-blue-600 font-semibold block">
+                      ({holesSummary.wetHolesCount} {isFrench ? 'humides' : 'wet'})
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-emerald-600 font-semibold block">
+                      ({isFrench ? '100% secs' : '100% dry'})
+                    </span>
+                  )}
+                </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('density', lang)}</label>
-            <input
-              type="number"
-              step="0.05"
-              value={density}
-              onChange={(e) => setDensity(parseFloat(e.target.value) || 2.65)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
-            />
-          </div>
+                <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">
+                    {isFrench ? 'Maille B × S' : 'Pattern B × S'}
+                  </span>
+                  <span className="text-sm font-black text-slate-900">
+                    {holesSummary.avgBurdenM} × {holesSummary.avgSpacingM} m
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">{isFrench ? 'Moyenne' : 'Average'}</span>
+                </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('meanJointSpacing', lang)}</label>
-            <input
-              type="number"
-              step="0.05"
-              value={meanJointSpacing}
-              onChange={(e) => setMeanJointSpacing(parseFloat(e.target.value) || 0.5)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
-            />
-          </div>
+                <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">{t('holeDepth', lang)}</span>
+                  <span className="text-sm font-black text-slate-900">{holesSummary.avgDepthM} m</span>
+                  <span className="text-[10px] text-slate-400 block">{holesSummary.minDepthM} - {holesSummary.maxDepthM} m</span>
+                </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('jointOrientation', lang)}</label>
-            <select
-              value={jointOrientation}
-              onChange={(e) => setJointOrientation(e.target.value as any)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800 bg-white"
-            >
-              <option value="dip_out_of_face">{t('dipOutOfFace', lang)}</option>
-              <option value="strike_perpendicular">{t('strikePerpendicular', lang)}</option>
-              <option value="dip_into_face">{t('dipIntoFace', lang)}</option>
-            </select>
-          </div>
+                <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">{t('subdrill', lang)}</span>
+                  <span className="text-sm font-black text-slate-900">{holesSummary.avgSubdrillM} m</span>
+                  <span className="text-[10px] text-slate-400 block">{isFrench ? 'Sous-forage' : 'Subdrill'}</span>
+                </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('numberOfHoles', lang)}</label>
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                min="1"
-                value={numberOfHoles}
-                onChange={(e) => setNumberOfHoles(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if (numberOfHoles > 1) {
-                    setNumberOfHoles((n) => n - 1);
-                    setExcludedHoles((prev) => prev.filter((idx) => idx < numberOfHoles - 1));
-                  }
-                }}
-                className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded border border-red-200 transition"
-                title={lang === 'fr' ? 'Supprimer un trou' : 'Delete hole'}
-              >
-                <Minus className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setNumberOfHoles((n) => n + 1)}
-                className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded border border-blue-200 transition"
-                title={lang === 'fr' ? 'Ajouter un trou' : 'Add hole'}
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
+                <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">{t('holeDiameter', lang)}</span>
+                  <span className="text-sm font-black text-slate-900">⌀ {holesSummary.avgDiameterMm} mm</span>
+                  <span className="text-[10px] text-slate-400 block">{isFrench ? 'Diamètre' : 'Diameter'}</span>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">{t('stemmingLength', lang)}</span>
+                  <span className="text-sm font-black text-slate-900">{holesSummary.avgStemmingM} m</span>
+                  <span className="text-[10px] text-slate-400 block">{isFrench ? 'Bourrage' : 'Stemming'}</span>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">{t('chargePerHole', lang)}</span>
+                  <span className="text-sm font-black text-slate-900">{holesSummary.avgChargePerHoleKg} kg</span>
+                  <span className="text-[10px] text-slate-400 block">
+                    Total: {holesSummary.totalExplosiveKg.toLocaleString()} kg
+                  </span>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-xl flex flex-col justify-center">
+                  <span className="text-[10px] text-blue-700 font-bold uppercase block">{t('computedPowderFactor', lang)}</span>
+                  <span className="text-base font-black text-blue-950 leading-tight">
+                    {holesSummary.overallPowderFactorKgM3.toFixed(2)} kg/m³
+                  </span>
+                  <span className="text-[10px] text-blue-700 font-medium">
+                    {holesSummary.overallPowderFactorKgTonne.toFixed(2)} kg/t
+                  </span>
+                </div>
+              </div>
+
+              {/* Aggregated Totals Bar */}
+              <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="bg-slate-100 p-2 rounded-lg">
+                  <span className="text-[10px] text-slate-500 font-bold block">{isFrench ? 'Explosif Utilisé' : 'Explosive Setup'}</span>
+                  <span className="font-bold text-slate-800 truncate block text-[11px]" title={blast.parameters.explosiveType}>
+                    {holesSummary.wetHolesCount > 0
+                      ? (isFrench ? `Mixte (${holesSummary.wetHolesCount} Émulsion + ${holesSummary.totalHoles - holesSummary.wetHolesCount} ANFO)` : `Hybrid (${holesSummary.wetHolesCount} Emulsion + ${holesSummary.totalHoles - holesSummary.wetHolesCount} ANFO)`)
+                      : blast.parameters.explosiveType || 'ANFO'}
+                  </span>
+                </div>
+                <div className="bg-slate-100 p-2 rounded-lg">
+                  <span className="text-[10px] text-slate-500 font-bold block">{isFrench ? 'Métrage Foré Total' : 'Total Drilled Meters'}</span>
+                  <span className="font-bold text-slate-800">{holesSummary.totalDrilledM} m</span>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg">
+                  <span className="text-[10px] text-amber-700 font-bold block">{isFrench ? 'Volume Abattu Réel' : 'Actual Broken Volume'}</span>
+                  <span className="font-bold text-amber-950">{holesSummary.totalVolumeM3.toLocaleString()} m³</span>
+                </div>
+                <div className="bg-purple-50 border border-purple-200 p-2 rounded-lg">
+                  <span className="text-[10px] text-purple-700 font-bold block">{isFrench ? 'Tonnage Abattu Réel' : 'Actual Broken Tonnage'}</span>
+                  <span className="font-bold text-purple-950">{Math.round(holesSummary.totalVolumeM3 * density).toLocaleString()} t</span>
+                </div>
+              </div>
             </div>
           </div>
+        ) : (
+          /* Fallback Manual Inputs when no drillhole dataset has been imported */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('burden', lang)} (m)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={burden}
+                onChange={(e) => setBurden(parseFloat(e.target.value) || 0)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+              />
+            </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('holeDepth', lang)}</label>
-            <input
-              type="number"
-              step="0.1"
-              value={holeDepth}
-              onChange={(e) => setHoleDepth(parseFloat(e.target.value) || 0)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
-            />
-          </div>
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('spacing', lang)} (m)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={spacing}
+                onChange={(e) => setSpacing(parseFloat(e.target.value) || 0)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+              />
+            </div>
 
-          <div>
-            <label className="block text-slate-600 font-semibold mb-1">{t('subdrill', lang)}</label>
-            <input
-              type="number"
-              step="0.1"
-              value={subdrill}
-              onChange={(e) => setSubdrill(parseFloat(e.target.value) || 0)}
-              className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
-            />
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('benchHeight', lang)} (m)</label>
+              <input
+                type="number"
+                step="0.5"
+                value={benchHeight}
+                onChange={(e) => setBenchHeight(parseFloat(e.target.value) || 0)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('stemmingLength', lang)} (m)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={stemmingLength}
+                onChange={(e) => setStemmingLength(parseFloat(e.target.value) || 0)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('holeDiameter', lang)} (mm)</label>
+              <input
+                type="number"
+                value={holeDiameter}
+                onChange={(e) => setHoleDiameter(parseFloat(e.target.value) || 0)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('chargePerHole', lang)} (kg)</label>
+              <input
+                type="number"
+                step="0.5"
+                value={chargePerHole}
+                onChange={(e) => setChargePerHole(parseFloat(e.target.value) || 0)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('explosiveType', lang)}</label>
+              <input
+                type="text"
+                value={explosiveType}
+                onChange={(e) => setExplosiveType(e.target.value)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
+              />
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 p-2 rounded flex flex-col justify-center">
+              <span className="text-[10px] text-blue-700 font-bold uppercase">{t('computedPowderFactor', lang)}</span>
+              <span className="text-base font-black text-blue-950">
+                {computedPowderFactor.toFixed(2)} kg/m³
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('rockType', lang)}</label>
+              <input
+                type="text"
+                value={rockType}
+                onChange={(e) => setRockType(e.target.value)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('density', lang)} (t/m³)</label>
+              <input
+                type="number"
+                step="0.05"
+                value={density}
+                onChange={(e) => setDensity(parseFloat(e.target.value) || 2.65)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('meanJointSpacing', lang)} (m)</label>
+              <input
+                type="number"
+                step="0.05"
+                value={meanJointSpacing}
+                onChange={(e) => setMeanJointSpacing(parseFloat(e.target.value) || 0.5)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('jointOrientation', lang)}</label>
+              <select
+                value={jointOrientation}
+                onChange={(e) => setJointOrientation(e.target.value as any)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-slate-800 bg-white"
+              >
+                <option value="dip_out_of_face">{t('dipOutOfFace', lang)}</option>
+                <option value="strike_perpendicular">{t('strikePerpendicular', lang)}</option>
+                <option value="dip_into_face">{t('dipIntoFace', lang)}</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('numberOfHoles', lang)}</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min="1"
+                  value={numberOfHoles}
+                  onChange={(e) => setNumberOfHoles(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (numberOfHoles > 1) {
+                      setNumberOfHoles((n) => n - 1);
+                    }
+                  }}
+                  className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded border border-red-200 transition"
+                  title={lang === 'fr' ? 'Supprimer un trou' : 'Delete hole'}
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNumberOfHoles((n) => n + 1)}
+                  className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded border border-blue-200 transition"
+                  title={lang === 'fr' ? 'Ajouter un trou' : 'Add hole'}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('holeDepth', lang)} (m)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={holeDepth}
+                onChange={(e) => setHoleDepth(parseFloat(e.target.value) || 0)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-semibold mb-1">{t('subdrill', lang)} (m)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={subdrill}
+                onChange={(e) => setSubdrill(parseFloat(e.target.value) || 0)}
+                className="w-full px-2.5 py-1.5 border border-slate-300 rounded font-semibold text-slate-800"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 3-Deck Hole Charging Profile, Fault Decking & Cost Minimization System */}
         <div className="mt-4 pt-4 border-t border-slate-200">
           <HoleChargingProfileView
             parameters={blast.parameters}
             onUpdateParameters={(updatedParams) => {
-              setChargePerHole(updatedParams.chargePerHole);
-              setStemmingLength(updatedParams.stemmingLength);
+              if (!hasDrillHoles) {
+                setChargePerHole(updatedParams.chargePerHole);
+                setStemmingLength(updatedParams.stemmingLength);
+              }
               const updatedBlast: Blast = {
                 ...blast,
                 parameters: updatedParams,
@@ -1578,130 +1871,15 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
               onUpdateBlast(updatedBlast);
             }}
             benchHeight={benchHeight}
-            subdrill={subdrill}
-            holeDiameter={holeDiameter}
-            burden={burden}
-            spacing={spacing}
-            numberOfHoles={numberOfHoles - excludedHoles.length}
+            subdrill={holesSummary ? holesSummary.avgSubdrillM : subdrill}
+            holeDiameter={holesSummary ? holesSummary.avgDiameterMm : holeDiameter}
+            burden={holesSummary ? holesSummary.avgBurdenM : burden}
+            spacing={holesSummary ? holesSummary.avgSpacingM : spacing}
+            numberOfHoles={holesSummary ? holesSummary.totalHoles : numberOfHoles}
             density={density}
+            holesSummary={holesSummary}
             lang={lang}
           />
-        </div>
-
-        {/* Interactive Drill & Blast Pattern Hole Management */}
-        <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2">
-                <Grid className="w-4 h-4 text-blue-600" />
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  {t('blastPatternHoles', lang)} ({numberOfHoles - excludedHoles.length} / {numberOfHoles} {t('activeHoles', lang)})
-                </h4>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                {t('manageHolesDesc', lang)}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (numberOfHoles > 1) {
-                    setNumberOfHoles((prev) => prev - 1);
-                    setExcludedHoles((prev) => prev.filter((idx) => idx < numberOfHoles - 1));
-                  }
-                }}
-                className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold flex items-center gap-1 border border-red-200 transition"
-                title={lang === 'fr' ? 'Supprimer le dernier trou du schéma' : 'Delete last hole from pattern'}
-              >
-                <Minus className="w-3.5 h-3.5" />
-                <span>{t('deleteHole', lang)}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setNumberOfHoles((prev) => prev + 1)}
-                className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold flex items-center gap-1 border border-blue-200 transition"
-                title={lang === 'fr' ? 'Ajouter un trou au schéma' : 'Add hole to pattern'}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{t('addHole', lang)}</span>
-              </button>
-
-              {excludedHoles.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setExcludedHoles([])}
-                  className="px-2 py-1 text-slate-500 hover:text-slate-800 text-[11px] underline"
-                >
-                  {lang === 'fr' ? 'Réactiver tous' : 'Reset active'}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Drill Pattern 2D Hole Layout Grid */}
-          <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
-              {Array.from({ length: numberOfHoles }, (_, i) => {
-                const isExcluded = excludedHoles.includes(i);
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => {
-                      if (isExcluded) {
-                        setExcludedHoles((prev) => prev.filter((idx) => idx !== i));
-                      } else {
-                        setExcludedHoles((prev) => [...prev, i]);
-                      }
-                    }}
-                    className={`w-9 h-9 rounded-lg text-xs font-bold flex flex-col items-center justify-center transition border ${
-                      isExcluded
-                        ? 'bg-slate-800/80 text-slate-500 border-slate-700 line-through opacity-60 hover:opacity-100'
-                        : 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 shadow-sm shadow-blue-500/20'
-                    }`}
-                    title={
-                      isExcluded
-                        ? (lang === 'fr' ? `Trou #${i + 1} désactivé / exclu. Cliquez pour réactiver.` : `Hole #${i + 1} excluded/deleted. Click to reactivate.`)
-                        : (lang === 'fr' ? `Trou #${i + 1} actif (${chargePerHole} kg). Cliquez pour exclure/supprimer.` : `Hole #${i + 1} active (${chargePerHole} kg). Click to exclude/delete.`)
-                    }
-                  >
-                    <span>{i + 1}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Pattern Metrics Footer */}
-            <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-white text-[11px]">
-              <div className="bg-slate-800/60 p-2 rounded-lg">
-                <span className="text-slate-400 block text-[10px]">{lang === 'fr' ? 'Trous Actifs' : 'Active Holes'}</span>
-                <span className="font-extrabold text-blue-400 text-xs">
-                  {numberOfHoles - excludedHoles.length} / {numberOfHoles}
-                </span>
-              </div>
-              <div className="bg-slate-800/60 p-2 rounded-lg">
-                <span className="text-slate-400 block text-[10px]">{lang === 'fr' ? 'Explosif Total' : 'Total Explosives'}</span>
-                <span className="font-extrabold text-emerald-400 text-xs">
-                  {((numberOfHoles - excludedHoles.length) * chargePerHole).toFixed(1)} kg
-                </span>
-              </div>
-              <div className="bg-slate-800/60 p-2 rounded-lg">
-                <span className="text-slate-400 block text-[10px]">{lang === 'fr' ? 'Volume Abattu' : 'Broken Volume'}</span>
-                <span className="font-extrabold text-amber-400 text-xs">
-                  {((numberOfHoles - excludedHoles.length) * burden * spacing * benchHeight).toFixed(1)} m³
-                </span>
-              </div>
-              <div className="bg-slate-800/60 p-2 rounded-lg">
-                <span className="text-slate-400 block text-[10px]">{lang === 'fr' ? 'Tonnage Abattu' : 'Broken Tonnage'}</span>
-                <span className="font-extrabold text-purple-400 text-xs">
-                  {((numberOfHoles - excludedHoles.length) * burden * spacing * benchHeight * density).toFixed(1)} t
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 

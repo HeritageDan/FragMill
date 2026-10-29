@@ -77,8 +77,31 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
 }) => {
   const isFrench = lang === 'fr';
 
+  // Convert blast.drillHoles into BoreholeSample[] if available from Excel/CSV import
+  const initialBoreholes = useMemo<BoreholeSample[]>(() => {
+    if (blast?.drillHoles && blast.drillHoles.length > 0) {
+      return blast.drillHoles.map((h) => ({
+        id: h.holeId,
+        easting: h.eastingX,
+        northing: h.northingY,
+        elevation: h.elevationZ,
+        ucsMPa: h.ucsMPa,
+        rqdPercent: h.rqdPercent || 75,
+        jointSpacingM: h.spacingM ? h.spacingM * 0.15 : 0.5,
+        densityTPerM3: h.densityTPerM3 || blast.rockMass?.density || 2.68,
+        goldGradeGPT: 1.5,
+      }));
+    }
+    return generateDemoBoreholes();
+  }, [blast]);
+
   // State: Boreholes samples
-  const [boreholes, setBoreholes] = useState<BoreholeSample[]>(generateDemoBoreholes());
+  const [boreholes, setBoreholes] = useState<BoreholeSample[]>(initialBoreholes);
+
+  // Sync boreholes when blast or initialBoreholes changes
+  useEffect(() => {
+    setBoreholes(initialBoreholes);
+  }, [initialBoreholes]);
   const [selectedAttribute, setSelectedAttribute] = useState<
     keyof Pick<BoreholeSample, 'ucsMPa' | 'rqdPercent' | 'jointSpacingM' | 'densityTPerM3' | 'goldGradeGPT'>
   >('ucsMPa');
@@ -169,6 +192,31 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
     setHoveredCell(null);
   };
 
+  // Dynamic spatial grid bounds calculated from real borehole coordinates
+  const gridBounds = useMemo(() => {
+    if (boreholes.length === 0) {
+      return { minX: 0, maxX: 60, minY: 0, maxY: 40 };
+    }
+    const eastings = boreholes.map((b) => b.easting);
+    const northings = boreholes.map((b) => b.northing);
+    const rawMinX = Math.min(...eastings);
+    const rawMaxX = Math.max(...eastings);
+    const rawMinY = Math.min(...northings);
+    const rawMaxY = Math.max(...northings);
+
+    const rangeX = Math.max(5.0, rawMaxX - rawMinX);
+    const rangeY = Math.max(5.0, rawMaxY - rawMinY);
+    const padX = Math.max(3.5, rangeX * 0.15);
+    const padY = Math.max(3.5, rangeY * 0.15);
+
+    return {
+      minX: parseFloat((rawMinX - padX).toFixed(1)),
+      maxX: parseFloat((rawMaxX + padX).toFixed(1)),
+      minY: parseFloat((rawMinY - padY).toFixed(1)),
+      maxY: parseFloat((rawMaxY + padY).toFixed(1)),
+    };
+  }, [boreholes]);
+
   // Recalculate Kriging grid whenever parameters or boreholes change
   useEffect(() => {
     if (boreholes.length > 0) {
@@ -177,15 +225,15 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
         selectedAttribute,
         gridResolution.cols,
         gridResolution.rows,
-        0,
-        60,
-        0,
-        40,
+        gridBounds.minX,
+        gridBounds.maxX,
+        gridBounds.minY,
+        gridBounds.maxY,
         variogramParams
       );
       setKrigingGrid(grid);
     }
-  }, [boreholes, selectedAttribute, variogramParams, gridResolution]);
+  }, [boreholes, selectedAttribute, variogramParams, gridResolution, gridBounds]);
 
   // Render Kriging Heatmap on Canvas (Heatmap, Variance, or Domain Zonation)
   useEffect(() => {
@@ -240,22 +288,29 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
       ctx.strokeRect(c * cellW, r * cellH, cellW, cellH);
     });
 
-    // 2. Draw 10-meter Coordinate Grid Overlay
+    // 2. Dynamic Coordinate Grid Overlay
     ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
     ctx.setLineDash([4, 4]);
     ctx.lineWidth = 1;
-    // Vertical grid lines (every 10m out of 60m)
-    for (let xM = 10; xM < 60; xM += 10) {
-      const px = (xM / 60) * width;
+
+    const spanX = Math.max(1, gridBounds.maxX - gridBounds.minX);
+    const spanY = Math.max(1, gridBounds.maxY - gridBounds.minY);
+    const gridStepX = spanX > 50 ? 10 : 5;
+    const gridStepY = spanY > 35 ? 10 : 5;
+
+    const startX = Math.ceil(gridBounds.minX / gridStepX) * gridStepX;
+    for (let xM = startX; xM <= gridBounds.maxX; xM += gridStepX) {
+      const px = ((xM - gridBounds.minX) / spanX) * width;
       ctx.beginPath();
       ctx.moveTo(px, 0);
       ctx.lineTo(px, height);
       ctx.stroke();
     }
-    // Horizontal grid lines (every 10m out of 40m)
-    for (let yM = 10; yM < 40; yM += 10) {
-      const py = (yM / 40) * height;
+
+    const startY = Math.ceil(gridBounds.minY / gridStepY) * gridStepY;
+    for (let yM = startY; yM <= gridBounds.maxY; yM += gridStepY) {
+      const py = ((yM - gridBounds.minY) / spanY) * height;
       ctx.beginPath();
       ctx.moveTo(0, py);
       ctx.lineTo(width, py);
@@ -277,12 +332,18 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
     // 4. Draw Borehole Collars with Assayed Values
     const unit = ATTRIBUTE_METADATA[selectedAttribute]?.unit || '';
     boreholes.forEach((bh) => {
-      const px = (bh.easting / 60) * width;
-      const py = (bh.northing / 40) * height;
+      // Coordinate projection to canvas pixel space
+      const rawPx = ((bh.easting - gridBounds.minX) / spanX) * width;
+      const rawPy = ((bh.northing - gridBounds.minY) / spanY) * height;
+
+      // Keep collar strictly inside canvas borders
+      const collarR = 6.5;
+      const px = Math.max(collarR + 4, Math.min(width - collarR - 4, rawPx));
+      const py = Math.max(collarR + 4, Math.min(height - collarR - 4, rawPy));
 
       // Collar circle
       ctx.beginPath();
-      ctx.arc(px, py, 7, 0, Math.PI * 2);
+      ctx.arc(px, py, collarR, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
       ctx.fill();
       ctx.strokeStyle = '#0f172a';
@@ -299,22 +360,34 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
       const assayVal = bh[selectedAttribute];
       const labelText = `${bh.id}: ${assayVal}${unit}`;
 
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-      ctx.lineWidth = 1;
+      ctx.font = 'bold 10px sans-serif';
       const textW = ctx.measureText(labelText).width;
+      const tagW = textW + 10;
+      const tagH = 17;
+
+      // Smart label positioning:
+      // If label would overflow the right edge of canvas, position it to the LEFT of the collar
+      const fitsOnRight = px + 9 + tagW <= width - 6;
+      const tagX = fitsOnRight ? px + 9 : Math.max(6, px - 9 - tagW);
+      // Clamp vertical position so it never overflows top or bottom
+      const tagY = Math.max(tagH / 2 + 3, Math.min(height - tagH / 2 - 3, py));
+
+      // Tag background
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.roundRect(px + 10, py - 8, textW + 8, 16, 4);
+      ctx.roundRect(tagX, tagY - tagH / 2, tagW, tagH, 4);
       ctx.fill();
       ctx.stroke();
 
+      // Tag text
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(labelText, px + 14, py);
+      ctx.fillText(labelText, tagX + 5, tagY);
     });
-  }, [krigingGrid, boreholes, gridResolution, softCutoff, hardCutoff, displayMode, hoveredCell, selectedAttribute]);
+  }, [krigingGrid, boreholes, gridResolution, softCutoff, hardCutoff, displayMode, hoveredCell, selectedAttribute, gridBounds]);
 
   // Statistics summaries
   const stats = useMemo(() => {
@@ -410,9 +483,16 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">
                 {variogramParams.model.toUpperCase()} • {variogramParams.rangeM}m
               </span>
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                {isFrench ? 'DONNÉES DE DÉMO' : 'DEMO DATA'}
-              </span>
+              {blast?.drillHoles && blast.drillHoles.length > 0 ? (
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>{isFrench ? `${blast.drillHoles.length} TROUS RÉELS (${blast.blastId})` : `${blast.drillHoles.length} REAL HOLES (${blast.blastId})`}</span>
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                  {isFrench ? 'DONNÉES DE DÉMO' : 'DEMO DATA'}
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {isFrench
@@ -657,9 +737,9 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
                 }
                 className="bg-slate-800 text-slate-200 border border-slate-700 px-2 py-1 rounded-lg text-xs font-semibold flex-1"
               >
-                <option value="spherical">Sphérique</option>
-                <option value="exponential">Exponentiel</option>
-                <option value="gaussian">Gaussien</option>
+                <option value="spherical">{isFrench ? 'Sphérique' : 'Spherical'}</option>
+                <option value="exponential">{isFrench ? 'Exponentiel' : 'Exponential'}</option>
+                <option value="gaussian">{isFrench ? 'Gaussien' : 'Gaussian'}</option>
               </select>
               <select
                 value={`${gridResolution.cols}x${gridResolution.rows}`}
@@ -669,9 +749,9 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
                 }}
                 className="bg-slate-800 text-slate-200 border border-slate-700 px-2 py-1 rounded-lg text-xs font-semibold"
               >
-                <option value="14x10">Rapide (14×10)</option>
-                <option value="20x14">Standard (20×14)</option>
-                <option value="30x20">Dense (30×20)</option>
+                <option value="14x10">{isFrench ? 'Rapide (14×10)' : 'Fast (14×10)'}</option>
+                <option value="20x14">{isFrench ? 'Standard (20×14)' : 'Standard (20×14)'}</option>
+                <option value="30x20">{isFrench ? 'Dense (30×20)' : 'Dense (30×20)'}</option>
               </select>
             </div>
             <span className="text-[10px] text-slate-500">
@@ -766,8 +846,8 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
               {displayMode === 'variance' && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px] font-mono text-slate-300 gap-4">
-                    <span className="text-blue-400">Faible Incertitude (Proche sondage)</span>
-                    <span className="text-rose-400">Forte Incertitude (Zone isolée)</span>
+                    <span className="text-blue-400">{isFrench ? 'Faible Incertitude (Proche sondage)' : 'Low Uncertainty (Near Collar)'}</span>
+                    <span className="text-rose-400">{isFrench ? 'Forte Incertitude (Zone isolée)' : 'High Uncertainty (Sparse Zone)'}</span>
                   </div>
                   <div className="w-48 sm:w-64 h-2.5 rounded-full bg-gradient-to-r from-slate-900 via-blue-500 via-purple-500 to-rose-500 border border-white/20" />
                 </div>

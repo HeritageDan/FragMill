@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, getSettings, saveSettings, DEFAULT_SETTINGS } from './db';
 import { seedDemoProject } from './db/seedData';
+import { generateDefaultDrillHolesFromBlast } from './services/drillHoles/drillHoleService';
 import type {
   Project,
   Site,
@@ -196,6 +197,7 @@ function AppContent() {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+    newBlast.drillHoles = generateDefaultDrillHolesFromBlast(newBlast);
 
     await db.blasts.put(newBlast);
     setBlasts((prev) => [newBlast, ...prev]);
