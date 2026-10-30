@@ -1,4 +1,5 @@
 // FragMill Core Data Models and Types
+import type { DroneOrthomosaicData } from './advanced';
 
 export type SizeDefinition = 'min_feret' | 'ecd' | 'bbox_minor';
 export type EngineType = 'classical' | 'ai_sam' | 'hybrid' | 'manual_edit';
@@ -568,6 +569,7 @@ export interface Blast {
   polygonCoords?: [number, number][]; // 2D bench polygon in local meters [x, y]
   economicParams?: EconomicParameters;
   drillHoles?: DetailedDrillHole[];
+  droneSurvey?: DroneOrthomosaicData;
   createdAt: number;
   updatedAt: number;
 }

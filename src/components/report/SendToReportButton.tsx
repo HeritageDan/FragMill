@@ -70,7 +70,8 @@ export const SendToReportButton: React.FC<SendToReportButtonProps> = ({
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      await downloadCombinedReport(defaultProj, defaultSite, blast, lang);
+      const allKeys = Object.keys(REPORT_SECTIONS_REGISTRY) as ReportSectionKey[];
+      await downloadCombinedReport(defaultProj, defaultSite, blast, lang, allKeys);
     } catch (err) {
       console.error('Failed to download general report:', err);
     } finally {

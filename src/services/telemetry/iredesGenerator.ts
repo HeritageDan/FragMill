@@ -91,6 +91,47 @@ export function calculateTealeSpecificEnergy(
  * Procedurally generation of realistic drill telemetry for QA/QC compliance auditing
  */
 export function generateDrillTelemetryFromBlast(blast: Blast): IREDESHole[] {
+  // If actual detailed drill holes exist (from Excel/CSV import or design), use them directly
+  if (blast.drillHoles && blast.drillHoles.length > 0) {
+    const diam = blast.parameters.holeDiameter || 89;
+    return blast.drillHoles.map((h, idx) => {
+      const dh = h as any;
+      const plannedX = dh.collarX !== undefined ? dh.collarX : (h.eastingX !== undefined ? h.eastingX : (idx % 6) * (h.spacingM || blast.parameters.spacing || 3.5) + 100.0);
+      const plannedY = dh.collarY !== undefined ? dh.collarY : (h.northingY !== undefined ? h.northingY : Math.floor(idx / 6) * (h.burdenM || blast.parameters.burden || 3.0) + 200.0);
+      const plannedZ = dh.collarZ !== undefined ? dh.collarZ : (h.elevationZ !== undefined ? h.elevationZ : 840.0);
+      const collarDevMm = dh.collarDeviationMm !== undefined ? dh.collarDeviationMm : Math.round(18 + (idx % 7) * 9);
+      const actualX = dh.actualCollarX !== undefined ? dh.actualCollarX : plannedX + (collarDevMm / 1000) * ((idx % 2 === 0) ? 1 : -1);
+      const actualY = dh.actualCollarY !== undefined ? dh.actualCollarY : plannedY + (collarDevMm / 1000) * ((idx % 3 === 0) ? 1 : -1);
+      const actualDepth = h.depthM || blast.parameters.holeDepth || 10.0;
+      const plannedDepth = blast.parameters.holeDepth || actualDepth;
+      const depthDevM = parseFloat((actualDepth - plannedDepth).toFixed(2));
+      const rop = dh.penetrationRateMPerMin !== undefined ? dh.penetrationRateMPerMin : parseFloat((1.15 + (idx % 5) * 0.12).toFixed(2));
+      const teale = calculateTealeSpecificEnergy(diam, rop);
+
+      return {
+        holeId: h.holeId || `BH-${(idx + 1).toString().padStart(2, '0')}`,
+        plannedX,
+        plannedY,
+        plannedZ,
+        plannedDepthM: plannedDepth,
+        plannedBurdenM: h.burdenM || blast.parameters.burden || 3.0,
+        plannedSpacingM: h.spacingM || blast.parameters.spacing || 3.5,
+        actualX,
+        actualY,
+        actualZ: plannedZ,
+        actualDepthM: actualDepth,
+        collarDeviationMm: collarDevMm,
+        depthDeviationM: depthDevM,
+        toeDeviationMm: Math.round(collarDevMm + actualDepth * 2.8),
+        penetrationRateMPerMin: rop,
+        tealeSpecificEnergyMpa: teale.specificEnergyMpa,
+        hardnessClass: teale.hardnessClass,
+        drilledTimestamp: blast.dateTime,
+        rigId: 'Epiroc SmartROC T45',
+      };
+    });
+  }
+
   const holes: IREDESHole[] = [];
   const count = blast.parameters.numberOfHoles || 30;
   const cols = Math.ceil(Math.sqrt(count * 1.5));

@@ -17,11 +17,13 @@ import type {
   IREDESHole,
   VariogramParams,
   KrigingGridNode,
+  BoreholeSample,
+  HoleTimingInfo,
 } from '../types/advanced';
 import { calculateRockFactorA, computeKuzRam } from './kuzram';
 import { fitRosinRammler, fitSwebrec } from './statistics';
 import { computeSieveDistribution } from './validation';
-import { calculateUSBMPPV } from './timing/initiationSimulator';
+import { calculateUSBMPPV, generatePatternTiming } from './timing/initiationSimulator';
 import { generateDemoDroneSurvey } from './drone3d/droneSizing';
 import { generateDrillTelemetryFromBlast } from './telemetry/iredesGenerator';
 import { DEFAULT_VARIOGRAM, computeKrigingGrid, generateDemoBoreholes } from './geostatistics/krigingEngine';
@@ -216,6 +218,7 @@ export interface BlastTimingState {
   predictedPPVMmPerS: number;
   distanceToStructureM: number;
   holeDiameterMm: number;
+  holes?: HoleTimingInfo[];
 }
 
 export interface BlastDrillingState {
@@ -239,6 +242,16 @@ export interface BlastKrigingState {
   hardDomainPercent: number;
   dominantDomainEn: string;
   dominantDomainFr: string;
+  gridNodes?: KrigingGridNode[];
+  boreholes?: BoreholeSample[];
+  gridBounds?: { minX: number; maxX: number; minY: number; maxY: number };
+  gridCols?: number;
+  gridRows?: number;
+  variogram?: VariogramParams;
+  selectedAttribute?: string;
+  meanEstimated?: number;
+  minEstimated?: number;
+  maxEstimated?: number;
 }
 
 export interface BlastDroneState {
@@ -309,7 +322,7 @@ export function getBlastState(
   const inclination = p.holeInclination || 90;
   const rad = (inclination * Math.PI) / 180;
   const expectedHoleDepth = Number(((benchHeight + subdrill) / Math.sin(rad)).toFixed(2));
-  const holeDepth = p.holeDepth || expectedHoleDepth;
+  let holeDepth = p.holeDepth || expectedHoleDepth;
 
   const isDepthInconsistent = Math.abs(holeDepth - expectedHoleDepth) > 0.25;
   if (isDepthInconsistent) {
@@ -321,17 +334,33 @@ export function getBlastState(
     );
   }
 
-  const holeDiameterMm = p.holeDiameter || 89;
-  const burden = p.burden || 2.4;
-  const spacing = p.spacing || 2.8;
-  const numberOfHoles = p.numberOfHoles || 24;
+  let holeDiameterMm = p.holeDiameter || 89;
+  let burden = p.burden || 3.0;
+  let spacing = p.spacing || 3.5;
+  let numberOfHoles = p.numberOfHoles || 24;
+  let stemmingLength = p.stemmingLength || 2.0;
+
+  // If detailed drillholes are imported from Excel/CSV, derive real geometrical aggregates
+  if (blast.drillHoles && blast.drillHoles.length > 0) {
+    numberOfHoles = blast.drillHoles.length;
+    burden = Number((blast.drillHoles.reduce((acc, h) => acc + (h.burdenM || p.burden || 3.0), 0) / blast.drillHoles.length).toFixed(2));
+    spacing = Number((blast.drillHoles.reduce((acc, h) => acc + (h.spacingM || p.spacing || 3.5), 0) / blast.drillHoles.length).toFixed(2));
+    holeDepth = Number((blast.drillHoles.reduce((acc, h) => acc + (h.depthM || p.holeDepth || expectedHoleDepth), 0) / blast.drillHoles.length).toFixed(2));
+    stemmingLength = Number((blast.drillHoles.reduce((acc, h) => acc + (h.stemmingM || p.stemmingLength || 2.0), 0) / blast.drillHoles.length).toFixed(2));
+    holeDiameterMm = Math.round(blast.drillHoles.reduce((acc, h) => acc + (h.diameterMm || p.holeDiameter || 89), 0) / blast.drillHoles.length);
+  }
+
   const holeVolumeM3 = Number((burden * spacing * benchHeight).toFixed(2));
-  const totalBlastedVolumeM3 = Number((holeVolumeM3 * numberOfHoles).toFixed(1));
+  const totalBlastedVolumeM3 = blast.drillHoles && blast.drillHoles.length > 0
+    ? Math.round(blast.drillHoles.reduce((acc, h) => acc + (h.burdenM || burden) * (h.spacingM || spacing) * Math.max(1, (h.depthM || holeDepth) - (h.subdrillM || subdrill)), 0))
+    : Number((holeVolumeM3 * numberOfHoles).toFixed(1));
+
   const benchElevationRL = (blast as any).benchElevation !== undefined
     ? (blast as any).benchElevation
-    : ((p as any).benchElevation !== undefined ? (p as any).benchElevation : 840);
+    : ((p as any).benchElevation !== undefined
+      ? (p as any).benchElevation
+      : (blast.drillHoles && blast.drillHoles[0]?.elevationZ ? blast.drillHoles[0].elevationZ : 840));
 
-  const stemmingLength = p.stemmingLength || 2.0;
   const columnChargeLength = p.columnChargeLength || Math.max(0, holeDepth - stemmingLength);
   const bottomChargeLength = p.bottomChargeLength || 0;
   const deckSumM = Number((stemmingLength + columnChargeLength + bottomChargeLength).toFixed(2));
@@ -908,6 +937,28 @@ export function getBlastState(
   const maxChargePerDelayKg = Number((chargePerHole * holesSimultaneous).toFixed(1));
   const ppvVal = calculateUSBMPPV(distanceToStructureM, maxChargePerDelayKg);
 
+  const timingHoles: HoleTimingInfo[] = blast.drillHoles && blast.drillHoles.length > 0
+    ? blast.drillHoles.map((h, idx) => ({
+        holeIndex: idx + 1,
+        holeId: h.holeId || `BH-${idx + 1}`,
+        row: h.rowNumber ? h.rowNumber - 1 : Math.floor(idx / 6),
+        col: idx % 6,
+        x: (h as any).collarX ?? h.eastingX ?? (idx % 6) * (h.spacingM || spacing),
+        y: (h as any).collarY ?? h.northingY ?? Math.floor(idx / 6) * (h.burdenM || burden),
+        surfaceDelayMs: 25,
+        inHoleDelayMs: 400,
+        firingTimeMs: h.detonatorDelayMs !== undefined && h.detonatorDelayMs > 0 ? h.detonatorDelayMs : 400 + idx * 8,
+        chargeKg: h.totalChargeKg || chargePerHole,
+        burdenM: h.burdenM || burden,
+        spacingM: h.spacingM || spacing,
+        faceDistanceM: (Math.floor(idx / 6) + 1) * (h.burdenM || burden),
+        state: 'ready',
+        isWet: h.isWet || (h.waterDepthM !== undefined && h.waterDepthM > 0),
+        waterDepthM: h.waterDepthM || 0,
+        hasCavityOrFault: h.hasCavityOrFault || false,
+      }))
+    : generatePatternTiming(4, Math.ceil(numberOfHoles / 4), burden, spacing, chargePerHole, 'v_echelon', 25, 400);
+
   const timing: BlastTimingState = {
     surfaceDelayMs: 25,
     inHoleDelayMs: 400,
@@ -917,6 +968,7 @@ export function getBlastState(
     predictedPPVMmPerS: ppvVal.estimatedPPVMmS,
     distanceToStructureM,
     holeDiameterMm,
+    holes: timingHoles,
   };
 
   // 11. DRILL TELEMETRY P2P
@@ -929,9 +981,11 @@ export function getBlastState(
     ? Number((drillHoles.reduce((acc, h) => acc + (h.penetrationRateMPerMin || 1.35), 0) / drillHoles.length).toFixed(2))
     : 1.35;
 
+  const hasImportedDrillHoles = Boolean(blast.drillHoles && blast.drillHoles.length > 0);
+
   const drilling: BlastDrillingState = {
     hasDrillTelemetry: true,
-    isDemoData: false,
+    isDemoData: !hasImportedDrillHoles,
     collarToleranceMm: drillCollarTol,
     totalHoles: drillHoles.length,
     compliantHolesCount: compliantCount,
@@ -945,9 +999,44 @@ export function getBlastState(
   // 12. KRIGING GEOSTATISTICS
   const softCutoff = overrides?.softCutoffMPa || 75;
   const hardCutoff = overrides?.hardCutoffMPa || 125;
-  const demoBoreholes = generateDemoBoreholes();
-  const krigGrid = computeKrigingGrid(demoBoreholes, 'ucsMPa', 20, 14, 0, 60, 0, 40, DEFAULT_VARIOGRAM);
+  const actualBoreholes: BoreholeSample[] = blast.drillHoles && blast.drillHoles.length >= 3
+    ? blast.drillHoles.map((h, idx) => ({
+        id: h.holeId || `BH-${idx + 1}`,
+        easting: (h as any).collarX !== undefined ? (h as any).collarX : (h.eastingX !== undefined ? h.eastingX : (idx % 6) * (h.spacingM || 3.5)),
+        northing: (h as any).collarY !== undefined ? (h as any).collarY : (h.northingY !== undefined ? h.northingY : Math.floor(idx / 6) * (h.burdenM || 3.0)),
+        elevation: (h as any).collarZ !== undefined ? (h as any).collarZ : (h.elevationZ !== undefined ? h.elevationZ : 840),
+        ucsMPa: h.ucsMPa || blast.rockMass?.ucsMPa || 120,
+        rqdPercent: h.rqdPercent || 78,
+        jointSpacingM: blast.rockMass?.meanJointSpacing || 0.55,
+        densityTPerM3: h.densityTPerM3 || blast.rockMass?.density || 2.68,
+        goldGradeGPT: 1.25,
+      }))
+    : generateDemoBoreholes();
+
+  const xs = actualBoreholes.map((b) => b.easting);
+  const ys = actualBoreholes.map((b) => b.northing);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs) + (Math.max(...xs) === minX ? 10 : 0);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys) + (Math.max(...ys) === minY ? 10 : 0);
+  const padX = Math.max(3.5, (maxX - minX) * 0.15);
+  const padY = Math.max(3.5, (maxY - minY) * 0.15);
+
+  const krigGrid = computeKrigingGrid(
+    actualBoreholes,
+    'ucsMPa',
+    20,
+    14,
+    minX - padX,
+    maxX + padX,
+    minY - padY,
+    maxY + padY,
+    DEFAULT_VARIOGRAM
+  );
   const gridVals = krigGrid.map((n) => n.estimatedValue);
+  const minEstimated = gridVals.length > 0 ? Math.round(Math.min(...gridVals)) : 80;
+  const maxEstimated = gridVals.length > 0 ? Math.round(Math.max(...gridVals)) : 150;
+  const meanEstimated = gridVals.length > 0 ? Number((gridVals.reduce((a, b) => a + b, 0) / gridVals.length).toFixed(1)) : 115;
   const sCount = gridVals.filter((v) => v < softCutoff).length;
   const hCount = gridVals.filter((v) => v > hardCutoff).length;
   const mCount = gridVals.length - sCount - hCount;
@@ -964,17 +1053,32 @@ export function getBlastState(
     hardDomainPercent: hardPct,
     dominantDomainEn: softPct >= mediumPct && softPct >= hardPct ? 'Soft Domain' : hardPct >= mediumPct ? 'Hard Domain' : 'Intermediate Domain',
     dominantDomainFr: softPct >= mediumPct && softPct >= hardPct ? 'Domaine Tendre' : hardPct >= mediumPct ? 'Domaine Dur' : 'Domaine Intermédiaire',
+    gridNodes: krigGrid,
+    boreholes: actualBoreholes,
+    gridBounds: { minX: minX - padX, maxX: maxX + padX, minY: minY - padY, maxY: maxY + padY },
+    gridCols: 20,
+    gridRows: 14,
+    variogram: DEFAULT_VARIOGRAM,
+    selectedAttribute: 'ucsMPa',
+    meanEstimated,
+    minEstimated,
+    maxEstimated,
   };
 
   // 13. DRONE 3D SURVEY
-  const droneSurvey = generateDemoDroneSurvey(blast.blastId);
+  const hasRealDrone = Boolean(blast.droneSurvey && blast.droneSurvey.sectors && blast.droneSurvey.sectors.length > 0);
+  const droneSurvey = blast.droneSurvey || generateDemoDroneSurvey(blast.blastId);
+  const droneSectors = blast.droneSurvey?.sectors || droneSurvey.sectors;
+  const droneVol = blast.droneSurvey ? blast.droneSurvey.totalVolumeM3 : totalBlastedVolumeM3;
+  const droneP80 = blast.droneSurvey ? blast.droneSurvey.averageP80Mm : (blast.images?.[0]?.segmentationRuns?.[0]?.metrics?.p80 || kuzRam.p80Mm);
+
   const drone: BlastDroneState = {
-    hasDroneData: false, // Mark as demo survey unless verified imported file
-    isDemoData: true,
-    totalVolumeM3: droneSurvey.totalVolumeM3, // 2440 m3 in demo
-    meanP80Mm: droneSurvey.averageP80Mm,
+    hasDroneData: hasRealDrone,
+    isDemoData: !hasRealDrone,
+    totalVolumeM3: droneVol,
+    meanP80Mm: droneP80,
     pointCloudCount: droneSurvey.meshPointsCount || 48520,
-    sectors: droneSurvey.sectors.map((s) => ({
+    sectors: droneSectors.map((s) => ({
       nameEn: s.name,
       nameFr: s.name
         .replace('Crest / Free Face Ejection Zone', 'Crête / Éjection Front Libre')

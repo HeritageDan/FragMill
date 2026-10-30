@@ -10,7 +10,7 @@ import type {
   Site,
 } from '../../types';
 import type { Language } from '../../i18n';
-import type { ReportVaultState } from '../../types/reportVault';
+import type { ReportVaultState, ReportSectionKey } from '../../types/reportVault';
 import { generateModularVaultPdfReport, generateSingleSectionPdfReport } from './modularReport';
 import { db, getSettings } from '../../db';
 import { simulateComminutionCircuit, generateEconomicTradeoffCurve } from '../comminution/bondMorrellEngine';
@@ -83,7 +83,21 @@ export async function generateBlastPdfReport(
     fragmentCount: activeRun?.fragments?.length || targetBlast.images?.[0]?.segmentationRuns?.[0]?.fragments?.length,
   };
 
-  const initialVaultState: ReportVaultState = {
+  const allOrderedKeys: ReportSectionKey[] = [
+    'blast',
+    'drone3d',
+    'beltvision',
+    'timing',
+    'comminution',
+    'kriging',
+    'telemetry',
+    'benchmap',
+    'validation',
+    'minetomill',
+    'kuzram',
+  ];
+
+  const fullVaultState: ReportVaultState = {
     blast: {
       key: 'blast',
       stagedAt: Date.now(),
@@ -93,42 +107,79 @@ export async function generateBlastPdfReport(
       summaryTextEn: `Blast ${targetBlast.blastId}: P50 ${metrics?.p50 || 128} mm, P80 ${metrics?.p80 || 195} mm`,
       payload: blastPayload,
     },
-    drone3d: null,
-    beltvision: null,
-    timing: null,
-    comminution: null,
-    kriging: null,
-    telemetry: null,
-    benchmap: null,
-    validation: null,
-    minetomill: null,
-    kuzram: null,
+    drone3d: {
+      key: 'drone3d',
+      stagedAt: Date.now(),
+      titleFr: '2. Photogrammétrie 3D Drone & Orthomosaïque',
+      titleEn: '2. Drone 3D Photogrammetry & Orthomosaic',
+      payload: { blastId: targetBlast.blastId },
+    },
+    beltvision: {
+      key: 'beltvision',
+      stagedAt: Date.now(),
+      titleFr: '3. Vision Edge en Continu : Convoyeur & Pelles',
+      titleEn: '3. Continuous Edge Vision: Conveyor & Shovel Feed',
+      payload: { blastId: targetBlast.blastId },
+    },
+    timing: {
+      key: 'timing',
+      stagedAt: Date.now(),
+      titleFr: '4. Simulation 3D des Retards & Profil de Face',
+      titleEn: '4. 3D Timing Simulator & Face Profiler',
+      payload: { blastId: targetBlast.blastId },
+    },
+    comminution: {
+      key: 'comminution',
+      stagedAt: Date.now(),
+      titleFr: '5. Jumeau Numérique Usine & Modélisation Bond',
+      titleEn: '5. Comminution Digital Twin & Bond Energy Modeling',
+      payload: { blastId: targetBlast.blastId },
+    },
+    kriging: {
+      key: 'kriging',
+      stagedAt: Date.now(),
+      titleFr: '6. Modèle de Blocs & Krigeage Géostatistique',
+      titleEn: '6. Block Model & Geostatistical Kriging',
+      payload: { blastId: targetBlast.blastId },
+    },
+    telemetry: {
+      key: 'telemetry',
+      stagedAt: Date.now(),
+      titleFr: '7. Télémétrie Foration MWD & Export IREDES',
+      titleEn: '7. MWD Drill Telemetry & IREDES Export',
+      payload: { blastId: targetBlast.blastId },
+    },
+    benchmap: {
+      key: 'benchmap',
+      stagedAt: Date.now(),
+      titleFr: '8. Carte des Gradins & Polygones de Tir',
+      titleEn: '8. Open-Pit Bench Map & Blast Polygons',
+      payload: { blastId: targetBlast.blastId },
+    },
+    validation: {
+      key: 'validation',
+      stagedAt: Date.now(),
+      titleFr: '9. Validation Métrologique : Tamis vs Optique',
+      titleEn: '9. Metrological Validation: Sieve vs Optical',
+      payload: { blastId: targetBlast.blastId },
+    },
+    minetomill: {
+      key: 'minetomill',
+      stagedAt: Date.now(),
+      titleFr: '10. Optimisation Économique & Carbone Mine-to-Mill',
+      titleEn: '10. Mine-to-Mill Economics & Carbon Footprint',
+      payload: { blastId: targetBlast.blastId },
+    },
+    kuzram: {
+      key: 'kuzram',
+      stagedAt: Date.now(),
+      titleFr: '11. Modèle Kuz-Ram & Conseiller d\'Optimisation',
+      titleEn: '11. Kuz-Ram Predictor & Optimization Advisor',
+      payload: { blastId: targetBlast.blastId },
+    },
   };
 
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const saved = localStorage.getItem('fragmill_report_vault_v1');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          Object.assign(initialVaultState, parsed);
-          initialVaultState.blast = {
-            key: 'blast',
-            stagedAt: Date.now(),
-            titleFr: '1. Tir & Images : Massif & Granulométrie',
-            titleEn: '1. Blast Records & Optical Sizing',
-            summaryTextFr: `Tir ${targetBlast.blastId} : P50 ${metrics?.p50 || 128} mm, P80 ${metrics?.p80 || 195} mm`,
-            summaryTextEn: `Blast ${targetBlast.blastId}: P50 ${metrics?.p50 || 128} mm, P80 ${metrics?.p80 || 195} mm`,
-            payload: blastPayload,
-          };
-        }
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  return generateModularVaultPdfReport(initialVaultState, project, site, targetBlast, activeLang);
+  return generateModularVaultPdfReport(fullVaultState, project, site, targetBlast, activeLang, allOrderedKeys);
 }
 
 // Generate Printable 1:1 A4 Calibration Target Sheet

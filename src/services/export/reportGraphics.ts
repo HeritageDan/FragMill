@@ -2,7 +2,8 @@
 // Generates high-resolution PNG data URLs via off-screen Canvas for PDF embedding.
 
 import type { Blast, CumulativePoint } from '../../types';
-import type { DroneOrthomosaicData, IREDESHole } from '../../types/advanced';
+import type { DroneOrthomosaicData, IREDESHole, KrigingGridNode, BoreholeSample, VariogramParams, HoleTimingInfo } from '../../types/advanced';
+import { computeKrigingGrid, generateDemoBoreholes, DEFAULT_VARIOGRAM } from '../geostatistics/krigingEngine';
 
 /**
  * Creates an offscreen canvas with high-DPI scaling for sharp print rendering
@@ -966,6 +967,7 @@ export interface BlastTimingGraphicOptions {
   maxChargePerDelayKg?: number;
   ppvMmPerS?: number;
   distanceToStructureM?: number;
+  holes?: HoleTimingInfo[];
 }
 
 export function renderBlastTimingGraphic(options?: BlastTimingGraphicOptions | string): string {
@@ -1021,21 +1023,51 @@ export function renderBlastTimingGraphic(options?: BlastTimingGraphicOptions | s
     ctx.fillText(`${d} ms`, apexX + 2, apexY - 8);
   });
 
-  // Blast Holes grid points
-  for (let r = 0; r < 4; r++) {
-    for (let c = 0; c < 8; c++) {
-      const hx = pX + 90 + c * 50;
-      const hy = pY + 70 + r * 60;
-      const delay = Math.round(c * 25 + Math.abs(r - 1.5) * 17);
+  // Blast Holes (Real holes from design / Excel import if available, else standard pattern)
+  if (opt.holes && opt.holes.length > 0) {
+    const xs = opt.holes.map((h) => h.x);
+    const ys = opt.holes.map((h) => h.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs) + (Math.max(...xs) === Math.min(...xs) ? 10 : 0);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys) + (Math.max(...ys) === Math.min(...ys) ? 10 : 0);
+    const spanX = Math.max(1, maxX - minX);
+    const spanY = Math.max(1, maxY - minY);
+    const availW = pW - 80;
+    const availH = pH - 80;
 
-      ctx.fillStyle = '#FFFFFF';
+    opt.holes.forEach((h) => {
+      const px = pX + 40 + ((h.x - minX) / spanX) * availW;
+      const py = pY + 40 + ((h.y - minY) / spanY) * availH;
+
       ctx.beginPath();
-      ctx.arc(hx, hy, 5, 0, Math.PI * 2);
+      ctx.arc(px, py, 5, 0, Math.PI * 2);
+      ctx.fillStyle = h.isWet ? '#38BDF8' : h.hasCavityOrFault ? '#F97316' : '#22C55E';
       ctx.fill();
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
 
-      ctx.fillStyle = '#94A3B8';
-      ctx.font = '8px Arial';
-      ctx.fillText(`${delay}ms`, hx - 10, hy + 14);
+      ctx.fillStyle = '#E2E8F0';
+      ctx.font = 'bold 8px Arial';
+      ctx.fillText(`${h.firingTimeMs}ms`, px - 12, py + 14);
+    });
+  } else {
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 8; c++) {
+        const hx = pX + 90 + c * 50;
+        const hy = pY + 70 + r * 60;
+        const delay = Math.round(c * 25 + Math.abs(r - 1.5) * 17);
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(hx, hy, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#94A3B8';
+        ctx.font = '8px Arial';
+        ctx.fillText(`${delay}ms`, hx - 10, hy + 14);
+      }
     }
   }
 
@@ -1328,12 +1360,44 @@ export function renderComminutionCircuitGraphic(options?: ComminutionGraphicOpti
 }
 
 // ---------------------------------------------------------------------------
-// 6. Geostatistical Kriging Block Model Heatmap Graphic
+// 6. Geostatistical Kriging Block Model Multi-View Graphic (Heatmap, Variance & Domains)
 // ---------------------------------------------------------------------------
+function interpolateRgb(c1: number[], c2: number[], t: number): string {
+  const r = Math.round(c1[0] + t * (c2[0] - c1[0]));
+  const g = Math.round(c1[1] + t * (c2[1] - c1[1]));
+  const b = Math.round(c1[2] + t * (c2[2] - c1[2]));
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+// Turbo Geological Heatmap (Low: Navy Blue -> Cyan -> Emerald Green -> Amber -> High: Red)
+function getTurboHeatmapColor(t: number): string {
+  const c = Math.max(0, Math.min(1, t));
+  if (c < 0.25) return interpolateRgb([30, 58, 138], [6, 182, 212], c / 0.25);
+  if (c < 0.50) return interpolateRgb([6, 182, 212], [16, 185, 129], (c - 0.25) / 0.25);
+  if (c < 0.75) return interpolateRgb([16, 185, 129], [245, 158, 11], (c - 0.50) / 0.25);
+  return interpolateRgb([245, 158, 11], [239, 68, 68], (c - 0.75) / 0.25);
+}
+
+// Variance Heatmap (Low error / high confidence: Dark Navy -> Purple -> High error: Coral/Rose)
+function getVarianceHeatmapColor(t: number): string {
+  const c = Math.max(0, Math.min(1, t));
+  if (c < 0.35) return interpolateRgb([15, 23, 42], [59, 130, 246], c / 0.35);
+  if (c < 0.70) return interpolateRgb([59, 130, 246], [168, 85, 247], (c - 0.35) / 0.35);
+  return interpolateRgb([168, 85, 247], [244, 63, 94], (c - 0.70) / 0.30);
+}
+
 export interface KrigingGraphicOptions {
   softCutoff?: number;
   hardCutoff?: number;
   isDemo?: boolean;
+  gridNodes?: KrigingGridNode[];
+  boreholes?: BoreholeSample[];
+  gridBounds?: { minX: number; maxX: number; minY: number; maxY: number };
+  gridCols?: number;
+  gridRows?: number;
+  variogram?: VariogramParams;
+  selectedAttribute?: string;
+  displayMode?: 'all' | 'heatmap' | 'variance' | 'domains';
 }
 
 export function renderKrigingModelGraphic(options?: KrigingGraphicOptions | string, langArg = 'fr'): string {
@@ -1345,136 +1409,316 @@ export function renderKrigingModelGraphic(options?: KrigingGraphicOptions | stri
   const hardCutoff = opts.hardCutoff ?? 125;
   const isDemo = opts.isDemo ?? false;
 
-  const { canvas, ctx } = createHiDPICanvas(900, 420);
+  // Use real boreholes if passed, else fallback
+  const boreholes: BoreholeSample[] = (opts.boreholes && opts.boreholes.length > 0)
+    ? opts.boreholes
+    : generateDemoBoreholes();
+
+  // Bounding box from boreholes if not provided
+  let bounds = opts.gridBounds;
+  if (!bounds || bounds.minX === undefined) {
+    const xs = boreholes.map((b) => b.easting);
+    const ys = boreholes.map((b) => b.northing);
+    const rawMinX = Math.min(...xs);
+    const rawMaxX = Math.max(...xs);
+    const rawMinY = Math.min(...ys);
+    const rawMaxY = Math.max(...ys);
+    const padX = Math.max(3.5, (rawMaxX - rawMinX) * 0.15);
+    const padY = Math.max(3.5, (rawMaxY - rawMinY) * 0.15);
+    bounds = {
+      minX: rawMinX - padX,
+      maxX: rawMaxX + padX,
+      minY: rawMinY - padY,
+      maxY: rawMaxY + padY,
+    };
+  }
+
+  const cols = opts.gridCols || 20;
+  const rows = opts.gridRows || 14;
+  const variogram = opts.variogram || DEFAULT_VARIOGRAM;
+
+  // Compute or use real grid nodes
+  const gridNodes: KrigingGridNode[] = (opts.gridNodes && opts.gridNodes.length > 0)
+    ? opts.gridNodes
+    : computeKrigingGrid(boreholes, 'ucsMPa', cols, rows, bounds.minX, bounds.maxX, bounds.minY, bounds.maxY, variogram);
+
+  const values = gridNodes.map((n) => n.estimatedValue);
+  const minVal = values.length > 0 ? Math.round(Math.min(...values)) : 70;
+  const maxVal = values.length > 0 ? Math.round(Math.max(...values)) : 160;
+  const meanVal = values.length > 0 ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)) : 115;
+
+  const variances = gridNodes.map((n) => n.estimationVariance);
+  const minVar = variances.length > 0 ? Math.min(...variances) : 0;
+  const maxVar = variances.length > 0 ? Math.max(...variances) : 250;
+
+  const sCount = values.filter((v) => v < softCutoff).length;
+  const hCount = values.filter((v) => v > hardCutoff).length;
+  const mCount = values.length - sCount - hCount;
+  const total = Math.max(1, values.length);
+  const softPct = Math.round((sCount / total) * 100);
+  const hardPct = Math.round((hCount / total) * 100);
+  const interPct = 100 - softPct - hardPct;
+
+  const { canvas, ctx } = createHiDPICanvas(940, 480);
 
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  // Main Banner Header
   ctx.fillStyle = '#0F172A';
-  ctx.font = 'bold 16px "Helvetica Neue", Arial, sans-serif';
+  ctx.font = 'bold 15px "Helvetica Neue", Arial, sans-serif';
   ctx.fillText(
-    isFr ? 'Modèle Géologique de Blocs & Interpolation par Krigeage Ordinaire' : 'Geostatistical Block Model & Ordinary Kriging BLUE Heatmap',
-    40,
-    30
+    isFr
+      ? 'MODÈLE GÉOSTATISTIQUE 2D : HEATMAP D’ESTIMATION, VARIANCE & DOMAINES DE TIR'
+      : '2D GEOSTATISTICAL BLOCK MODEL: ESTIMATION HEATMAP, VARIANCE & BLAST DOMAINS',
+    25,
+    28
+  );
+
+  ctx.fillStyle = '#64748B';
+  ctx.font = '10px "Helvetica Neue", Arial, sans-serif';
+  ctx.fillText(
+    isFr
+      ? `Estimation BLUE pondérée par variogramme ${variogram.model.toUpperCase()} | Portée: ${variogram.rangeM}m | Pépite: ${variogram.nugget} | Palier: ${variogram.sill}`
+      : `BLUE estimation weighted by ${variogram.model.toUpperCase()} variogram | Range: ${variogram.rangeM}m | Nugget: ${variogram.nugget} | Sill: ${variogram.sill}`,
+    25,
+    44
   );
 
   if (isDemo) {
     ctx.fillStyle = '#DC2626';
     ctx.font = 'bold 10px Arial';
-    ctx.fillText(isFr ? '[DONNÉES DE DÉMO / SÉQUENCE STANDARD]' : '[DEMO DATA / BENCHMARK GRID]', 550, 30);
+    ctx.fillText(isFr ? '[GRILLE DE CONTRÔLE DÉMO]' : '[BENCHMARK DEMO GRID]', 760, 28);
   }
 
-  const kX = 50;
-  const kY = 55;
-  const kW = 540;
-  const kH = 320;
+  // 3 MAP PANELS CONFIGURATION
+  const pW = 280;
+  const pH = 240;
+  const gridY = 82;
+  const spanX = Math.max(1, bounds.maxX - bounds.minX);
+  const spanY = Math.max(1, bounds.maxY - bounds.minY);
 
-  // Grid cells (20 x 12 blocks)
-  const cols = 20;
-  const rows = 12;
-  const cw = kW / cols;
-  const ch = kH / rows;
+  const panels = [
+    {
+      x: 25,
+      title: isFr ? '1. HEATMAP D’ESTIMATION (UCS)' : '1. ESTIMATION HEATMAP (UCS)',
+      mode: 'heatmap' as const,
+    },
+    {
+      x: 330,
+      title: isFr ? '2. VARIANCE DE KRIGEAGE (σ²)' : '2. KRIGING VARIANCE (σ²)',
+      mode: 'variance' as const,
+    },
+    {
+      x: 635,
+      title: isFr ? '3. DOMAINES & PLAN DE DOSAGE' : '3. BLAST DOMAINS & DOSING',
+      mode: 'domains' as const,
+    },
+  ];
 
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      // Synthetic spatial hardness gradient (Soft = blue, Intermediate = amber, Hard = red)
-      const hardness = Math.sin(c / 3.5) * 40 + Math.cos(r / 2.5) * 35 + 110;
-      let color = '#3B82F6'; // Soft
-      if (hardness > hardCutoff) color = '#EF4444'; // Hard
-      else if (hardness > softCutoff) color = '#F59E0B'; // Intermediate
+  panels.forEach((p) => {
+    // Panel title
+    ctx.fillStyle = '#1E293B';
+    ctx.font = 'bold 11px Arial';
+    ctx.fillText(p.title, p.x + 4, gridY - 10);
+
+    // Map background
+    ctx.fillStyle = '#0F172A';
+    ctx.fillRect(p.x, gridY, pW, pH);
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(p.x, gridY, pW, pH);
+
+    const cellW = pW / cols;
+    const cellH = pH / rows;
+
+    // Render cells
+    gridNodes.forEach((node, idx) => {
+      const c = idx % cols;
+      const r = Math.floor(idx / cols);
+
+      let color = '#3B82F6';
+      if (p.mode === 'heatmap') {
+        const ratio = maxVal > minVal ? (node.estimatedValue - minVal) / (maxVal - minVal) : 0.5;
+        color = getTurboHeatmapColor(ratio);
+      } else if (p.mode === 'variance') {
+        const ratio = maxVar > minVar ? (node.estimationVariance - minVar) / (maxVar - minVar) : 0.5;
+        color = getVarianceHeatmapColor(ratio);
+      } else {
+        // Domains mode
+        if (node.estimatedValue > hardCutoff) color = '#EF4444';
+        else if (node.estimatedValue >= softCutoff) color = '#F59E0B';
+        else color = '#3B82F6';
+      }
 
       ctx.fillStyle = color;
-      ctx.fillRect(kX + c * cw, kY + r * ch, cw - 1, ch - 1);
+      ctx.fillRect(p.x + c * cellW, gridY + r * cellH, cellW + 0.6, cellH + 0.6);
+    });
+
+    // Boreholes overlay
+    boreholes.forEach((bh) => {
+      const rawPx = ((bh.easting - bounds!.minX) / spanX) * pW;
+      const rawPy = ((bh.northing - bounds!.minY) / spanY) * pH;
+      const bx = p.x + Math.max(6, Math.min(pW - 6, rawPx));
+      const by = gridY + Math.max(6, Math.min(pH - 6, rawPy));
+
+      ctx.beginPath();
+      ctx.arc(bx, by, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fill();
+      ctx.strokeStyle = '#0F172A';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(bx, by, 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#F59E0B';
+      ctx.fill();
+
+      // Show assay tag on heatmap and domains panel
+      if (p.mode !== 'variance' && boreholes.length <= 40) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 7.5px Arial';
+        ctx.fillText(`${Math.round(bh.ucsMPa)}`, bx + 6, by + 3);
+      }
+    });
+
+    // Panel Bottom Scale / Legend Bar
+    const legY = gridY + pH + 8;
+    if (p.mode === 'heatmap') {
+      const grad = ctx.createLinearGradient(p.x, 0, p.x + pW, 0);
+      grad.addColorStop(0, '#1E3A8A');
+      grad.addColorStop(0.33, '#06B6D4');
+      grad.addColorStop(0.66, '#10B981');
+      grad.addColorStop(0.85, '#F59E0B');
+      grad.addColorStop(1, '#EF4444');
+      ctx.fillStyle = grad;
+      ctx.fillRect(p.x, legY, pW, 10);
+      ctx.strokeStyle = '#CBD5E1';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(p.x, legY, pW, 10);
+
+      ctx.fillStyle = '#475569';
+      ctx.font = 'bold 8.5px Arial';
+      ctx.fillText(`< ${minVal} MPa`, p.x, legY + 22);
+      ctx.fillText(`Moy: ${meanVal} MPa`, p.x + pW / 2 - 25, legY + 22);
+      ctx.fillText(`> ${maxVal} MPa`, p.x + pW - 55, legY + 22);
+    } else if (p.mode === 'variance') {
+      const grad = ctx.createLinearGradient(p.x, 0, p.x + pW, 0);
+      grad.addColorStop(0, '#0F172A');
+      grad.addColorStop(0.4, '#3B82F6');
+      grad.addColorStop(0.75, '#A855F7');
+      grad.addColorStop(1, '#F43F5E');
+      ctx.fillStyle = grad;
+      ctx.fillRect(p.x, legY, pW, 10);
+      ctx.strokeStyle = '#CBD5E1';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(p.x, legY, pW, 10);
+
+      ctx.fillStyle = '#475569';
+      ctx.font = 'bold 8.5px Arial';
+      ctx.fillText(isFr ? '0 (Haute précision)' : '0 (High confidence)', p.x, legY + 22);
+      ctx.fillText(`σ² max: ${maxVar.toFixed(1)}`, p.x + pW - 65, legY + 22);
+    } else {
+      // Domains chips
+      const chips = [
+        { c: '#3B82F6', l: isFr ? `Tendre (<${softCutoff})` : `Soft (<${softCutoff})` },
+        { c: '#F59E0B', l: isFr ? `Moyen (${softCutoff}-${hardCutoff})` : `Med (${softCutoff}-${hardCutoff})` },
+        { c: '#EF4444', l: isFr ? `Dur (>${hardCutoff})` : `Hard (>${hardCutoff})` },
+      ];
+      let cx = p.x;
+      chips.forEach((ch) => {
+        ctx.fillStyle = ch.c;
+        ctx.fillRect(cx, legY, 12, 10);
+        ctx.strokeStyle = '#94A3B8';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(cx, legY, 12, 10);
+
+        ctx.fillStyle = '#334155';
+        ctx.font = 'bold 8px Arial';
+        ctx.fillText(ch.l, cx + 16, legY + 9);
+        cx += 92;
+      });
+
+      ctx.fillStyle = '#64748B';
+      ctx.font = '8px Arial';
+      ctx.fillText(isFr ? 'Dosages : 0.42 | 0.58 | 0.74 kg/m³' : 'Powder Factors: 0.42 | 0.58 | 0.74 kg/m³', p.x, legY + 22);
     }
-  }
-
-  // Borehole Assay Points overlay
-  const boreholes = [
-    { x: 140, y: 110, ucs: 142 },
-    { x: 260, y: 190, ucs: 85 },
-    { x: 420, y: 130, ucs: 165 },
-    { x: 340, y: 280, ucs: 115 },
-    { x: 180, y: 260, ucs: 92 },
-  ];
-
-  boreholes.forEach((bh) => {
-    ctx.fillStyle = '#FFFFFF';
-    ctx.strokeStyle = '#0F172A';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(kX + bh.x, kY + bh.y, 7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#0F172A';
-    ctx.font = 'bold 9px Arial';
-    ctx.fillText(`${bh.ucs}MPa`, kX + bh.x + 9, kY + bh.y + 3);
   });
 
-  // Dedicated Kriging Domains Legend at bottom of grid
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-  ctx.fillRect(kX + 10, kY + kH - 38, kW - 20, 28);
-  ctx.strokeStyle = '#475569';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(kX + 10, kY + kH - 38, kW - 20, 28);
-
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = 'bold 8.5px Arial';
-  ctx.textAlign = 'left';
-  ctx.fillText(isFr ? 'LÉGENDE DOMAINES :' : 'KRIGING DOMAINS:', kX + 18, kY + kH - 20);
-
-  const kChips = [
-    { c: '#3B82F6', l: isFr ? `Tendre (<${softCutoff} MPa)` : `Soft (<${softCutoff} MPa)` },
-    { c: '#F59E0B', l: isFr ? `Moyen (${softCutoff}-${hardCutoff} MPa)` : `Medium (${softCutoff}-${hardCutoff} MPa)` },
-    { c: '#EF4444', l: isFr ? `Dur (>${hardCutoff} MPa)` : `Hard (>${hardCutoff} MPa)` },
-  ];
-
-  let kChipX = kX + (isFr ? 130 : 125);
-  kChips.forEach((chip) => {
-    ctx.fillStyle = chip.c;
-    ctx.fillRect(kChipX, kY + kH - 26, 12, 10);
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(kChipX, kY + kH - 26, 12, 10);
-
-    ctx.fillStyle = '#CBD5E1';
-    ctx.font = '8px Arial';
-    ctx.fillText(chip.l, kChipX + 16, kY + kH - 18);
-    kChipX += isFr ? 105 : 100;
-  });
-
-  // Right Side Legend Card
-  const cX = 620;
-  const cY = 55;
-  const cW = 240;
+  // Bottom Information Summary Box
+  const bBoxX = 25;
+  const bBoxY = 372;
+  const bBoxW = 890;
+  const bBoxH = 92;
 
   ctx.fillStyle = '#F8FAFC';
-  ctx.fillRect(cX, cY, cW, kH);
-  ctx.strokeStyle = '#E2E8F0';
-  ctx.strokeRect(cX, cY, cW, kH);
+  ctx.fillRect(bBoxX, bBoxY, bBoxW, bBoxH);
+  ctx.strokeStyle = '#CBD5E1';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bBoxX, bBoxY, bBoxW, bBoxH);
 
-  ctx.fillStyle = '#0F172A';
-  ctx.font = 'bold 12px Arial';
-  ctx.fillText(isFr ? 'ZONAGE GÉOMÉCANIQUE' : 'GEOMECHANICAL DOMAINS', cX + 20, cY + 30);
+  const colW = bBoxW / 4;
 
-  const domains = [
-    [isFr ? 'Domaine Tendre (Bleu) :' : 'Soft Domain (Blue):', `0.42 kg/m³ | UCS <${softCutoff}`],
-    [isFr ? 'Domaine Moyen (Orange) :' : 'Intermediate (Amber):', `0.58 kg/m³ | UCS ${softCutoff}-${hardCutoff}`],
-    [isFr ? 'Domaine Dur (Rouge) :' : 'Hard Massive (Red):', `0.74 kg/m³ | UCS >${hardCutoff}`],
-    [isFr ? 'Portée Variogramme (a) :' : 'Variogram Range (a):', '45.0 m'],
-    [isFr ? 'Effet Pépite (C0) :' : 'Nugget Effect (C0):', '50.0 MPa²'],
+  const summaryCols = [
+    {
+      title: isFr ? '1. MODÉLISATION DU VARIOGRAMME' : '1. VARIOGRAM MODEL SPECIFICATION',
+      lines: [
+        `${isFr ? 'Structure' : 'Model'}: ${variogram.model.toUpperCase()}`,
+        `${isFr ? 'Portée spatiale (a)' : 'Range (a)'}: ${variogram.rangeM} m`,
+        `${isFr ? 'Effet pépite (C0)' : 'Nugget (C0)'}: ${variogram.nugget} MPa²`,
+        `${isFr ? 'Palier structural (C)' : 'Sill (C)'}: ${variogram.sill} MPa²`,
+      ],
+    },
+    {
+      title: isFr ? '2. ÉCHANTILLONNAGE & FORATION' : '2. BOREHOLE ASSAY INPUTS',
+      lines: [
+        `${isFr ? 'Sondages réels analysés' : 'Assayed Boreholes'}: ${boreholes.length}`,
+        `UCS Moyen: ${meanVal} MPa`,
+        `Plage UCS: [${minVal} - ${maxVal} MPa]`,
+        `${isFr ? 'Domaine dominant' : 'Dominant Domain'}: ${softPct >= interPct && softPct >= hardPct ? (isFr ? 'Tendre' : 'Soft') : hardPct >= interPct ? (isFr ? 'Dur' : 'Hard') : (isFr ? 'Intermédiaire' : 'Intermediate')}`,
+      ],
+    },
+    {
+      title: isFr ? '3. RÉPARTITION DES VOLUMES' : '3. KRIGED DOMAIN VOLUMES',
+      lines: [
+        `${isFr ? 'Domaine Tendre (<' : 'Soft Domain (<'}${softCutoff} MPa): ${softPct}%`,
+        `${isFr ? 'Domaine Moyen (' : 'Intermediate ('}${softCutoff}-${hardCutoff} MPa): ${interPct}%`,
+        `${isFr ? 'Domaine Dur (>' : 'Hard Massive (>'}${hardCutoff} MPa): ${hardPct}%`,
+        `${isFr ? 'Grille BLUE' : 'BLUE Grid'}: ${cols} × ${rows} (${cols * rows} ${isFr ? 'blocs' : 'blocks'})`,
+      ],
+    },
+    {
+      title: isFr ? '4. PLAN DE DOSAGE RECOMMANDÉ' : '4. RECONCILED POWDER FACTOR',
+      lines: [
+        `Tendre: 0.42 kg/m³ (ANFO)`,
+        `Moyen: 0.58 kg/m³ (Heavy ANFO)`,
+        `Dur: 0.74 kg/m³ (Émulsion pure)`,
+        `${isFr ? 'Économie vs surdosage' : 'Savings vs overcharge'}: ~12%`,
+      ],
+    },
   ];
 
-  let dy = cY + 65;
-  domains.forEach(([k, v]) => {
-    ctx.fillStyle = '#64748B';
-    ctx.font = '10px Arial';
-    ctx.fillText(k, cX + 20, dy);
-
+  summaryCols.forEach((col, idx) => {
+    const cx = bBoxX + idx * colW + 14;
     ctx.fillStyle = '#0F172A';
-    ctx.font = 'bold 11px Arial';
-    ctx.fillText(v, cX + 20, dy + 15);
-    dy += 45;
+    ctx.font = 'bold 9.5px Arial';
+    ctx.fillText(col.title, cx, bBoxY + 18);
+
+    ctx.fillStyle = '#475569';
+    ctx.font = '8.5px Arial';
+    col.lines.forEach((line, lIdx) => {
+      ctx.fillText(line, cx, bBoxY + 34 + lIdx * 13);
+    });
+
+    if (idx < 3) {
+      ctx.strokeStyle = '#E2E8F0';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(bBoxX + (idx + 1) * colW, bBoxY + 8);
+      ctx.lineTo(bBoxX + (idx + 1) * colW, bBoxY + bBoxH - 8);
+      ctx.stroke();
+    }
   });
 
   return canvas.toDataURL('image/png', 0.95);

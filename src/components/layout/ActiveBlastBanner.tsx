@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Blast } from '../../types';
 import {
   Flame,
@@ -10,6 +10,8 @@ import {
   Layers,
   Ruler,
   Zap,
+  Save,
+  CheckCircle2,
 } from 'lucide-react';
 
 export interface ActiveBlastBannerProps {
@@ -17,6 +19,7 @@ export interface ActiveBlastBannerProps {
   activeBlast: Blast;
   activeBlastId: string;
   onSelectBlast: (blastId: string) => void;
+  onUpdateBlast?: (blast: Blast) => void;
   onNewBlast?: () => void;
   lang?: 'en' | 'fr';
 }
@@ -26,10 +29,28 @@ export const ActiveBlastBanner: React.FC<ActiveBlastBannerProps> = ({
   activeBlast,
   activeBlastId,
   onSelectBlast,
+  onUpdateBlast,
   onNewBlast,
   lang = 'en',
 }) => {
   const isFrench = lang === 'fr';
+  const [isSaved, setIsSaved] = useState(false);
+
+  const handleSaveBlast = () => {
+    if (onUpdateBlast) {
+      onUpdateBlast(activeBlast);
+    }
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(`fragmill_blast_${activeBlast.id}`, JSON.stringify(activeBlast));
+        localStorage.setItem('fragmill_last_active_blast_id', activeBlast.id);
+      } catch (e) {
+        console.warn('LocalStorage save error:', e);
+      }
+    }
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2500);
+  };
 
   const burden = activeBlast.parameters.burden || 2.4;
   const spacing = activeBlast.parameters.spacing || 2.8;
@@ -157,6 +178,29 @@ export const ActiveBlastBanner: React.FC<ActiveBlastBannerProps> = ({
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Universal Save Blast Button */}
+          <button
+            onClick={handleSaveBlast}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition cursor-pointer ${
+              isSaved
+                ? 'bg-emerald-600 text-white shadow-emerald-600/30'
+                : 'bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black shadow-emerald-500/30'
+            }`}
+            title={isFrench ? 'Enregistrer les modifications du tir actif pour qu’elles persistent' : 'Save current blast modifications so they stay intact'}
+          >
+            {isSaved ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{isFrench ? 'Enregistré !' : 'Saved !'}</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5" />
+                <span>{isFrench ? 'Enregistrer le Tir' : 'Save Blast'}</span>
+              </>
+            )}
+          </button>
 
           {/* Quick New Blast Button */}
           {onNewBlast && (

@@ -1110,3 +1110,121 @@ export function downloadSampleDrillHoleTemplate(lang: 'en' | 'fr' = 'en') {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Generates and downloads an optimized .xlsx drillhole plan for the next blast based on Blast Advisor recommendations
+ */
+export function downloadOptimizedNextBlastExcel(
+  blast: Blast,
+  rec: {
+    recommendedBurden: number;
+    recommendedSpacing: number;
+    recommendedStemming: number;
+    recommendedPowderFactor: number;
+    predictedP80Mm?: number;
+  },
+  lang: 'en' | 'fr' = 'en'
+) {
+  const isFr = lang === 'fr';
+  const wb = XLSX.utils.book_new();
+
+  const burden = rec.recommendedBurden;
+  const spacing = rec.recommendedSpacing;
+  const stemming = rec.recommendedStemming;
+  const benchHeight = (blast.drillHoles && blast.drillHoles.length > 0)
+    ? Math.max(...blast.drillHoles.map((h) => h.depthM)) - (blast.drillHoles[0]?.subdrillM || 0)
+    : (blast.parameters.benchHeight || 10.0);
+  const subdrill = blast.drillHoles?.[0]?.subdrillM || blast.parameters.subdrill || 1.0;
+  const depth = benchHeight + subdrill;
+  const dia = blast.drillHoles?.[0]?.diameterMm || blast.parameters.holeDiameter || 89;
+  const rockType = blast.rockMass.rockType || 'Granodiorite';
+  const ucs = blast.rockMass.ucsMPa || 120;
+  const density = blast.rockMass.density || 2.68;
+  const totalHoles = blast.drillHoles?.length || blast.parameters.numberOfHoles || 36;
+  const numRows = 4;
+  const holesPerRow = Math.ceil(totalHoles / numRows);
+
+  // Linear charge density (kg/m of hole)
+  const holeRadiusM = (dia / 2) / 1000;
+  const holeVolumePerM = Math.PI * Math.pow(holeRadiusM, 2);
+  const expDensity = 0.85; // ANFO kg/L
+  const chargePerM = holeVolumePerM * 1000 * expDensity;
+  const chargeLength = Math.max(0.5, depth - stemming);
+  const totalChargeKg = parseFloat((chargeLength * chargePerM).toFixed(1));
+  const toeChargeKg = parseFloat((totalChargeKg * 0.35).toFixed(1));
+  const colChargeKg = parseFloat((totalChargeKg - toeChargeKg).toFixed(1));
+  const powderFactor = parseFloat((totalChargeKg / (burden * spacing * benchHeight)).toFixed(2));
+
+  const headers = isFr
+    ? ['ID_Trou', 'Ligne_Rangée', 'Est_X_m', 'Nord_Y_m', 'Cote_Z_m', 'Diametre_mm', 'Profondeur_m', 'Banquette_m', 'Espacement_m', 'Surforage_m', 'Bourrage_m', 'Inclinaison_deg', 'Eau_Profondeur_m', 'Explosif_Pied', 'Charge_Pied_kg', 'Explosif_Colonne', 'Charge_Colonne_kg', 'Air_Deck_m', 'Charge_Totale_kg', 'Dosage_kg_m3', 'Type_Roche', 'Durete_UCS_MPa', 'RQD_Pourcent', 'Densite_t_m3', 'Retard_ms', 'Type_Detonateur', 'Remarques']
+    : ['Hole_ID', 'Row_Number', 'Easting_X_m', 'Northing_Y_m', 'Elevation_Z_m', 'Diameter_mm', 'Depth_m', 'Burden_m', 'Spacing_m', 'Subdrill_m', 'Stemming_m', 'Inclination_deg', 'Water_Depth_m', 'Toe_Explosive', 'Toe_Charge_kg', 'Column_Explosive', 'Column_Charge_kg', 'Air_Deck_m', 'Total_Charge_kg', 'Powder_Factor_kg_m3', 'Rock_Type', 'Hardness_UCS_MPa', 'RQD_Percent', 'Density_t_m3', 'Delay_ms', 'Detonator_Type', 'Notes'];
+
+  const rows: any[] = [];
+  const baseRL = blast.drillHoles?.[0]?.elevationZ || 840.0;
+  const rowLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+  let holeIdx = 1;
+  for (let r = 0; r < numRows; r++) {
+    const rowNum = r + 1;
+    const rowPrefix = rowLetters[r] || `R${rowNum}`;
+    const staggerOffset = (r % 2 === 1) ? spacing / 2 : 0.0;
+    const northing = parseFloat((r * burden).toFixed(2));
+
+    for (let c = 0; c < holesPerRow; c++) {
+      if (holeIdx > totalHoles) break;
+      const holeId = `${rowPrefix}${String(c + 1).padStart(2, '0')}`;
+      const easting = parseFloat((c * spacing + staggerOffset).toFixed(2));
+      const delayMs = 400 + r * 25 + Math.abs(c - Math.floor(holesPerRow / 2)) * 15;
+
+      rows.push([
+        holeId,
+        rowNum,
+        easting,
+        northing,
+        baseRL,
+        dia,
+        parseFloat(depth.toFixed(2)),
+        burden,
+        spacing,
+        subdrill,
+        stemming,
+        r === 0 ? 80 : 90, // First row inclined to match face, others vertical
+        0.0,
+        'Bulk Emulsion',
+        toeChargeKg,
+        'ANFO',
+        colChargeKg,
+        0.0,
+        totalChargeKg,
+        powderFactor,
+        rockType,
+        ucs,
+        80,
+        density,
+        delayMs,
+        'Electronic i-kon',
+        isFr
+          ? `Design optimisé par FragMill Advisor (P80 cible ${rec.predictedP80Mm || 180}mm)`
+          : `FragMill Advisor Optimized Design (Target P80 ${rec.predictedP80Mm || 180}mm)`,
+      ]);
+      holeIdx++;
+    }
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = headers.map(() => ({ wch: 16 }));
+  XLSX.utils.book_append_sheet(wb, ws, isFr ? 'Plan_Tir_Optimise' : 'Optimized_Blast_Plan');
+
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const nextId = blast.blastId ? `BL-${parseInt(blast.blastId.replace(/\D/g, '') || '1') + 1}` : 'Prochain_Tir';
+  a.download = isFr ? `FragMill_Plan_Foration_Optimise_${nextId}.xlsx` : `FragMill_Optimized_Drill_Plan_${nextId}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

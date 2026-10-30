@@ -17,9 +17,11 @@ import {
   CheckCircle2,
   RefreshCw,
   Info,
+  FileSpreadsheet,
 } from 'lucide-react';
 import type { Project, Site } from '../../types';
 import { SendToReportButton } from '../report/SendToReportButton';
+import { downloadOptimizedNextBlastExcel } from '../../services/drillHoles/drillHoleService';
 
 interface KuzRamViewProps {
   blasts: Blast[];
@@ -451,6 +453,20 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
                   <span>{advisorResult.predictedP80Mm} mm [CI: {advisorResult.predictedP80CI[0]}-{advisorResult.predictedP80CI[1]}]</span>
                 </div>
               </div>
+
+              {/* Action to download ready-to-drill optimized Excel file */}
+              <button
+                onClick={() => downloadOptimizedNextBlastExcel(selectedBlast, advisorResult, lang)}
+                className="w-full mt-3 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow transition cursor-pointer"
+                title={lang === 'fr' ? 'Générer et télécharger la grille de foration Excel optimisée pour le prochain tir' : 'Generate and download optimized Excel drill plan for the next blast'}
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>
+                  {lang === 'fr'
+                    ? 'Télécharger le Plan Excel Optimisé (.xlsx)'
+                    : 'Download Optimized Drill Plan (.xlsx)'}
+                </span>
+              </button>
             </div>
 
             <div className="lg:col-span-7">

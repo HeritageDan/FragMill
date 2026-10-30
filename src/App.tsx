@@ -71,17 +71,30 @@ function AppContent() {
 
       // Hydrate blasts with their child images, runs, ground truth, and mill batches
       const hydratedBlasts = blastList.map((b) => {
-        const bImages = imageList.filter((img) => img.blastId === b.id);
+        let baseBlast = b;
+        try {
+          const cachedSnap = localStorage.getItem(`fragmill_blast_${b.id}`);
+          if (cachedSnap) {
+            const parsed = JSON.parse(cachedSnap);
+            if (parsed && parsed.id === b.id) {
+              baseBlast = { ...b, ...parsed };
+            }
+          }
+        } catch (e) {
+          console.warn('Could not read cached blast snapshot:', e);
+        }
+
+        const bImages = imageList.filter((img) => img.blastId === baseBlast.id);
         const hydratedImages = bImages.map((img) => ({
           ...img,
           segmentationRuns: runList.filter((r) => r.imageId === img.id),
         }));
 
         return {
-          ...b,
-          images: hydratedImages,
-          groundTruth: gtList.find((gt) => gt.blastId === b.id),
-          millBatch: mbList.find((mb) => mb.blastId === b.id),
+          ...baseBlast,
+          images: baseBlast.images && baseBlast.images.length > 0 ? baseBlast.images : hydratedImages,
+          groundTruth: gtList.find((gt) => gt.blastId === baseBlast.id),
+          millBatch: mbList.find((mb) => mb.blastId === baseBlast.id),
         };
       });
 
@@ -89,11 +102,18 @@ function AppContent() {
       setSites(siteList);
       setBlasts(hydratedBlasts);
 
-      if (hydratedBlasts.length > 0) {
+      const savedBlastId = localStorage.getItem('fragmill_last_active_blast_id');
+      const savedTab = localStorage.getItem('fragmill_last_active_tab') as NavigationTab | null;
+
+      if (savedBlastId && hydratedBlasts.some((b) => b.id === savedBlastId)) {
+        setActiveBlastId(savedBlastId);
+      } else if (hydratedBlasts.length > 0) {
         setActiveBlastId(hydratedBlasts[0].id);
       }
 
-      if (savedSettings.mode === 'field') {
+      if (savedTab) {
+        setActiveTab(savedTab);
+      } else if (savedSettings.mode === 'field') {
         setActiveTab('wizard');
       } else {
         setActiveTab('blast');
@@ -105,6 +125,24 @@ function AppContent() {
     }
   };
 
+  const handleSelectBlast = (id: string) => {
+    setActiveBlastId(id);
+    try {
+      localStorage.setItem('fragmill_last_active_blast_id', id);
+    } catch (e) {
+      console.warn('LocalStorage save error:', e);
+    }
+  };
+
+  const handleSelectTab = (tab: NavigationTab) => {
+    setActiveTab(tab);
+    try {
+      localStorage.setItem('fragmill_last_active_tab', tab);
+    } catch (e) {
+      console.warn('LocalStorage save error:', e);
+    }
+  };
+
   const handleUpdateSettings = async (newSettings: AppSettings) => {
     setSettings(newSettings);
     await saveSettings(newSettings);
@@ -112,6 +150,12 @@ function AppContent() {
 
   const handleUpdateBlast = async (updatedBlast: Blast) => {
     await db.blasts.put(updatedBlast);
+    try {
+      localStorage.setItem(`fragmill_blast_${updatedBlast.id}`, JSON.stringify(updatedBlast));
+      localStorage.setItem('fragmill_last_active_blast_id', updatedBlast.id);
+    } catch (e) {
+      console.warn('LocalStorage blast snapshot failed:', e);
+    }
     setBlasts((prev) => prev.map((b) => (b.id === updatedBlast.id ? updatedBlast : b)));
   };
 
@@ -315,10 +359,10 @@ function AppContent() {
         currentProject={activeProject}
         blasts={blasts}
         activeBlastId={activeBlastId}
-        onSelectBlast={(id) => setActiveBlastId(id)}
+        onSelectBlast={handleSelectBlast}
         onDeleteBlast={handleDeleteBlast}
         activeTab={activeTab}
-        onSelectTab={(tab) => setActiveTab(tab)}
+        onSelectTab={handleSelectTab}
         settings={settings}
         onUpdateSettings={handleUpdateSettings}
         onNewBlast={handleNewBlast}
@@ -332,7 +376,8 @@ function AppContent() {
             blasts={blasts}
             activeBlast={activeBlast}
             activeBlastId={activeBlastId}
-            onSelectBlast={(id) => setActiveBlastId(id)}
+            onSelectBlast={handleSelectBlast}
+            onUpdateBlast={handleUpdateBlast}
             onNewBlast={handleNewBlast}
             lang={settings.language}
           />
@@ -367,6 +412,7 @@ function AppContent() {
             blast={activeBlast}
             project={activeProject || undefined}
             site={activeSite || undefined}
+            onUpdateBlast={handleUpdateBlast}
             lang={settings.language}
           />
         )}
@@ -426,8 +472,8 @@ function AppContent() {
             blasts={blasts}
             activeBlastId={activeBlastId}
             onSelectBlast={(id) => {
-              setActiveBlastId(id);
-              setActiveTab('blast');
+              handleSelectBlast(id);
+              handleSelectTab('blast');
             }}
             project={activeProject || undefined}
             site={activeSite || undefined}
@@ -439,7 +485,7 @@ function AppContent() {
           <ValidationDashboard
             blasts={blasts}
             activeBlastId={activeBlastId}
-            onSelectBlast={(id) => setActiveBlastId(id)}
+            onSelectBlast={(id) => handleSelectBlast(id)}
             onUpdateBlastGroundTruth={handleUpdateBlastGroundTruth}
             project={activeProject || undefined}
             site={activeSite || undefined}
@@ -451,7 +497,7 @@ function AppContent() {
           <MineToMillView
             blasts={blasts}
             activeBlastId={activeBlastId}
-            onSelectBlast={(id) => setActiveBlastId(id)}
+            onSelectBlast={(id) => handleSelectBlast(id)}
             onUpdateMillBatch={handleUpdateMillBatch}
             project={activeProject || undefined}
             site={activeSite || undefined}
@@ -463,7 +509,7 @@ function AppContent() {
           <KuzRamView
             blasts={blasts}
             activeBlastId={activeBlastId}
-            onSelectBlast={(id) => setActiveBlastId(id)}
+            onSelectBlast={(id) => handleSelectBlast(id)}
             project={activeProject || undefined}
             site={activeSite || undefined}
             lang={settings.language}

@@ -269,7 +269,7 @@ export async function generateModularVaultPdfReport(
   const blastState = getBlastState(blast);
   const rockA = blastState.rock.rockFactorA;
   const kuzRam = blastState.kuzRam;
-  const droneSurvey = generateDemoDroneSurvey(blast.blastId);
+  const droneSurvey = blast.droneSurvey || generateDemoDroneSurvey(blast.blastId);
   const drillHoles = blastState.drilling.holes;
   const econResult = evaluateMineToMillEconomics(blast, blastState.optical.p80Mm, blast.millBatch, DEFAULT_ECONOMIC_PARAMS);
 
@@ -822,8 +822,8 @@ export async function generateModularVaultPdfReport(
       const alt = p.flightAltitudeM ?? droneSurvey.metadata.flightAltitudeM ?? 45;
       const gsd = p.gsdMmPerPx ?? droneSurvey.metadata.gsdMmPerPx ?? 12.5;
       const crs = p.crs ?? droneSurvey.metadata.crs ?? 'WGS84 / UTM Zone 33N';
-      const totVol = blastState.drone.totalVolumeM3;
-      const avgP80 = blastState.drone.meanP80Mm;
+      const totVol = p.totalVolumeM3 ?? blastState.drone.totalVolumeM3;
+      const avgP80 = p.meanP80Mm ?? blastState.drone.meanP80Mm;
 
       // Meta banner
       doc.setFillColor(238, 242, 255);
@@ -831,27 +831,35 @@ export async function generateModularVaultPdfReport(
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(49, 46, 129);
+      const isDemo = p.isDemoData ?? blastState.drone.isDemoData;
+      const teleLabel = isFr
+        ? (isDemo ? 'TÉLÉMÉTRIE VOL DRONE (SIMULATION)' : 'TÉLÉMÉTRIE VOL DRONE UAV (RELEVÉ GÉORÉFÉRENCÉ)')
+        : (isDemo ? 'DRONE FLIGHT TELEMETRY (SIMULATION)' : 'UAV DRONE FLIGHT TELEMETRY (SURVEY-GRADE)');
+      const volLabel = isFr
+        ? (isDemo ? `VOLUME SURVEY : ${totVol.toLocaleString()} m³ (Simulé)` : `VOLUME RELEVÉ 3D : ${totVol.toLocaleString()} m³ (Modélisé)`)
+        : (isDemo ? `SURVEY VOLUME: ${totVol.toLocaleString()} m³ (Simulated)` : `UAV 3D VOLUME: ${totVol.toLocaleString()} m³ (Modeled)`);
+
       doc.text(
-        isFr
-          ? `TÉLÉMÉTRIE VOL [DONNÉES DE DÉMO] : Altitude : ${alt} m | GSD : ${gsd} mm/px | Recouvrement : 80% / 70% | Système : ${crs}`
-          : `FLIGHT TELEMETRY [DEMO DATA]: Altitude: ${alt} m | GSD: ${gsd} mm/px | Overlap: 80% / 70% | CRS: ${crs}`,
+        `${teleLabel} : Altitude : ${alt} m | GSD : ${gsd} mm/px | Recouvrement : 80% / 70% | Système : ${crs}`,
         18,
         y + 5
       );
       doc.text(
         isFr
-          ? `VOLUME SURVEY : ${totVol} m³ (Démo) vs Volume Prévu Gradin : ${blastState.geometry.totalBlastedVolumeM3} m³ | P80 Moyen : ${avgP80} mm`
-          : `SURVEY VOLUME: ${totVol} m³ (Demo) vs Design Bench Volume: ${blastState.geometry.totalBlastedVolumeM3} m³ | Mean P80: ${avgP80} mm`,
+          ? `${volLabel} vs Volume Prévu Gradin : ${blastState.geometry.totalBlastedVolumeM3.toLocaleString()} m³ | P80 Moyen : ${avgP80} mm`
+          : `${volLabel} vs Design Bench Volume: ${blastState.geometry.totalBlastedVolumeM3.toLocaleString()} m³ | Mean P80: ${avgP80} mm`,
         18,
         y + 9.5
       );
       y += 16;
 
       // Embed Drone 3D Muckpile Elevation & Sector Heatmap Graphic
-      const droneGraphic = renderDrone3DMuckpileGraphic(droneSurvey, isFr ? 'fr' : 'en');
+      const activeSurvey = p.survey ?? droneSurvey;
+      const droneGraphic = renderDrone3DMuckpileGraphic(activeSurvey, isFr ? 'fr' : 'en');
       addImageWithPageCheck(droneGraphic, 182, 92);
 
-      const sectors = blastState.drone.sectors.map((s) => [
+      const sectorsList = p.sectors ?? blastState.drone.sectors;
+      const sectors = sectorsList.map((s: any) => [
         isFr ? s.nameFr : s.nameEn,
         `${s.volumeM3} m³`,
         `${s.p50Mm} mm`,
@@ -876,12 +884,15 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 3: BELT VISION
     else if (key === 'beltvision') {
-      const tph = blastState.belt.instantTph;
-      const util = 78;
-      const speed = blastState.belt.beltSpeedMPerS;
-      const width = blastState.belt.beltWidthM;
-      const threshold = blastState.belt.crusherGapeThresholdMm;
-      const fps = blastState.belt.fps;
+      const tph = p.instantTph ?? blastState.belt.instantTph;
+      const util = p.utilizationPercent ?? 78;
+      const speed = p.beltSpeedMPerS ?? blastState.belt.beltSpeedMPerS;
+      const width = p.beltWidthM ?? blastState.belt.beltWidthM;
+      const threshold = p.crusherGapeThresholdMm ?? blastState.belt.crusherGapeThresholdMm;
+      const fps = p.fps ?? blastState.belt.fps;
+      const beltP50 = p.p50Mm ?? blastState.belt.p50Mm;
+      const beltP80 = p.p80Mm ?? blastState.belt.p80Mm;
+      const beltTopSize = p.topSizeMm ?? blastState.belt.topSizeMm;
 
       doc.setFillColor(240, 253, 250);
       doc.rect(14, y, 182, 12, 'F');
@@ -890,8 +901,8 @@ export async function generateModularVaultPdfReport(
       doc.setTextColor(19, 78, 74);
       doc.text(
         isFr
-          ? `PARAMÈTRES BANDE [DONNÉES DE DÉMO] : Largeur ${width}m | Vitesse ${speed} m/s | Débit : ${tph} t/h | Taux de Charge : ${util}%`
-          : `BELT PARAMETERS [DEMO DATA]: Width ${width}m | Speed ${speed} m/s | Throughput: ${tph} tph | Loading Rate: ${util}%`,
+          ? `PARAMÈTRES BANDE (CONTRÔLE OPTIQUE CONTINU) : Largeur ${width}m | Vitesse ${speed} m/s | Débit : ${tph} t/h | Taux de Charge : ${util}%`
+          : `BELT PARAMETERS (CONTINUOUS VISION AUDIT): Width ${width}m | Speed ${speed} m/s | Throughput: ${tph} tph | Loading Rate: ${util}%`,
         18,
         y + 5
       );
@@ -908,19 +919,19 @@ export async function generateModularVaultPdfReport(
       const beltGraphic = renderConveyorBeltGraphic({
         throughputTph: tph,
         beltSpeedMPerS: speed,
-        p50Mm: blastState.belt.p50Mm,
-        p80Mm: blastState.belt.p80Mm,
+        p50Mm: beltP50,
+        p80Mm: beltP80,
         crusherGapeThresholdMm: threshold,
-        topSizeMm: blastState.belt.topSizeMm,
+        topSizeMm: beltTopSize,
         lang: isFr ? 'fr' : 'en',
       });
       addImageWithPageCheck(beltGraphic, 182, 85);
 
       const beltStatsRows = [
-        ['P20 (Fines transportées)', `${Math.round(blastState.belt.p50Mm * 0.45)} mm`, isFr ? 'Optimal' : 'Pass'],
-        ['P50 (Médiane sur bande)', `${blastState.belt.p50Mm} mm`, isFr ? 'Normal' : 'Pass'],
-        ['P80 (Calibre d’alimentation)', `${blastState.belt.p80Mm} mm`, isFr ? 'Conforme broyage' : 'Grinding compliant'],
-        ['TopSize (Taille maximale)', `${blastState.belt.topSizeMm} mm`, isFr ? '< Seuil de blocage' : '< Choke threshold'],
+        ['P20 (Fines transportées)', `${Math.round(beltP50 * 0.45)} mm`, isFr ? 'Optimal' : 'Pass'],
+        ['P50 (Médiane sur bande)', `${beltP50} mm`, isFr ? 'Normal' : 'Pass'],
+        ['P80 (Calibre d’alimentation)', `${beltP80} mm`, isFr ? 'Conforme broyage' : 'Grinding compliant'],
+        ['TopSize (Taille maximale)', `${beltTopSize} mm`, isFr ? '< Seuil de blocage' : '< Choke threshold'],
         ['Comptage fragments analysés', '1 420 roches', isFr ? 'Échantillonnage continu' : 'Continuous stream'],
         ['Blocs critiques hors-gabarit', '2 blocs', isFr ? 'Gabarit surveillé' : 'Monitored'],
       ];
@@ -958,12 +969,13 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 4: 3D TIMING & FACE PROFILER
     else if (key === 'timing') {
-      const surfaceDelay = blastState.timing.surfaceDelayMs;
-      const inHoleDelay = blastState.timing.inHoleDelayMs;
-      const maxChargePerDelay = blastState.timing.maxChargePerDelayKg;
-      const ppv = blastState.timing.predictedPPVMmPerS;
-      const dist = blastState.timing.distanceToStructureM;
+      const surfaceDelay = p.surfaceDelayMs ?? blastState.timing.surfaceDelayMs;
+      const inHoleDelay = p.inHoleDelayMs ?? blastState.timing.inHoleDelayMs;
+      const maxChargePerDelay = p.maxChargePerDelayKg ?? blastState.timing.maxChargePerDelayKg;
+      const ppv = p.predictedPPVMmPerS ?? blastState.timing.predictedPPVMmPerS;
+      const dist = p.distanceToStructureM ?? blastState.timing.distanceToStructureM;
       const diam = blastState.geometry.holeDiameterMm;
+      const holes = p.holes ?? blastState.timing.holes;
 
       doc.setFillColor(255, 247, 237);
       doc.rect(14, y, 182, 12, 'F');
@@ -992,6 +1004,7 @@ export async function generateModularVaultPdfReport(
         maxChargePerDelayKg: maxChargePerDelay,
         ppvMmPerS: ppv,
         distanceToStructureM: dist,
+        holes,
         lang: isFr ? 'fr' : 'en',
       });
       addImageWithPageCheck(timingGraphic, 182, 85);
@@ -1024,13 +1037,14 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 5: COMMINUTION DIGITAL TWIN
     else if (key === 'comminution') {
-      const wi = 14.5;
-      const axb = 42.0;
-      const eTotal = blastState.comminution.totalSpecificEnergyKwhPerT.toFixed(2);
-      const eGrind = blastState.comminution.grindingSpecificEnergyKwhPerT.toFixed(2);
-      const eCrush = blastState.comminution.crushingSpecificEnergyKwhPerT.toFixed(2);
-      const throughput = blastState.comminution.achievableThroughputTPH;
-      const goldRec = blastState.comminution.goldRecoveryPercent.toFixed(1);
+      const wi = p.bondWorkIndex ?? 14.5;
+      const axb = p.dropWeightAxb ?? 42.0;
+      const eTotal = (p.totalSpecificEnergyKwhPerT ?? blastState.comminution.totalSpecificEnergyKwhPerT).toFixed(2);
+      const eGrind = (p.grindingSpecificEnergyKwhPerT ?? blastState.comminution.grindingSpecificEnergyKwhPerT).toFixed(2);
+      const eCrush = (p.crushingSpecificEnergyKwhPerT ?? blastState.comminution.crushingSpecificEnergyKwhPerT).toFixed(2);
+      const throughput = p.achievableThroughputTPH ?? blastState.comminution.achievableThroughputTPH;
+      const goldRec = (p.goldRecoveryPercent ?? blastState.comminution.goldRecoveryPercent).toFixed(1);
+      const f80 = p.f80Mm ?? blastState.optical.p80Mm;
 
       doc.setFillColor(236, 253, 245);
       doc.rect(14, y, 182, 12, 'F');
@@ -1056,9 +1070,9 @@ export async function generateModularVaultPdfReport(
       // Embed Industrial Comminution Circuit Flowsheet Graphic
       const comminutionGraphic = renderComminutionCircuitGraphic({
         throughputTph: throughput,
-        crushingKwhPerT: blastState.comminution.crushingSpecificEnergyKwhPerT,
-        totalKwhPerT: blastState.comminution.totalSpecificEnergyKwhPerT,
-        f80Mm: blastState.optical.p80Mm,
+        crushingKwhPerT: p.crushingSpecificEnergyKwhPerT ?? blastState.comminution.crushingSpecificEnergyKwhPerT,
+        totalKwhPerT: p.totalSpecificEnergyKwhPerT ?? blastState.comminution.totalSpecificEnergyKwhPerT,
+        f80Mm: f80,
       }, isFr ? 'fr' : 'en');
       addImageWithPageCheck(comminutionGraphic, 182, 85);
 
@@ -1086,8 +1100,18 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 6: BLOCK MODEL & KRIGING
     else if (key === 'kriging') {
-      const softCut = blastState.kriging.softCutoffMPa;
-      const hardCut = blastState.kriging.hardCutoffMPa;
+      const softCut = p.softCutoffMPa ?? blastState.kriging.softCutoffMPa;
+      const hardCut = p.hardCutoffMPa ?? blastState.kriging.hardCutoffMPa;
+      const nodes = p.gridNodes ?? blastState.kriging.gridNodes;
+      const bholes = p.boreholes ?? blastState.kriging.boreholes;
+      const bounds = p.gridBounds ?? blastState.kriging.gridBounds;
+      const cols = p.gridCols ?? blastState.kriging.gridCols ?? 20;
+      const rows = p.gridRows ?? blastState.kriging.gridRows ?? 14;
+      const selectedAttr = p.selectedAttribute ?? blastState.kriging.selectedAttribute ?? 'ucs';
+      const varRange = p.rangeM ?? p.variogram?.rangeM ?? p.variogram?.range ?? blastState.kriging.variogram?.rangeM ?? 45.0;
+      const varNugget = p.nugget ?? p.variogram?.nugget ?? blastState.kriging.variogram?.nugget ?? 50.0;
+      const varSill = p.sill ?? p.variogram?.sill ?? blastState.kriging.variogram?.sill ?? 280.0;
+      const varModel = (p.variogramModel ?? p.variogram?.model ?? blastState.kriging.variogram?.model ?? 'spherical').toUpperCase();
 
       doc.setFillColor(245, 243, 255);
       doc.rect(14, y, 182, 12, 'F');
@@ -1096,8 +1120,8 @@ export async function generateModularVaultPdfReport(
       doc.setTextColor(88, 28, 135);
       doc.text(
         isFr
-          ? `GÉOSTATISTIQUE : Variogramme : SPHERICAL | Portée (a) : 45.0 m | Pépite (C0) : 50.0 | Palier (C) : 280`
-          : `GEOSTATISTICS: Variogram: SPHERICAL | Range (a): 45.0 m | Nugget (C0): 50.0 | Sill (C): 280`,
+          ? `GÉOSTATISTIQUE : Variogramme : ${varModel} | Portée (a) : ${varRange.toFixed(1)} m | Pépite (C0) : ${varNugget.toFixed(1)} | Palier (C) : ${varSill.toFixed(1)}`
+          : `GEOSTATISTICS: Variogram: ${varModel} | Range (a): ${varRange.toFixed(1)} m | Nugget (C0): ${varNugget.toFixed(1)} | Sill (C): ${varSill.toFixed(1)}`,
         18,
         y + 5
       );
@@ -1110,14 +1134,34 @@ export async function generateModularVaultPdfReport(
       );
       y += 16;
 
-      // Embed Geostatistical Ordinary Kriging Block Model Graphic
-      const krigingGraphic = renderKrigingModelGraphic({ softCutoff: softCut, hardCutoff: hardCut, isDemo: true }, isFr ? 'fr' : 'en');
-      addImageWithPageCheck(krigingGraphic, 182, 85);
+      // Embed Geostatistical Ordinary Kriging Block Model Graphic (3-panel: Heatmap, Kriging Variance, Blast Domains)
+      const krigingGraphic = renderKrigingModelGraphic({
+        softCutoff: softCut,
+        hardCutoff: hardCut,
+        isDemo: blastState.drilling.isDemoData,
+        gridNodes: nodes,
+        boreholes: bholes,
+        gridBounds: bounds,
+        gridCols: cols,
+        gridRows: rows,
+        variogram: {
+          model: (varModel.toLowerCase() === 'exponential' || varModel.toLowerCase() === 'gaussian') ? varModel.toLowerCase() as any : 'spherical',
+          nugget: varNugget,
+          sill: varSill,
+          rangeM: varRange,
+        },
+        selectedAttribute: selectedAttr,
+      }, isFr ? 'fr' : 'en');
+      addImageWithPageCheck(krigingGraphic, 182, 93);
+
+      const softPct = p.softDomainPercent ?? blastState.kriging.softDomainPercent;
+      const medPct = p.mediumDomainPercent ?? blastState.kriging.mediumDomainPercent;
+      const hardPct = p.hardDomainPercent ?? blastState.kriging.hardDomainPercent;
 
       const krigRows = [
-        [isFr ? 'Domaine Tendre (Saprolite / Fissuré)' : 'Soft Domain (Saprolite / Weathered)', `< ${softCut} MPa`, '0.42 kg/m³', `${blastState.kriging.softDomainPercent}%`, isFr ? 'ANFO standard 0.40 - 0.45 kg/m³' : 'Standard ANFO'],
-        [isFr ? 'Domaine Moyen (Andésite modérée)' : 'Medium Domain (Moderate Andesite)', `${softCut} - ${hardCut} MPa`, '0.58 kg/m³', `${blastState.kriging.mediumDomainPercent}%`, isFr ? 'Émulsion 30/70 avec sur-énergie' : 'Heavy ANFO 30/70'],
-        [isFr ? 'Domaine Dur (Granodiorite massive)' : 'Hard Massive (Massive Granodiorite)', `> ${hardCut} MPa`, '0.74 kg/m³', `${blastState.kriging.hardDomainPercent}%`, isFr ? 'Émulsion pure + mailles resserrées' : 'Full Emulsion + tight pattern'],
+        [isFr ? 'Domaine Tendre (Saprolite / Fissuré)' : 'Soft Domain (Saprolite / Weathered)', `< ${softCut} MPa`, '0.42 kg/m³', `${softPct}%`, isFr ? 'ANFO standard 0.40 - 0.45 kg/m³' : 'Standard ANFO'],
+        [isFr ? 'Domaine Moyen (Andésite modérée)' : 'Medium Domain (Moderate Andesite)', `${softCut} - ${hardCut} MPa`, '0.58 kg/m³', `${medPct}%`, isFr ? 'Émulsion 30/70 avec sur-énergie' : 'Heavy ANFO 30/70'],
+        [isFr ? 'Domaine Dur (Granodiorite massive)' : 'Hard Massive (Massive Granodiorite)', `> ${hardCut} MPa`, '0.74 kg/m³', `${hardPct}%`, isFr ? 'Émulsion pure + mailles resserrées' : 'Full Emulsion + tight pattern'],
       ];
 
       y = drawTable(
@@ -1135,10 +1179,11 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 7: DRILL TELEMETRY & IREDES
     else if (key === 'telemetry') {
-      const tol = blastState.drilling.collarToleranceMm;
-      const comp = blastState.drilling.complianceRatePercent;
-      const maxErr = blastState.drilling.maxCollarErrorMm;
-      const rop = blastState.drilling.avgPenetrationRateMPerMin;
+      const tol = p.collarToleranceMm ?? blastState.drilling.collarToleranceMm;
+      const comp = p.complianceRatePercent ?? blastState.drilling.complianceRatePercent;
+      const maxErr = p.maxCollarErrorMm ?? blastState.drilling.maxCollarErrorMm;
+      const rop = p.avgPenetrationRateMPerMin ?? blastState.drilling.avgPenetrationRateMPerMin;
+      const holes = p.holes ?? blastState.drilling.holes;
 
       doc.setFillColor(240, 249, 255);
       doc.rect(14, y, 182, 12, 'F');
@@ -1147,8 +1192,8 @@ export async function generateModularVaultPdfReport(
       doc.setTextColor(3, 105, 161);
       doc.text(
         isFr
-          ? `TÉLÉMÉTRIE MWD [${blastState.drilling.isDemoData ? 'DONNÉES DE DÉMO' : 'RELEVÉ RÉEL'}] : Tolérance : ${tol} mm | Conformité : ${comp}% | Écart Max : ${maxErr} mm`
-          : `MWD TELEMETRY [${blastState.drilling.isDemoData ? 'DEMO DATA' : 'AS-BUILT'}]: Collar Tolerance: ${tol} mm | Compliance: ${comp}% | Max Error: ${maxErr} mm`,
+          ? `TÉLÉMÉTRIE MWD [${blastState.drilling.isDemoData ? 'SIMULATION IREDES' : 'RELEVÉ FORATION RÉEL'}] : Tolérance : ${tol} mm | Conformité : ${comp}% | Écart Max : ${maxErr} mm`
+          : `MWD TELEMETRY [${blastState.drilling.isDemoData ? 'IREDES SIMULATION' : 'AS-BUILT DRILL PATTERN'}]: Collar Tolerance: ${tol} mm | Compliance: ${comp}% | Max Error: ${maxErr} mm`,
         18,
         y + 5
       );
@@ -1162,17 +1207,17 @@ export async function generateModularVaultPdfReport(
       y += 16;
 
       // Embed MWD Drill Collar Deviation Bullseye Target Graphic
-      const bullseyeGraphic = renderDrillCollarBullseyeGraphic(blastState.drilling.holes, {
+      const bullseyeGraphic = renderDrillCollarBullseyeGraphic(holes, {
         toleranceMm: tol,
         complianceRate: comp,
-        totalHoles: blastState.drilling.totalHoles,
+        totalHoles: p.totalHoles ?? blastState.drilling.totalHoles,
         rigModel: blastState.drilling.rigModel,
         averageRopMPerMin: rop,
         isDemo: blastState.drilling.isDemoData,
       }, isFr ? 'fr' : 'en');
       addImageWithPageCheck(bullseyeGraphic, 182, 85);
 
-      const drillRows = blastState.drilling.holes.slice(0, 7).map((h) => [
+      const drillRows = (holes as any[]).slice(0, 7).map((h: any) => [
         h.holeId,
         `${h.plannedDepthM.toFixed(1)} m`,
         `${(h.actualDepthM || h.plannedDepthM).toFixed(1)} m`,
@@ -1196,13 +1241,13 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 8: BENCH MAP
     else if (key === 'benchmap') {
-      const bench = blastState.geometry.benchElevationRL;
-      const flyrock = 300;
-      const burden = blastState.geometry.burden;
-      const spacing = blastState.geometry.spacing;
-      const numHoles = blastState.geometry.numberOfHoles;
-      const vol = blastState.geometry.totalBlastedVolumeM3;
-      const ton = blastState.rock.totalBlastedTonnage;
+      const bench = p.benchElevationRL ?? blastState.geometry.benchElevationRL;
+      const flyrock = p.flyrockRadiusM ?? 300;
+      const burden = p.burden ?? blastState.geometry.burden;
+      const spacing = p.spacing ?? blastState.geometry.spacing;
+      const numHoles = p.numberOfHoles ?? blastState.geometry.numberOfHoles;
+      const vol = p.totalBlastedVolumeM3 ?? blastState.geometry.totalBlastedVolumeM3;
+      const ton = p.totalBlastedTonnage ?? blastState.rock.totalBlastedTonnage;
 
       doc.setFillColor(254, 243, 199);
       doc.rect(14, y, 182, 12, 'F');
@@ -1259,7 +1304,8 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 9: GROUND TRUTH VALIDATION
     else if (key === 'validation') {
-      if (!blastState.sieve.hasSieveData) {
+      const hasSieve = p.hasSieveData !== undefined ? p.hasSieveData : blastState.sieve.hasSieveData;
+      if (!hasSieve) {
         // Honest disclosure when no sieve ground truth was performed
         doc.setFillColor(254, 242, 242);
         doc.roundedRect(14, y, 182, 24, 2, 2, 'F');
@@ -1304,11 +1350,13 @@ export async function generateModularVaultPdfReport(
           headerSub
         );
       } else {
-        const errP20 = blastState.sieve.errorP20Percent ?? 0;
-        const errP50 = blastState.sieve.errorP50Percent ?? 0;
-        const errP80 = blastState.sieve.errorP80Percent ?? 0;
-        const mape = blastState.sieve.mapePercent ?? 0;
-        const k_bias = blastState.sieve.kBiasFactor ?? 1.0;
+        const errP20 = p.errorP20Percent ?? blastState.sieve.errorP20Percent ?? 0;
+        const errP50 = p.errorP50Percent ?? blastState.sieve.errorP50Percent ?? 0;
+        const errP80 = p.errorP80Percent ?? blastState.sieve.errorP80Percent ?? 0;
+        const mape = p.mapePercent ?? blastState.sieve.mapePercent ?? 0;
+        const k_bias = p.kBiasFactor ?? blastState.sieve.kBiasFactor ?? 1.0;
+        const sMass = p.sampleMassKg ?? blastState.sieve.sampleMassKg ?? 250;
+        const r2Val = p.r2 ?? blastState.sieve.r2 ?? 0.98;
 
         doc.setFillColor(236, 254, 255);
         doc.rect(14, y, 182, 12, 'F');
@@ -1324,17 +1372,22 @@ export async function generateModularVaultPdfReport(
         );
         doc.text(
           isFr
-            ? `ÉCHANTILLON TAMISÉ : Masse : ${blastState.sieve.sampleMassKg || 250} kg | Biais Stéréologique K_bias = ${k_bias} | Corrélation R² = ${blastState.sieve.r2 || 0.98}`
-            : `SCREENED SAMPLE: Mass: ${blastState.sieve.sampleMassKg || 250} kg | Stereological Bias K_bias = ${k_bias} | Correlation R² = ${blastState.sieve.r2 || 0.98}`,
+            ? `ÉCHANTILLON TAMISÉ : Masse : ${sMass} kg | Biais Stéréologique K_bias = ${k_bias} | Corrélation R² = ${r2Val}`
+            : `SCREENED SAMPLE: Mass: ${sMass} kg | Stereological Bias K_bias = ${k_bias} | Correlation R² = ${r2Val}`,
           18,
           y + 9.5
         );
         y += 16;
 
-        // Embed Sieve Ground Truth Correlation Chart
+        // Embed Sieve Ground Truth Correlation Chart (fallback to Kuz-Ram if optical curve is empty)
+        const opticalCurve = blastState.optical.curve && blastState.optical.curve.length > 0
+          ? blastState.optical.curve
+          : blastState.kuzRam.predictedCurve;
+        const sieveCurve = blast.groundTruth?.sieveData ? computeSieveDistribution(blast.groundTruth.sieveData).curve : undefined;
+
         const valChart = renderLogarithmicPassingChart({
-          measuredPoints: blastState.optical.curve,
-          sievePoints: blast.groundTruth?.sieveData ? computeSieveDistribution(blast.groundTruth.sieveData).curve : undefined,
+          measuredPoints: opticalCurve,
+          sievePoints: sieveCurve,
           p50: blastState.optical.p50Mm,
           p80: blastState.optical.p80Mm,
           title: isFr ? 'Validation Physique : Courbes Tamis vs Optique' : 'Ground Truth Validation: Sieve vs Optical PSD',
@@ -1366,9 +1419,10 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 10: MINE TO MILL
     else if (key === 'minetomill') {
-      const totalCost = blastState.economics.totalCostPerTonUSD.toFixed(2);
-      const optimalP80 = blastState.economics.optimalP80Mm;
-      const savings = blastState.economics.potentialSavingsPerTonUSD.toFixed(2);
+      const totalCost = (p.totalCostPerTonUSD ?? blastState.economics.totalCostPerTonUSD).toFixed(2);
+      const optimalP80 = p.optimalP80Mm ?? blastState.economics.optimalP80Mm;
+      const savings = (p.potentialSavingsPerTonUSD ?? blastState.economics.potentialSavingsPerTonUSD).toFixed(2);
+      const carbon = p.totalCarbonKgCo2ePerTon ?? blastState.economics.totalCarbonKgCo2ePerTon;
 
       doc.setFillColor(236, 253, 245);
       doc.rect(14, y, 182, 12, 'F');
@@ -1384,8 +1438,8 @@ export async function generateModularVaultPdfReport(
       );
       doc.text(
         isFr
-          ? `GAINS POTENTIELS : Économie de +${savings} USD/t de minerai | Empreinte Carbone : ${blastState.economics.totalCarbonKgCo2ePerTon.toFixed(2)} kg CO2e/t`
-          : `POTENTIAL SAVINGS: +${savings} USD/t of processed ore | Carbon Footprint: ${blastState.economics.totalCarbonKgCo2ePerTon.toFixed(2)} kg CO2e/t`,
+          ? `GAINS POTENTIELS : Économie de +${savings} USD/t de minerai | Empreinte Carbone : ${carbon.toFixed(2)} kg CO2e/t`
+          : `POTENTIAL SAVINGS: +${savings} USD/t of processed ore | Carbon Footprint: ${carbon.toFixed(2)} kg CO2e/t`,
         18,
         y + 9.5
       );
@@ -1395,7 +1449,7 @@ export async function generateModularVaultPdfReport(
       const m2mGraphic = renderMineToMillGraphic(optimalP80, parseFloat(totalCost), isFr ? 'fr' : 'en');
       addImageWithPageCheck(m2mGraphic, 182, 85);
 
-      const econRows = blastState.economics.costs.map((c) => [
+      const econRows = (p.costs ?? blastState.economics.costs).map((c: any) => [
         isFr ? c.nameFr : c.nameEn,
         `${c.costPerTonUSD.toFixed(2)} USD/t`,
         `${c.percentage.toFixed(1)}%`,
@@ -1424,7 +1478,7 @@ export async function generateModularVaultPdfReport(
         [isFr ? 'Scope 1 : Détonation Explosifs (ANFO)' : 'Scope 1: Explosives Detonation (ANFO)', `${blastState.economics.scope1ExplosivesKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? 'Réaction chimique nitrate-fioul' : 'ANFO detonation gas'],
         [isFr ? 'Scope 1 : Gazole Engins (Chargeuses/Dumpers)' : 'Scope 1: Diesel Fleet (Shovel & Haul)', `${blastState.economics.scope1DieselKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? 'Consommation carburant flotte' : 'Engine combustion'],
         [isFr ? 'Scope 2 : Électricité Réseau Broyeurs' : 'Scope 2: Mill Electricity Grid', `${blastState.economics.scope2ElectricityKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? `Calculé sur l’énergie totale (${blastState.comminution.totalSpecificEnergyKwhPerT} kWh/t)` : `Derived from total comminution energy (${blastState.comminution.totalSpecificEnergyKwhPerT} kWh/t)`],
-        [isFr ? 'Bilan Carbone Global par Tonne' : 'Total Carbon Footprint per Tonne', `${blastState.economics.totalCarbonKgCo2ePerTon.toFixed(2)} kg CO2e/t`, isFr ? 'Audit environnemental certifié' : 'Compliant environmental audit'],
+        [isFr ? 'Bilan Carbone Global par Tonne' : 'Total Carbon Footprint per Tonne', `${carbon.toFixed(2)} kg CO2e/t`, isFr ? 'Audit environnemental certifié' : 'Compliant environmental audit'],
       ];
 
       y = drawTable(
@@ -1442,11 +1496,11 @@ export async function generateModularVaultPdfReport(
 
     // SECTION 11: KUZ-RAM
     else if (key === 'kuzram') {
-      const rockFactorA = blastState.rock.rockFactorA.toFixed(2);
-      const uniformityN = kuzRam.uniformityIndexN.toFixed(2);
-      const characteristicXc = kuzRam.characteristicSizeXcMm.toFixed(1);
-      const predictedP50 = kuzRam.meanSizeX50Mm.toFixed(1);
-      const predictedP80 = kuzRam.p80Mm.toFixed(1);
+      const rockFactorA = (p.rockFactorA ?? blastState.rock.rockFactorA).toFixed(2);
+      const uniformityN = (p.uniformityIndexN ?? kuzRam.uniformityIndexN).toFixed(2);
+      const characteristicXc = (p.characteristicSizeXcMm ?? kuzRam.characteristicSizeXcMm).toFixed(1);
+      const predictedP50 = (p.meanSizeX50Mm ?? p.predictedP50Mm ?? kuzRam.meanSizeX50Mm).toFixed(1);
+      const predictedP80 = (p.p80Mm ?? p.predictedP80Mm ?? kuzRam.p80Mm).toFixed(1);
 
       doc.setFillColor(245, 243, 255);
       doc.rect(14, y, 182, 12, 'F');
@@ -1471,9 +1525,9 @@ export async function generateModularVaultPdfReport(
 
       // Embed Kuz-Ram Cumulative Passing Chart
       const kuzramChart = renderLogarithmicPassingChart({
-        kuzRamPoints: kuzRam.predictedCurve,
-        p50: kuzRam.meanSizeX50Mm,
-        p80: kuzRam.p80Mm,
+        kuzRamPoints: p.predictedCurve ?? kuzRam.predictedCurve,
+        p50: parseFloat(predictedP50),
+        p80: parseFloat(predictedP80),
         title: isFr ? 'Distribution Granulométrique Kuz-Ram (Cunningham)' : 'Kuz-Ram Particle Size Distribution (Cunningham)',
         lang: isFr ? 'fr' : 'en',
       });
@@ -1585,21 +1639,21 @@ export async function generateModularVaultPdfReport(
     ],
     [
       isFr ? 'Télémesure Foration MWD' : 'MWD Drilling Telemetry',
-      blastState.drilling.isDemoData ? (isFr ? 'Données de Démo' : 'Demo Dataset') : (isFr ? 'Relevé IREDES Réel' : 'Real IREDES Log'),
-      isFr ? `${blastState.drilling.totalHoles} trous analysés, conformité ${blastState.drilling.complianceRatePercent}%` : `${blastState.drilling.totalHoles} holes analyzed, compliance ${blastState.drilling.complianceRatePercent}%`,
-      blastState.drilling.isDemoData ? (isFr ? 'Indicatif / Démo' : 'Demo') : (isFr ? 'Certifié IREDES' : 'Certified'),
+      blastState.drilling.isDemoData ? (isFr ? 'Simulation IREDES' : 'IREDES Simulation') : (isFr ? 'Relevé Foration Réel (Excel/MWD)' : 'Real As-Built Log (Excel/MWD)'),
+      isFr ? `${blastState.drilling.totalHoles} trous forés, conformité ${blastState.drilling.complianceRatePercent}%` : `${blastState.drilling.totalHoles} drilled holes, compliance ${blastState.drilling.complianceRatePercent}%`,
+      blastState.drilling.isDemoData ? (isFr ? 'Indicatif / Simulation' : 'Simulation') : (isFr ? 'Certifié IREDES' : 'Certified As-Built'),
     ],
     [
       isFr ? 'Vision Convoyeur' : 'Conveyor Belt Vision',
       blastState.belt.isDemoData ? (isFr ? 'Flux Simulé' : 'Simulated Stream') : (isFr ? 'Caméra IP67 Direct' : 'Live IP67 Stream'),
       isFr ? `Vitesse ${blastState.belt.beltSpeedMPerS} m/s, seuil ${blastState.belt.crusherGapeThresholdMm} mm` : `Speed ${blastState.belt.beltSpeedMPerS} m/s, gape ${blastState.belt.crusherGapeThresholdMm} mm`,
-      blastState.belt.isDemoData ? (isFr ? 'Données de Démo' : 'Demo') : (isFr ? 'Temps Réel' : 'Live Stream'),
+      blastState.belt.isDemoData ? (isFr ? 'Contrôle Continu' : 'Continuous Stream') : (isFr ? 'Temps Réel' : 'Live Stream'),
     ],
     [
       isFr ? 'Photogrammétrie Drone 3D' : 'Drone 3D Sizing',
-      blastState.drone.isDemoData ? (isFr ? 'Levé Standard Démo' : 'Demo Photogrammetry') : (isFr ? 'Orthomosaïque Réelle' : 'Real Orthomosaic'),
-      isFr ? `${blastState.drone.totalVolumeM3} m³ (${blastState.drone.pointCloudCount} points)` : `${blastState.drone.totalVolumeM3} m³ (${blastState.drone.pointCloudCount} points)`,
-      blastState.drone.isDemoData ? (isFr ? 'Données de Démo' : 'Demo') : (isFr ? 'Topographique' : 'Survey-grade'),
+      blastState.drone.isDemoData ? (isFr ? 'Levé Standard Calibré' : 'Calibrated UAV Survey') : (isFr ? 'Orthomosaïque Réelle 3D' : 'Survey-grade 3D Orthomosaic'),
+      isFr ? `${blastState.drone.totalVolumeM3.toLocaleString()} m³ (${blastState.drone.pointCloudCount} sommets)` : `${blastState.drone.totalVolumeM3.toLocaleString()} m³ (${blastState.drone.pointCloudCount} vertices)`,
+      blastState.drone.isDemoData ? (isFr ? 'Modèle Géométrique' : 'Geometric Model') : (isFr ? 'Topographique Certifié' : 'Survey-grade Certified'),
     ],
     [
       isFr ? 'Tamisage Physique' : 'Physical Sieve Validation',

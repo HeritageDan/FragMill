@@ -19,6 +19,7 @@ import {
   Radio,
   Upload,
   RotateCcw,
+  Camera,
 } from 'lucide-react';
 import type { Blast, Project, Site } from '../../types';
 import { SendToReportButton } from '../report/SendToReportButton';
@@ -44,15 +45,51 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
   }));
   const [isRunning, setIsRunning] = useState<boolean>(true);
   const [uploadedBeltImage, setUploadedBeltImage] = useState<string | null>(null);
+  const [isWebcamActive, setIsWebcamActive] = useState<boolean>(false);
   const [stats, setStats] = useState<BeltStats | null>(null);
   const [chokeEvents, setChokeEvents] = useState<CrusherChokeEvent[]>([]);
   const [trendData, setTrendData] = useState<{ time: string; p50: number; p80: number; tph: number }[]>([]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const animationFrameId = useRef<number | null>(null);
   const lastSampleTime = useRef<number>(Date.now());
   const beltOffset = useRef<number>(0);
+  const cachedImageRef = useRef<HTMLImageElement | null>(null);
+  const webcamStreamRef = useRef<MediaStream | null>(null);
+
+  const drawDetectedRocks = (
+    ctx: CanvasRenderingContext2D,
+    rocks: any[],
+    width: number,
+    height: number
+  ) => {
+    rocks.forEach((rock) => {
+      const rx = rock.x * width;
+      const ry = rock.y * height;
+      const rRadius = (rock.equivalentDiameterMm / 1000) * 120;
+
+      ctx.beginPath();
+      ctx.arc(rx, ry, Math.max(6, rRadius), 0, Math.PI * 2);
+
+      if (rock.isOversize) {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.75)';
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3;
+      } else {
+        ctx.fillStyle = 'rgba(100, 116, 139, 0.55)';
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = rock.isOversize ? 'bold 11px sans-serif' : '9px sans-serif';
+      ctx.fillText(`${rock.equivalentDiameterMm}mm`, rx - 14, ry + 3);
+    });
+  };
 
   const handleBeltImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -60,13 +97,62 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {
-          setUploadedBeltImage(event.target.result as string);
+          const imgSrc = event.target.result as string;
+          setUploadedBeltImage(imgSrc);
           setIsRunning(false);
-          const res = generateSimulatedBeltFrame(config, blastP50, 0.25);
-          setStats(res.stats);
+          setIsWebcamActive(false);
+          if (webcamStreamRef.current) {
+            webcamStreamRef.current.getTracks().forEach((t) => t.stop());
+            webcamStreamRef.current = null;
+          }
+
+          const img = new Image();
+          img.onload = () => {
+            cachedImageRef.current = img;
+            const canvas = canvasRef.current;
+            if (canvas) {
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const res = generateSimulatedBeltFrame(config, blastP50, 0.25);
+                drawDetectedRocks(ctx, res.rocks, canvas.width, canvas.height);
+                setStats(res.stats);
+              }
+            }
+          };
+          img.src = imgSrc;
         }
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleToggleWebcam = async () => {
+    if (isWebcamActive) {
+      if (webcamStreamRef.current) {
+        webcamStreamRef.current.getTracks().forEach((t) => t.stop());
+        webcamStreamRef.current = null;
+      }
+      setIsWebcamActive(false);
+      setIsRunning(true);
+    } else {
+      try {
+        setUploadedBeltImage(null);
+        cachedImageRef.current = null;
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+        webcamStreamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play();
+        }
+        setIsWebcamActive(true);
+        setIsRunning(true);
+      } catch (err) {
+        console.warn('Webcam permission denied or unavailable:', err);
+        setIsWebcamActive(false);
+      }
     }
   };
 
@@ -83,43 +169,37 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
           const width = canvas.width;
           const height = canvas.height;
 
-          if (uploadedBeltImage && !isRunning) {
-            const img = new Image();
-            img.src = uploadedBeltImage;
-            img.onload = () => {
-              ctx.drawImage(img, 0, 0, width, height);
+          if (isWebcamActive && videoRef.current && videoRef.current.readyState >= 2) {
+            ctx.drawImage(videoRef.current, 0, 0, width, height);
 
-              // Overlay rock detection contours
-              const res = generateSimulatedBeltFrame(config, blastP50, 0.25);
-              res.rocks.forEach((rock) => {
-                const rx = rock.x * width;
-                const ry = rock.y * height;
-                const rRadius = (rock.equivalentDiameterMm / 1000) * 120;
+            const now = Date.now();
+            if (now - lastSampleTime.current >= config.samplingIntervalMs) {
+              lastSampleTime.current = now;
+              const res = generateSimulatedBeltFrame(config, blastP50);
+              setStats(res.stats);
+              drawDetectedRocks(ctx, res.rocks, width, height);
 
-                ctx.beginPath();
-                ctx.arc(rx, ry, Math.max(6, rRadius), 0, Math.PI * 2);
+              const timeStr = new Date().toLocaleTimeString().slice(3, 8);
+              setTrendData((prev) => [
+                ...prev.slice(-25),
+                { time: timeStr, p50: res.stats.p50Mm, p80: res.stats.p80Mm, tph: res.stats.instantTph },
+              ]);
 
-                if (rock.isOversize) {
-                  ctx.fillStyle = 'rgba(239, 68, 68, 0.75)';
-                  ctx.strokeStyle = '#ef4444';
-                  ctx.lineWidth = 3;
-                } else {
-                  ctx.fillStyle = 'rgba(100, 116, 139, 0.55)';
-                  ctx.strokeStyle = '#38bdf8';
-                  ctx.lineWidth = 1.5;
+              if (res.chokeEvent) {
+                setChokeEvents((prev) => [res.chokeEvent!, ...prev.slice(0, 9)]);
+                if (config.alarmSoundEnabled) {
+                  playCrusherChokeAlarmSound();
                 }
-                ctx.fill();
-                ctx.stroke();
-
-                ctx.fillStyle = '#ffffff';
-                ctx.font = rock.isOversize ? 'bold 11px sans-serif' : '9px sans-serif';
-                ctx.fillText(`${rock.equivalentDiameterMm}mm`, rx - 14, ry + 3);
-              });
-            };
+              }
+            }
+          } else if (uploadedBeltImage && !isRunning) {
+            if (cachedImageRef.current) {
+              ctx.drawImage(cachedImageRef.current, 0, 0, width, height);
+              const res = generateSimulatedBeltFrame(config, blastP50, 0.25);
+              drawDetectedRocks(ctx, res.rocks, width, height);
+            }
             return;
-          }
-
-          if (isRunning) {
+          } else if (isRunning) {
             // Animate moving conveyor belt texture
             beltOffset.current = (beltOffset.current + config.beltSpeedMPerS * 1.5) % 60;
 
@@ -161,46 +241,29 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
               }
 
               // Draw rock bounding contours on belt
-              res.rocks.forEach((rock) => {
-                const rx = rock.x * width;
-                const ry = rock.y * height;
-                const rRadius = (rock.equivalentDiameterMm / 1000) * 120;
-
-                ctx.beginPath();
-                ctx.arc(rx, ry, Math.max(6, rRadius), 0, Math.PI * 2);
-
-                if (rock.isOversize) {
-                  ctx.fillStyle = 'rgba(239, 68, 68, 0.75)'; // Red flashing
-                  ctx.strokeStyle = '#ef4444';
-                  ctx.lineWidth = 3;
-                } else {
-                  ctx.fillStyle = 'rgba(100, 116, 139, 0.65)';
-                  ctx.strokeStyle = '#38bdf8';
-                  ctx.lineWidth = 1.5;
-                }
-                ctx.fill();
-                ctx.stroke();
-
-                // Draw size badge
-                ctx.fillStyle = '#ffffff';
-                ctx.font = rock.isOversize ? 'bold 11px sans-serif' : '9px sans-serif';
-                ctx.fillText(`${rock.equivalentDiameterMm}mm`, rx - 14, ry + 3);
-              });
+              drawDetectedRocks(ctx, res.rocks, width, height);
             }
           }
         }
       }
 
-      animationFrameId.current = requestAnimationFrame(renderLoop);
+      if (isRunning || isWebcamActive) {
+        animationFrameId.current = requestAnimationFrame(renderLoop);
+      }
     };
 
-    animationFrameId.current = requestAnimationFrame(renderLoop);
+    if (isRunning || isWebcamActive) {
+      animationFrameId.current = requestAnimationFrame(renderLoop);
+    }
 
     return () => {
       active = false;
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+      if (webcamStreamRef.current) {
+        webcamStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
     };
-  }, [isRunning, config]);
+  }, [isRunning, isWebcamActive, config, uploadedBeltImage]);
 
   return (
     <div className="space-y-6">
@@ -237,6 +300,20 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
 
         {/* Global stream actions */}
         <div className="flex items-center gap-2">
+          {/* Webcam / Live Camera Toggle */}
+          <button
+            onClick={handleToggleWebcam}
+            className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+              isWebcamActive
+                ? 'bg-red-600 text-white shadow-md shadow-red-600/30 ring-2 ring-red-400'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+            title={isFrench ? 'Activer / désactiver la caméra directe (Webcam)' : 'Toggle live camera feed (Webcam)'}
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>{isWebcamActive ? (isFrench ? 'Caméra Active' : 'Camera Active') : (isFrench ? 'Caméra Direct' : 'Live Camera')}</span>
+          </button>
+
           {/* File Upload Input */}
           <input
             ref={fileInputRef}
@@ -351,6 +428,7 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
           </div>
 
           <div className="relative aspect-16/10 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shadow-inner">
+            <video ref={videoRef} className="hidden" playsInline autoPlay muted />
             <canvas
               ref={canvasRef}
               width={720}

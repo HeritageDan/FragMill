@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { Blast } from '../../types';
 import type { HoleTimingInfo } from '../../types/advanced';
 import {
@@ -145,6 +145,9 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
 
   const maxDurationMs = holes.length > 0 ? Math.max(...holes.map((h) => h.firingTimeMs)) + 30 : 600;
 
+  // Pre-calculate isochrone contour lines on pattern update to guarantee smooth 60fps playback
+  const isochrones = useMemo(() => computeIsochroneContours(holes, 30), [holes]);
+
   // Playback timer loop
   useEffect(() => {
     let timer: any = null;
@@ -221,8 +224,7 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
       ? offsetY + (y - minY) * scale
       : offsetY + (maxY - y) * scale;
 
-    // Isochrones
-    const isochrones = computeIsochroneContours(holes, 30);
+    // Isochrones (using pre-memoized contour geometry)
     isochrones.forEach((iso) => {
       if (iso.timeMs <= currentTimeMs) {
         ctx.strokeStyle = `${iso.color}55`;
@@ -287,7 +289,7 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
       ctx.font = 'bold 9px sans-serif';
       ctx.fillText(`${h.firingTimeMs}ms`, px - 14, py + 22);
     });
-  }, [holes, currentTimeMs, rows, cols, burden, spacing, isFrench]);
+  }, [holes, currentTimeMs, rows, cols, burden, spacing, isFrench, isochrones]);
 
   const ppvEstimate = calculateUSBMPPV(distanceToStructureM, chargeKg);
   const actualBenchHeight = blast.drillHoles && blast.drillHoles.length > 0

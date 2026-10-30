@@ -561,9 +561,15 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
               <path d="M 130,225 L 470,225 L 440,330 L 160,330 Z" fill="#1C1C1F" stroke="#52525B" strokeDasharray="4 3" strokeWidth="1" />
 
               {/* Bench Level Labels */}
-              <text x="50" y="70" fill="#71717A" fontSize="10" fontWeight="bold">{isFr ? 'GRADIN 1260 RL (Crête Rampe)' : 'BENCH 1260 RL (Ramp Crest)'}</text>
-              <text x="90" y="120" fill="#A1A1AA" fontSize="10" fontWeight="bold">{isFr ? 'GRADIN 1240 RL (Gradin Supérieur)' : 'BENCH 1240 RL (Upper Bench)'}</text>
-              <text x="140" y="240" fill="#A1A1AA" fontSize="10" fontWeight="bold">{isFr ? 'GRADIN 1220 RL (Front de Taille Actif)' : 'BENCH 1220 RL (Active Working Face)'}</text>
+              <text x="50" y="70" fill="#71717A" fontSize="10" fontWeight="bold">
+                {isFr ? `GRADIN ${maxPitElevation + 20} RL (Crête Rampe)` : `BENCH ${maxPitElevation + 20} RL (Ramp Crest)`}
+              </text>
+              <text x="90" y="120" fill="#A1A1AA" fontSize="10" fontWeight="bold">
+                {isFr ? `GRADIN ${maxPitElevation} RL (Gradin Supérieur)` : `BENCH ${maxPitElevation} RL (Upper Bench)`}
+              </text>
+              <text x="140" y="240" fill="#A1A1AA" fontSize="10" fontWeight="bold">
+                {isFr ? `GRADIN ${minPitElevation} RL (Front de Taille Actif)` : `BENCH ${minPitElevation} RL (Active Working Face)`}
+              </text>
 
               {/* North Arrow */}
               <g transform="translate(540, 75)">

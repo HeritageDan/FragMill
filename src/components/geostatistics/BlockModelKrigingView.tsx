@@ -552,6 +552,12 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
               interPF,
               hardPF,
               boreholesCount: boreholes.length,
+              gridNodes: krigingGrid,
+              boreholes,
+              gridBounds,
+              gridCols: gridResolution.cols,
+              gridRows: gridResolution.rows,
+              displayMode,
             })}
             summaryFr={`Krigeage ordinaire (${variogramParams.model}, portée ${variogramParams.rangeM}m) : ${stats.mean} ${ATTRIBUTE_METADATA[selectedAttribute]?.unit} moyen, ${stats.hardPct}% dur / ${stats.softPct}% tendre.`}
             summaryEn={`Ordinary Kriging (${variogramParams.model}, range ${variogramParams.rangeM}m): mean ${stats.mean} ${ATTRIBUTE_METADATA[selectedAttribute]?.unit}, ${stats.hardPct}% hard / ${stats.softPct}% soft.`}
