@@ -9,6 +9,7 @@ import type {
   GroundTruth,
   FragmentationMetrics,
   CumulativePoint,
+  Fragment,
 } from '../types';
 import type {
   DroneOrthomosaicData,
@@ -21,7 +22,7 @@ import type {
   HoleTimingInfo,
 } from '../types/advanced';
 import { calculateRockFactorA, computeKuzRam } from './kuzram';
-import { fitRosinRammler, fitSwebrec } from './statistics';
+import { fitRosinRammler, fitSwebrec, computeFragmentationMetrics } from './statistics';
 import { computeSieveDistribution } from './validation';
 import { calculateUSBMPPV, generatePatternTiming } from './timing/initiationSimulator';
 import { generateDemoDroneSurvey } from './drone3d/droneSizing';
@@ -106,6 +107,9 @@ export interface BlastKuzRamState {
 
 export interface BlastOpticalState {
   hasOpticalData: boolean;
+  totalImagesCount: number;
+  analyzedImagesCount: number;
+  isMultiImageComposite: boolean;
   fragmentCount: number;
   p10Mm: number;
   p20Mm: number;
@@ -137,6 +141,17 @@ export interface BlastOpticalState {
   bayesianRelativeGapPercent: number;
   posteriorMeanA: number;
   posteriorStdA: number;
+  perImageBreakdown?: Array<{
+    imageId: string;
+    filename: string;
+    zone?: string;
+    fragmentCount: number;
+    p50Mm: number;
+    p80Mm: number;
+    oversizePercent: number;
+    finesPercent: number;
+  }>;
+  fragments?: Fragment[];
 }
 
 export interface BlastSieveState {
@@ -594,13 +609,60 @@ export function getBlastState(
     predictedCurve: kuzCurve,
   };
 
-  // 5. OPTICAL FRAGMENTATION & DATA QUALITY
-  const activeImage = blast.images?.[0];
-  const activeRun = activeImage?.segmentationRuns?.[0];
-  const hasOpticalData = Boolean(activeRun && activeRun.fragments && activeRun.fragments.length > 0);
+  // 5. OPTICAL FRAGMENTATION & DATA QUALITY (Multi-Image Spatial Synthesis Engine)
+  const totalImagesCount = blast.images?.length || 0;
+  const analyzedImages = (blast.images || []).filter(
+    (img) => img.segmentationRuns && img.segmentationRuns.length > 0 && img.segmentationRuns[0].fragments && img.segmentationRuns[0].fragments.length > 0
+  );
+  const analyzedImagesCount = analyzedImages.length;
+  const hasOpticalData = analyzedImagesCount > 0;
+  const isMultiImageComposite = analyzedImagesCount > 1;
 
-  let fragCount = activeRun?.fragments?.length || 0;
-  let optCurve: CumulativePoint[] = activeRun?.metrics?.rawCurve || kuzCurve;
+  // Build per-image statistics breakdown
+  const perImageBreakdown = analyzedImages.map((img, idx) => {
+    const run = img.segmentationRuns![0];
+    return {
+      imageId: img.id,
+      filename: img.filename || `Photo #${idx + 1}`,
+      zone: img.zone || (idx === 0 ? 'Face / Toe' : idx === 1 ? 'Muckpile Swell' : 'Crest / Backbreak'),
+      fragmentCount: run.fragments.length,
+      p50Mm: run.metrics?.p50 || 0,
+      p80Mm: run.metrics?.p80 || 0,
+      oversizePercent: run.metrics?.oversizePercent || 0,
+      finesPercent: run.metrics?.finesPercent || 0,
+    };
+  });
+
+  // Pool all fragments across all analyzed images
+  let allFragments: Fragment[] = [];
+  let compositeMetrics: any = null;
+
+  if (analyzedImagesCount > 1) {
+    allFragments = analyzedImages.flatMap((img, imgIdx) =>
+      (img.segmentationRuns![0].fragments || []).map((f, fIdx) => ({
+        ...f,
+        id: (imgIdx + 1) * 100000 + (typeof f.id === 'number' ? f.id : fIdx + 1),
+      }))
+    );
+    compositeMetrics = computeFragmentationMetrics(allFragments, 'min_feret', 300, 25);
+  } else if (analyzedImagesCount === 1) {
+    allFragments = analyzedImages[0].segmentationRuns![0].fragments || [];
+    compositeMetrics = analyzedImages[0].segmentationRuns![0].metrics || null;
+  }
+
+  const activeRun = compositeMetrics
+    ? {
+        id: isMultiImageComposite ? 'composite-run' : analyzedImages[0].segmentationRuns![0].id,
+        imageId: isMultiImageComposite ? 'composite' : analyzedImages[0].id,
+        engine: 'classical' as const,
+        timestamp: Date.now(),
+        fragments: allFragments,
+        metrics: compositeMetrics,
+      }
+    : blast.images?.[0]?.segmentationRuns?.[0];
+
+  let fragCount = allFragments.length || activeRun?.fragments?.length || 0;
+  let optCurve: CumulativePoint[] = compositeMetrics?.rawCurve || activeRun?.metrics?.rawCurve || kuzCurve;
 
   // Single PSD determination for percentiles, oversize and fines
   const getPassingAt = (sizeMm: number): number => {
@@ -620,13 +682,13 @@ export function getBlastState(
   const optOversize = Number((100 - getPassingAt(300)).toFixed(1));
   const optFines = Number(getPassingAt(25).toFixed(1));
 
-  let optP10 = activeRun?.metrics?.p10 || kuzP10;
-  let optP20 = activeRun?.metrics?.p20 || kuzP20;
-  let optP50 = activeRun?.metrics?.p50 || kuzP50;
-  let optP80 = activeRun?.metrics?.p80 || kuzP80;
-  let optP90 = activeRun?.metrics?.p90 || kuzP90;
-  let optTopSize = activeRun?.metrics?.pMax || 480;
-  let optUnif = activeRun?.metrics?.uniformityIndex || Number((optP80 / Math.max(1, optP20)).toFixed(2));
+  let optP10 = compositeMetrics?.p10 || activeRun?.metrics?.p10 || kuzP10;
+  let optP20 = compositeMetrics?.p20 || activeRun?.metrics?.p20 || kuzP20;
+  let optP50 = compositeMetrics?.p50 || activeRun?.metrics?.p50 || kuzP50;
+  let optP80 = compositeMetrics?.p80 || activeRun?.metrics?.p80 || kuzP80;
+  let optP90 = compositeMetrics?.p90 || activeRun?.metrics?.p90 || kuzP90;
+  let optTopSize = compositeMetrics?.pMax || activeRun?.metrics?.pMax || 480;
+  let optUnif = compositeMetrics?.uniformityIndex || activeRun?.metrics?.uniformityIndex || Number((optP80 / Math.max(1, optP20)).toFixed(2));
 
   // QA Check: Low fragment count
   if (hasOpticalData && fragCount < 150) {
@@ -649,8 +711,8 @@ export function getBlastState(
   }
 
   // Bounded Fits
-  const swebrec = activeRun?.metrics?.swebrecFit || fitSwebrec(optCurve, optP50);
-  const rawRosin = activeRun?.metrics?.rosinRammlerFit || fitRosinRammler(optCurve);
+  const swebrec = compositeMetrics?.swebrecFit || activeRun?.metrics?.swebrecFit || fitSwebrec(optCurve, optP50);
+  const rawRosin = compositeMetrics?.rosinRammlerFit || activeRun?.metrics?.rosinRammlerFit || fitRosinRammler(optCurve);
 
   // Parameter bounding for Rosin-Rammler: xc between 0.5 and 3 * xMax, n between 0.5 and 3
   const xMaxBound = swebrec.xMax || 500;
@@ -684,6 +746,9 @@ export function getBlastState(
 
   const optical: BlastOpticalState = {
     hasOpticalData,
+    totalImagesCount,
+    analyzedImagesCount,
+    isMultiImageComposite,
     fragmentCount: fragCount,
     p10Mm: optP10,
     p20Mm: optP20,
@@ -703,6 +768,8 @@ export function getBlastState(
     bayesianRelativeGapPercent: Number((bayesianRelGap * 100).toFixed(1)),
     posteriorMeanA: Number((rockFactorA * (1 + (optP80 - kuzP80) / (2 * Math.max(1, kuzP80)))).toFixed(2)),
     posteriorStdA: 0.45,
+    perImageBreakdown,
+    fragments: allFragments,
   };
 
   // 6. SIEVE GROUND TRUTH VALIDATION
@@ -1070,7 +1137,7 @@ export function getBlastState(
   const droneSurvey = blast.droneSurvey || generateDemoDroneSurvey(blast.blastId);
   const droneSectors = blast.droneSurvey?.sectors || droneSurvey.sectors;
   const droneVol = blast.droneSurvey ? blast.droneSurvey.totalVolumeM3 : totalBlastedVolumeM3;
-  const droneP80 = blast.droneSurvey ? blast.droneSurvey.averageP80Mm : (blast.images?.[0]?.segmentationRuns?.[0]?.metrics?.p80 || kuzRam.p80Mm);
+  const droneP80 = blast.droneSurvey ? blast.droneSurvey.averageP80Mm : (optical.p80Mm || kuzRam.p80Mm);
 
   const drone: BlastDroneState = {
     hasDroneData: hasRealDrone,

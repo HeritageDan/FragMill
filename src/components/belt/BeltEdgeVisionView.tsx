@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import type { Blast, Project, Site } from '../../types';
 import { SendToReportButton } from '../report/SendToReportButton';
+import { getBlastState } from '../../services/blastState';
 
 interface BeltEdgeVisionViewProps {
   blast?: Blast;
@@ -34,8 +35,9 @@ interface BeltEdgeVisionViewProps {
 export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, project, site, lang = 'en' }) => {
   const isFrench = lang === 'fr';
 
-  const blastP50 = blast?.images[0]?.segmentationRuns?.[0]?.metrics?.p50 || 110;
-  const blastP80 = blast?.images[0]?.segmentationRuns?.[0]?.metrics?.p80 || 220;
+  const blastState = blast ? getBlastState(blast) : null;
+  const blastP50 = blastState?.optical.p50Mm || 110;
+  const blastP80 = blastState?.optical.p80Mm || 220;
   const rockDensity = blast?.rockMass?.density || 2.68;
   const bulkDensity = parseFloat((rockDensity * 0.68).toFixed(2));
 

@@ -437,17 +437,27 @@ export async function generateModularVaultPdfReport(
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(71, 85, 105);
-      doc.text(
-        isFr
-          ? `Étalonnage échelle : ${formatCalibrationMethod(activeImg?.calibration?.method)} (${activeImg?.calibration?.realWorldDistanceMm || 500} mm) | Résolution optique : ${
-              activeImg?.calibration?.pxPerMm?.toFixed(3) || '0.400'
-            } px/mm | Fragments identifiés : ${blastState.optical.fragmentCount}`
-          : `Scale Calibration: ${formatCalibrationMethod(activeImg?.calibration?.method)} (${activeImg?.calibration?.realWorldDistanceMm || 500} mm) | Optical Resolution: ${
-              activeImg?.calibration?.pxPerMm?.toFixed(3) || '0.400'
-            } px/mm | Identified Fragments: ${blastState.optical.fragmentCount}`,
-        14,
-        y
-      );
+      if (blastState.optical.isMultiImageComposite) {
+        doc.text(
+          isFr
+            ? `SYNTHÈSE MULTI-PHOTOS COMPOSITE : ${blastState.optical.analyzedImagesCount} clichés réconciliés (${blastState.optical.totalImagesCount} importés) | Total fragments fusionnés : ${blastState.optical.fragmentCount} roches`
+            : `COMPOSITE MULTI-PHOTO SIZING: ${blastState.optical.analyzedImagesCount} pooled photos (${blastState.optical.totalImagesCount} imported) | Total Pooled Fragments: ${blastState.optical.fragmentCount} rocks`,
+          14,
+          y
+        );
+      } else {
+        doc.text(
+          isFr
+            ? `Étalonnage échelle : ${formatCalibrationMethod(activeImg?.calibration?.method)} (${activeImg?.calibration?.realWorldDistanceMm || 500} mm) | Résolution optique : ${
+                activeImg?.calibration?.pxPerMm?.toFixed(3) || '0.400'
+              } px/mm | Fragments identifiés : ${blastState.optical.fragmentCount}`
+            : `Scale Calibration: ${formatCalibrationMethod(activeImg?.calibration?.method)} (${activeImg?.calibration?.realWorldDistanceMm || 500} mm) | Optical Resolution: ${
+                activeImg?.calibration?.pxPerMm?.toFixed(3) || '0.400'
+              } px/mm | Identified Fragments: ${blastState.optical.fragmentCount}`,
+          14,
+          y
+        );
+      }
       y += 6.0;
 
       // 3. KEY PERCENTILES KPI BOX (Matches exact layout from blast report)
@@ -681,6 +691,27 @@ export async function generateModularVaultPdfReport(
         y,
         isFr ? '7. ANALYSE MORPHOLOGIQUE DES FRAGMENTS' : '7. FRAGMENT MORPHOLOGY ANALYSIS'
       );
+
+      // 7b. SPATIAL MUCKPILE MULTI-PHOTO COMPARISON TABLE (When multiple photos are analyzed)
+      if (blastState.optical.isMultiImageComposite && blastState.optical.perImageBreakdown) {
+        const photoRows = blastState.optical.perImageBreakdown.map((pb) => [
+          pb.filename,
+          pb.zone || (isFr ? 'Gradin' : 'Muckpile'),
+          `${pb.fragmentCount}`,
+          `${pb.p50Mm} mm`,
+          `${pb.p80Mm} mm`,
+          `${pb.oversizePercent}%`,
+        ]);
+        y = drawTable(
+          isFr
+            ? ['Cliché / Photo', 'Zone du Gradin', 'Nb Roches', 'P50 (mm)', 'P80 (mm)', 'Gros Blocs (>300mm)']
+            : ['Photo / File', 'Bench Muckpile Zone', 'Rock Count', 'P50 (mm)', 'P80 (mm)', 'Oversize (>300mm)'],
+          photoRows,
+          [40, 42, 26, 26, 26, 32],
+          y,
+          isFr ? 'RÉCONCILIATION SPATIALE MULTI-PHOTOS DU TAS DE MINAGE' : 'SPATIAL MUCKPILE MULTI-PHOTO SIZING AUDIT'
+        );
+      }
 
       // PAGE BREAK FOR TECHNICAL ENGINEERING DRAWINGS & GRAPHICS (PAGE 3)
       doc.addPage();

@@ -57,6 +57,8 @@ import {
   generateModularVaultPdfReport,
   generateSingleSectionPdfReport,
 } from './export';
+import { getBlastState } from './blastState';
+import type { Blast, Fragment } from '../types';
 
 describe('Advanced Mining Suite Tests', () => {
   // 1. Drone 3D Photogrammetry
@@ -586,6 +588,199 @@ describe('Advanced Mining Suite Tests', () => {
       const hard = calculateTealeSpecificEnergy(89, 0.25, 65, 1200, 95);
       expect(hard.specificEnergyMpa).toBeGreaterThan(400);
       expect(['hard', 'extreme']).toContain(hard.hardnessClass);
+    });
+
+    // H. Multi-Image Blast Pooling & Spatial Stereology Composite
+    it('pools multiple analyzed photos into a unified composite blast PSD while preserving per-image spatial zones', () => {
+      // 1. Photo 1: 150 coarse fragments (e.g. Toe / Face)
+      const fragments1: Fragment[] = Array.from({ length: 150 }, (_, i) => {
+        const size = 100 + (i % 25) * 12; // 100 to 388 mm (coarser)
+        return {
+          id: i + 1,
+          polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }],
+          centroid: { x: 5, y: 5 },
+          areaPx: 500,
+          areaMm2: 800,
+          ecdMm: size,
+          minFeretMm: size,
+          maxFeretMm: size * 1.2,
+          bboxWidthMm: size,
+          bboxHeightMm: size,
+          aspectRatio: 1.1,
+          solidity: 0.9,
+          volumeMm3: (Math.PI / 6) * Math.pow(size, 3),
+          confidence: 0.95,
+        };
+      });
+
+      // 2. Photo 2: 200 finer fragments (e.g. Muckpile Swell / Crest)
+      const fragments2: Fragment[] = Array.from({ length: 200 }, (_, i) => {
+        const size = 20 + (i % 20) * 8; // 20 to 172 mm (finer)
+        return {
+          id: i + 1,
+          polygon: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }],
+          centroid: { x: 5, y: 5 },
+          areaPx: 300,
+          areaMm2: 400,
+          ecdMm: size,
+          minFeretMm: size,
+          maxFeretMm: size * 1.2,
+          bboxWidthMm: size,
+          bboxHeightMm: size,
+          aspectRatio: 1.1,
+          solidity: 0.9,
+          volumeMm3: (Math.PI / 6) * Math.pow(size, 3),
+          confidence: 0.92,
+        };
+      });
+
+      const multiImageBlast: Blast = {
+        id: 'blast-multi-01',
+        projectId: 'proj-01',
+        siteId: 'site-01',
+        blastId: 'BL-MULTI-2026',
+        dateTime: '2026-03-01T10:00:00Z',
+        weather: 'Sunny',
+        notes: 'Multi-photo spatial muckpile test',
+        createdAt: 1772000000000,
+        updatedAt: 1772000000000,
+        parameters: {
+          holeDiameter: 89,
+          holeDepth: 12.0,
+          benchHeight: 10.0,
+          burden: 3.5,
+          spacing: 4.0,
+          subdrill: 1.0,
+          stemmingLength: 2.5,
+          numberOfHoles: 30,
+          holeInclination: 90,
+          explosiveType: 'ANFO',
+          chargePerHole: 65,
+          bottomChargeLength: 3.0,
+          columnChargeLength: 6.5,
+          initiationSequenceNotes: 'Electronic',
+          waterInHoles: false,
+          drillingDeviationEstimate: 0.05,
+          rws: 100,
+        },
+        rockMass: {
+          rockType: 'Granite',
+          density: 2.7,
+          meanJointSpacing: 0.5,
+          jointOrientation: 'dip_into_face',
+          jointSetCount: 3,
+        },
+        images: [
+          {
+            id: 'img-toe-01',
+            blastId: 'blast-multi-01',
+            dataUrl: 'data:image/png;base64,mockToe',
+            filename: 'muckpile_toe.jpg',
+            zone: 'front',
+            lighting: 'sun',
+            time: '10:00',
+            hasScaleMarker: true,
+            qualityCheck: { blurScore: 90, blurStatus: 'pass', exposureStatus: 'pass', contrastStatus: 'pass', resolutionStatus: 'pass', scaleMarkerStatus: 'pass', advice: [] },
+            createdAt: 1772000000000,
+            updatedAt: 1772000000000,
+            segmentationRuns: [
+              {
+                id: 'run-toe-01',
+                imageId: 'img-toe-01',
+                engine: 'classical',
+                timestamp: 1772000000000,
+                parameters: { scaleMmPerPx: 1.0, minFragmentPx: 5, watershedCompactness: 0.2 },
+                fragments: fragments1,
+                metrics: {
+                  sizeDefinition: 'min_feret',
+                  fragmentCount: 150,
+                  meanSize: 220,
+                  p10: 120,
+                  p20: 150,
+                  p50: 220,
+                  p80: 310,
+                  p90: 350,
+                  pMax: 388,
+                  uniformityIndex: 1.3,
+                  oversizePercent: 18.5,
+                  finesPercent: 1.2,
+                } as any,
+              },
+            ],
+          },
+          {
+            id: 'img-crest-02',
+            blastId: 'blast-multi-01',
+            dataUrl: 'data:image/png;base64,mockCrest',
+            filename: 'muckpile_crest.jpg',
+            zone: 'top',
+            lighting: 'sun',
+            time: '10:05',
+            hasScaleMarker: true,
+            qualityCheck: { blurScore: 88, blurStatus: 'pass', exposureStatus: 'pass', contrastStatus: 'pass', resolutionStatus: 'pass', scaleMarkerStatus: 'pass', advice: [] },
+            createdAt: 1772000000000,
+            updatedAt: 1772000000000,
+            segmentationRuns: [
+              {
+                id: 'run-crest-02',
+                imageId: 'img-crest-02',
+                engine: 'classical',
+                timestamp: 1772000000000,
+                parameters: { scaleMmPerPx: 0.8, minFragmentPx: 5, watershedCompactness: 0.2 },
+                fragments: fragments2,
+                metrics: {
+                  sizeDefinition: 'min_feret',
+                  fragmentCount: 200,
+                  meanSize: 95,
+                  p10: 35,
+                  p20: 55,
+                  p50: 95,
+                  p80: 145,
+                  p90: 160,
+                  pMax: 172,
+                  uniformityIndex: 1.4,
+                  oversizePercent: 0,
+                  finesPercent: 8.5,
+                } as any,
+              },
+            ],
+          },
+        ],
+      };
+
+      const state = getBlastState(multiImageBlast);
+      expect(state.optical.isMultiImageComposite).toBe(true);
+      expect(state.optical.totalImagesCount).toBe(2);
+      expect(state.optical.analyzedImagesCount).toBe(2);
+      expect(state.optical.fragmentCount).toBe(350); // 150 + 200
+      expect(state.optical.fragments).toBeDefined();
+      expect(state.optical.fragments!.length).toBe(350);
+
+      // Verify ID uniqueness with image prefix
+      const idSet = new Set(state.optical.fragments!.map(f => f.id));
+      expect(idSet.size).toBe(350);
+      expect(state.optical.fragments![0].id).toBe(100001); // (0 + 1) * 100000 + 1
+      expect(state.optical.fragments![150].id).toBe(200001); // (1 + 1) * 100000 + 1
+
+      // Verify perImageBreakdown preserves individual photo statistics
+      expect(state.optical.perImageBreakdown).toBeDefined();
+      expect(state.optical.perImageBreakdown!.length).toBe(2);
+      expect(state.optical.perImageBreakdown![0].imageId).toBe('img-toe-01');
+      expect(state.optical.perImageBreakdown![0].fragmentCount).toBe(150);
+      expect(state.optical.perImageBreakdown![0].p80Mm).toBe(310);
+      expect(state.optical.perImageBreakdown![0].oversizePercent).toBe(18.5);
+
+      expect(state.optical.perImageBreakdown![1].imageId).toBe('img-crest-02');
+      expect(state.optical.perImageBreakdown![1].fragmentCount).toBe(200);
+      expect(state.optical.perImageBreakdown![1].p80Mm).toBe(145);
+      expect(state.optical.perImageBreakdown![1].oversizePercent).toBe(0);
+
+      // Verify composite curve reflects a weighted distribution between toe and crest
+      const metricsPhoto1 = computeFragmentationMetrics(fragments1, 'min_feret', 300, 25);
+      const metricsPhoto2 = computeFragmentationMetrics(fragments2, 'min_feret', 300, 25);
+      expect(state.optical.p50Mm).toBeLessThan(metricsPhoto1.p50);
+      expect(state.optical.p50Mm).toBeGreaterThan(metricsPhoto2.p50);
+      expect(state.drone.meanP80Mm).toBe(state.optical.p80Mm); // Downstream synchronization
     });
   });
 });

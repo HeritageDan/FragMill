@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { t } from '../../i18n';
 import { SendToReportButton } from '../report/SendToReportButton';
+import { getBlastState } from '../../services/blastState';
 
 interface BenchMapViewProps {
   blasts: Blast[];
@@ -172,15 +173,15 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
   }, [blasts, benchElevations, maxPitElevation, minPitElevation, medianPitElevation]);
 
   const getP80 = (b: Blast): number => {
-    return b.images[0]?.segmentationRuns?.[0]?.metrics?.p80 || (b.blastId === 'BL-2026-001' ? 285 : b.blastId === 'BL-2026-002' ? 195 : 142);
+    return getBlastState(b).optical.p80Mm || (b.blastId === 'BL-2026-001' ? 285 : b.blastId === 'BL-2026-002' ? 195 : 142);
   };
 
   const getP50 = (b: Blast): number => {
-    return b.images[0]?.segmentationRuns?.[0]?.metrics?.p50 || (b.blastId === 'BL-2026-001' ? 168 : b.blastId === 'BL-2026-002' ? 115 : 78);
+    return getBlastState(b).optical.p50Mm || (b.blastId === 'BL-2026-001' ? 168 : b.blastId === 'BL-2026-002' ? 115 : 78);
   };
 
   const getOversize = (b: Blast): number => {
-    return b.images[0]?.segmentationRuns?.[0]?.metrics?.oversizePercent || (b.blastId === 'BL-2026-001' ? 18.5 : b.blastId === 'BL-2026-002' ? 9.2 : 3.8);
+    return getBlastState(b).optical.oversizePercent || (b.blastId === 'BL-2026-001' ? 18.5 : b.blastId === 'BL-2026-002' ? 9.2 : 3.8);
   };
 
   const getP80Color = (p80: number) => {

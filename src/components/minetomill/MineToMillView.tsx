@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import type { Project, Site } from '../../types';
 import { SendToReportButton } from '../report/SendToReportButton';
+import { getBlastState } from '../../services/blastState';
 
 interface MineToMillViewProps {
   blasts: Blast[];
@@ -152,8 +153,9 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
   const [secondaryCostPerBoulder, setSecondaryCostPerBoulder] = useState(DEFAULT_ECONOMIC_PARAMS.secondaryBreakingCostPerBoulder);
   const [powerCostPerKwh, setPowerCostPerKwh] = useState(DEFAULT_ECONOMIC_PARAMS.crushingEnergyCostPerKwh);
 
+  const blastStateForEcon = getBlastState(selectedBlast);
   const activeP80ForEcon =
-    selectedBlast.images[0]?.segmentationRuns?.[0]?.metrics?.p80 ||
+    blastStateForEcon.optical.p80Mm ||
     (selectedBlast.blastId === 'BL-2026-001' ? 285 : selectedBlast.blastId === 'BL-2026-002' ? 195 : 142);
 
   const econResult = evaluateMineToMillEconomics(selectedBlast, activeP80ForEcon, selectedBlast.millBatch, {
