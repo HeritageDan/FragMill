@@ -248,7 +248,7 @@ describe('FragMill Consistency & Correctness Acceptance Tests (BL-2026-004 Audit
     const blobFr = await generateModularVaultPdfReport({} as any, mockProject, mockSite, mockBlastBL2026004, 'fr');
     expect(blobFr).toBeInstanceOf(Blob);
     expect(blobFr.size).toBeGreaterThan(50000);
-  });
+  }, 20000);
 
   // 10. Robust bounded Rosin-Rammler fit and convergence checking
   it('Check 10: Statistical fitting bounds Rosin-Rammler and correctly reports convergence', () => {

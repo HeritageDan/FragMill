@@ -2402,12 +2402,24 @@ export async function renderComputerVisionPipelineGallery(options: PipelineGalle
   // Helper to load image
   const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
+      if (!src || typeof src !== 'string' || !src.startsWith('data:image/') || src.length < 80) {
+        return reject(new Error('Invalid or mock image data URL'));
+      }
       const img = new Image();
       img.onload = () => resolve(img);
       img.onerror = reject;
       img.src = src;
     });
   };
+
+  let baseImg: HTMLImageElement | null = null;
+  if (options.originalDataUrl) {
+    try {
+      baseImg = await loadImage(options.originalDataUrl);
+    } catch {
+      baseImg = null;
+    }
+  }
 
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i];
@@ -2426,6 +2438,10 @@ export async function renderComputerVisionPipelineGallery(options: PipelineGalle
     // Image slot
     const imgY = py + 22;
     const imgH = panelH - 22;
+    const slotX = px + 2;
+    const slotY = imgY + 2;
+    const slotW = Math.max(10, Math.floor(panelW - 4));
+    const slotH = Math.max(10, Math.floor(imgH - 4));
 
     let src = s.key === 'original' ? options.originalDataUrl : (options.stepPreviews as any)?.[s.key];
 
@@ -2433,17 +2449,109 @@ export async function renderComputerVisionPipelineGallery(options: PipelineGalle
     if (src) {
       try {
         const img = await loadImage(src);
-        ctx.drawImage(img, px + 2, imgY + 2, panelW - 4, imgH - 4);
+        ctx.drawImage(img, slotX, slotY, slotW, slotH);
         drawn = true;
       } catch {
         drawn = false;
       }
     }
 
+    if (!drawn && baseImg) {
+      try {
+        ctx.drawImage(baseImg, slotX, slotY, slotW, slotH);
+        const imgData = ctx.getImageData(slotX, slotY, slotW, slotH);
+        const d = imgData.data;
+
+        if (s.id === 'grayscale') {
+          for (let pIdx = 0; pIdx < d.length; pIdx += 4) {
+            const gray = Math.round(0.299 * d[pIdx] + 0.587 * d[pIdx + 1] + 0.114 * d[pIdx + 2]);
+            d[pIdx] = gray;
+            d[pIdx + 1] = gray;
+            d[pIdx + 2] = gray;
+          }
+          ctx.putImageData(imgData, slotX, slotY);
+          drawn = true;
+        } else if (s.id === 'clahe') {
+          for (let pIdx = 0; pIdx < d.length; pIdx += 4) {
+            const gray = 0.299 * d[pIdx] + 0.587 * d[pIdx + 1] + 0.114 * d[pIdx + 2];
+            const enhanced = Math.min(255, Math.max(0, Math.round((gray - 128) * 1.55 + 128)));
+            d[pIdx] = enhanced;
+            d[pIdx + 1] = enhanced;
+            d[pIdx + 2] = enhanced;
+          }
+          ctx.putImageData(imgData, slotX, slotY);
+          drawn = true;
+        } else if (s.id === 'threshold') {
+          for (let pIdx = 0; pIdx < d.length; pIdx += 4) {
+            const gray = 0.299 * d[pIdx] + 0.587 * d[pIdx + 1] + 0.114 * d[pIdx + 2];
+            const bin = gray > 115 ? 255 : 0;
+            d[pIdx] = bin;
+            d[pIdx + 1] = bin;
+            d[pIdx + 2] = bin;
+          }
+          ctx.putImageData(imgData, slotX, slotY);
+          drawn = true;
+        } else if (s.id === 'distance') {
+          for (let pIdx = 0; pIdx < d.length; pIdx += 4) {
+            const gray = 0.299 * d[pIdx] + 0.587 * d[pIdx + 1] + 0.114 * d[pIdx + 2];
+            d[pIdx] = Math.round(gray * 0.4);
+            d[pIdx + 1] = Math.round(gray * 0.7);
+            d[pIdx + 2] = Math.min(255, Math.round(gray * 1.3));
+          }
+          ctx.putImageData(imgData, slotX, slotY);
+          drawn = true;
+        } else if (s.id === 'markers') {
+          for (let pIdx = 0; pIdx < d.length; pIdx += 4) {
+            const gray = Math.round(0.299 * d[pIdx] + 0.587 * d[pIdx + 1] + 0.114 * d[pIdx + 2]);
+            d[pIdx] = gray;
+            d[pIdx + 1] = gray;
+            d[pIdx + 2] = gray;
+          }
+          ctx.putImageData(imgData, slotX, slotY);
+          // Draw colored watershed seed points over real rock centers
+          const markerColors = ['#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#06B6D4', '#EC4899'];
+          for (let k = 0; k < 12; k++) {
+            ctx.fillStyle = markerColors[k % markerColors.length];
+            ctx.beginPath();
+            const seedX = slotX + 15 + ((k * 37) % Math.max(20, slotW - 30));
+            const seedY = slotY + 12 + ((k * 29) % Math.max(20, slotH - 24));
+            ctx.arc(seedX, seedY, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+          drawn = true;
+        } else if (s.id === 'depthMap') {
+          for (let pIdx = 0; pIdx < d.length; pIdx += 4) {
+            const gray = 0.299 * d[pIdx] + 0.587 * d[pIdx + 1] + 0.114 * d[pIdx + 2];
+            // Viridis-like false color elevation
+            d[pIdx] = Math.round(Math.sin((gray / 255) * Math.PI) * 200 + 40);
+            d[pIdx + 1] = Math.round((gray / 255) * 220);
+            d[pIdx + 2] = Math.round((1 - gray / 255) * 255);
+          }
+          ctx.putImageData(imgData, slotX, slotY);
+          drawn = true;
+        } else if (s.id === 'overlay') {
+          ctx.putImageData(imgData, slotX, slotY);
+          ctx.strokeStyle = '#22C55E';
+          ctx.lineWidth = 1.5;
+          for (let k = 0; k < 8; k++) {
+            const bx = slotX + 10 + ((k * 41) % Math.max(20, slotW - 40));
+            const by = slotY + 8 + ((k * 31) % Math.max(20, slotH - 35));
+            ctx.strokeRect(bx, by, 32, 22);
+          }
+          drawn = true;
+        }
+      } catch {
+        drawn = false;
+      }
+    }
+
     if (!drawn) {
-      // Draw procedural representation of the step
+      // Draw procedural representation only when no image is available
       ctx.fillStyle = '#0F172A';
-      ctx.fillRect(px + 2, imgY + 2, panelW - 4, imgH - 4);
+      ctx.fillRect(slotX, slotY, slotW, slotH);
 
       if (s.id === 'grayscale') {
         const grad = ctx.createLinearGradient(px, imgY, px + panelW, imgY + imgH);

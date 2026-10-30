@@ -399,6 +399,8 @@ function AppContent() {
           <FieldWizard
             key={activeBlast.id}
             currentBlast={activeBlast}
+            project={activeProject || undefined}
+            site={activeSite || undefined}
             onUpdateBlast={handleUpdateBlast}
             onSaveRun={handleSaveRun}
             lang={settings.language}
@@ -409,6 +411,8 @@ function AppContent() {
           <BlastDetailView
             key={activeBlast.id}
             blast={activeBlast}
+            project={activeProject || undefined}
+            site={activeSite || undefined}
             settings={settings}
             onUpdateBlast={handleUpdateBlast}
             onDeleteBlast={handleDeleteBlast}

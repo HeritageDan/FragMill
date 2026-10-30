@@ -7,7 +7,10 @@ import type {
   AppSettings,
   Fragment,
   MillBatch,
+  Project,
+  Site,
 } from '../../types';
+import { db } from '../../db';
 import { CumulativeDistributionChart } from '../charts/FragmentationCharts';
 import { ManualEditor } from '../segmentation/ManualEditor';
 import {
@@ -57,6 +60,8 @@ import type { Calibration, Point2D } from '../../types';
 
 interface BlastDetailViewProps {
   blast: Blast;
+  project?: Project;
+  site?: Site;
   settings: AppSettings;
   onUpdateBlast: (updated: Blast) => void;
   onDeleteBlast?: (blastId: string) => void;
@@ -67,6 +72,8 @@ interface BlastDetailViewProps {
 
 export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   blast,
+  project,
+  site,
   settings,
   onUpdateBlast,
   onDeleteBlast,
@@ -772,9 +779,41 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
               <button
                 onClick={async () => {
                   try {
+                    let p = project;
+                    let s = site;
+                    if (!p && blast.projectId) {
+                      try {
+                        p = await db.projects.get(blast.projectId);
+                      } catch {
+                        // ignore
+                      }
+                    }
+                    if (!s && blast.siteId) {
+                      try {
+                        s = await db.sites.get(blast.siteId);
+                      } catch {
+                        // ignore
+                      }
+                    }
+                    const resolvedProject: Project = p ? p : {
+                      id: blast.projectId || 'proj-main',
+                      name: `Project ${blast.projectId || blast.blastId}`,
+                      description: 'Mine Operations',
+                      createdAt: 0,
+                      updatedAt: 0,
+                    };
+                    const resolvedSite: Site = s ? s : {
+                      id: blast.siteId || 'site-main',
+                      projectId: resolvedProject.id,
+                      name: `Bench ${blast.benchElevation ?? 'Pit'} RL`,
+                      locationText: 'Open Pit',
+                      createdAt: 0,
+                      updatedAt: 0,
+                    };
+
                     const blob = await generateBlastPdfReport(
-                      { id: 'proj-1', name: blast.blastId, description: 'Mine Operations', createdAt: 0, updatedAt: 0 },
-                      { id: 'site-1', projectId: 'proj-1', name: 'Open Pit South Bench', locationText: 'Mine Pit', createdAt: 0, updatedAt: 0 },
+                      resolvedProject,
+                      resolvedSite,
                       blast,
                       selectedImage,
                       activeRun,

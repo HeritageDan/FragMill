@@ -554,8 +554,10 @@ export function getBlastState(
   const x50Cm = rockFactorA * Math.pow(kuzK, -0.8) * Math.pow(kuzQ, 1 / 6) * Math.pow(115 / expRws, 19 / 30);
   const x50Mm = Number((x50Cm * 10).toFixed(1));
 
-  // Uniformity Index n: Cunningham formulation
-  const term1 = 2.2 - 14 * (burden / Math.max(1, holeDiameterMm / 1000));
+  // Uniformity Index n: Cunningham (1987) formulation
+  // Cunningham empirical formula requires Burden (B) in meters and Borehole Diameter (D) in millimeters
+  const burdenToDiamRatio = burden / Math.max(10, holeDiameterMm);
+  const term1 = 2.2 - 14 * burdenToDiamRatio;
   const term2 = Math.sqrt((1 + spacing / Math.max(0.1, burden)) / 2);
   const term3 = Math.max(0.1, 1 - (p.drillingDeviationEstimate || 0.1) / Math.max(0.1, burden));
   const diffCharge = Math.abs(bottomChargeLength - columnChargeLength);

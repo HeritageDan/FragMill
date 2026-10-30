@@ -4,7 +4,10 @@ import type {
   ImageRecord,
   SegmentationRun,
   Point2D,
+  Project,
+  Site,
 } from '../../types';
+import { db } from '../../db';
 import { analyzeImageQuality, calibrateTwoPoint, runClassicalSegmentation } from '../../services/imageProcessing';
 import { computeFragmentationMetrics } from '../../services/statistics';
 import { CumulativeDistributionChart } from '../charts/FragmentationCharts';
@@ -29,6 +32,8 @@ import { CameraInclinometerModal } from '../camera/CameraInclinometerModal';
 
 interface FieldWizardProps {
   currentBlast: Blast;
+  project?: Project;
+  site?: Site;
   onUpdateBlast: (updatedBlast: Blast) => void;
   onSaveRun: (image: ImageRecord, run: SegmentationRun) => void;
   lang?: 'en' | 'fr';
@@ -36,6 +41,8 @@ interface FieldWizardProps {
 
 export const FieldWizard: React.FC<FieldWizardProps> = ({
   currentBlast,
+  project,
+  site,
   onUpdateBlast,
   onSaveRun,
   lang = 'en',
@@ -724,9 +731,41 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                 <button
                   onClick={async () => {
                     try {
+                      let p = project;
+                      let s = site;
+                      if (!p && currentBlast.projectId) {
+                        try {
+                          p = await db.projects.get(currentBlast.projectId);
+                        } catch {
+                          // ignore
+                        }
+                      }
+                      if (!s && currentBlast.siteId) {
+                        try {
+                          s = await db.sites.get(currentBlast.siteId);
+                        } catch {
+                          // ignore
+                        }
+                      }
+                      const resolvedProject: Project = p ? p : {
+                        id: currentBlast.projectId || 'proj-main',
+                        name: `Project ${currentBlast.projectId || currentBlast.blastId}`,
+                        description: 'Mine Operations',
+                        createdAt: 0,
+                        updatedAt: 0,
+                      };
+                      const resolvedSite: Site = s ? s : {
+                        id: currentBlast.siteId || 'site-main',
+                        projectId: resolvedProject.id,
+                        name: `Bench ${currentBlast.benchElevation ?? 'Pit'} RL`,
+                        locationText: 'Open Pit',
+                        createdAt: 0,
+                        updatedAt: 0,
+                      };
+
                       const blob = await generateBlastPdfReport(
-                        { id: 'proj-1', name: currentBlast.blastId, description: 'Mine Operations', createdAt: 0, updatedAt: 0 },
-                        { id: 'site-1', projectId: 'proj-1', name: 'Open Pit South Bench', locationText: 'Mine Pit', createdAt: 0, updatedAt: 0 },
+                        resolvedProject,
+                        resolvedSite,
                         currentBlast,
                         currentBlast.images[0],
                         activeRun,

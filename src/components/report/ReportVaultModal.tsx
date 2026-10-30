@@ -46,10 +46,24 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
 
   const allKeys = Object.keys(REPORT_SECTIONS_REGISTRY) as ReportSectionKey[];
 
-  // Selected sections for download (defaults to all staged, or all if stagedCount === 0)
+  // Selected sections for download (defaults to staged, or active blast sections if none staged)
   const [selectedKeys, setSelectedKeys] = useState<ReportSectionKey[]>(() => {
     const staged = allKeys.filter((k) => !!vaultState[k]);
-    return staged.length > 0 ? staged : allKeys;
+    if (staged.length > 0) return staged;
+    const defaults: ReportSectionKey[] = ['blast', 'kuzram'];
+    if (blast?.groundTruth?.sieveData?.length && blast.groundTruth.sieveData.length >= 3) {
+      defaults.push('validation');
+    }
+    if (blast?.millBatch) {
+      defaults.push('minetomill', 'comminution');
+    }
+    if (blast?.droneSurvey) {
+      defaults.push('drone3d');
+    }
+    if (blast?.drillHoles && blast.drillHoles.length > 0) {
+      defaults.push('telemetry');
+    }
+    return defaults;
   });
 
   if (!isOpen) return null;
