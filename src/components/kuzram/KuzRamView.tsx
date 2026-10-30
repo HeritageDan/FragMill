@@ -185,7 +185,7 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
             name: `Personnel Exclusion Zone — ${selectedBlast.blastId}`,
             type: 'personnel_exclusion',
             radiusM: personnelRadius,
-            standard: 'ISEE Safety Guidelines (2.0× max calculated flyrock)',
+            standard: 'Empirical Lundborg (1981) / Richards-Moore (2004) advisory envelope (Site clearance rules strictly govern)',
             fill: '#EF4444',
             'fill-opacity': 0.25,
             stroke: '#DC2626',
@@ -195,10 +195,10 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
         {
           type: 'Feature',
           properties: {
-            name: `Equipment Safe Distance — ${selectedBlast.blastId}`,
+            name: `Equipment Advisory Perimeter — ${selectedBlast.blastId}`,
             type: 'equipment_exclusion',
             radiusM: equipmentRadius,
-            standard: 'ISEE Safety Guidelines (1.35× max calculated flyrock)',
+            standard: 'Empirical Lundborg / Richards-Moore equipment buffer (Advisory only)',
             fill: '#F59E0B',
             'fill-opacity': 0.2,
             stroke: '#D97706',
@@ -425,12 +425,12 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
               <ShieldAlert className="w-5 h-5 text-red-600" />
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
-                  {lang === 'fr' ? 'Sécurité des Projections & Périmètre d’Évacuation (ISEE)' : 'Flyrock Geofencing & Exclusion Zone (ISEE Standard)'}
+                  {lang === 'fr' ? 'Enveloppe Balistique des Projections (Lundborg / Richards-Moore)' : 'Empirical Flyrock Envelope (Lundborg / Richards-Moore)'}
                 </h3>
                 <p className="text-xs text-slate-500">
                   {lang === 'fr'
-                    ? 'Modèle balistique Richards & Moore (2004) / Lundborg (1981) avec facteur de sécurité 2.0x'
-                    : 'Richards & Moore (2004) / Lundborg (1981) ballistic model with 2.0x safety factor'}
+                    ? 'Modèle empirique indicatif — Les règles de sécurité et de dégagement du site prévalent obligatoirement'
+                    : 'Advisory empirical envelope — Mine site clearance protocols and statutory exclusion zones strictly govern'}
                 </p>
               </div>
             </div>
@@ -445,21 +445,26 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
             </button>
           </div>
 
+          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-900 leading-relaxed font-medium">
+            <strong>{lang === 'fr' ? 'AVERTISSEMENT SÉCURITÉ :' : 'SAFETY MANDATE:'}</strong>{' '}
+            {lang === 'fr' ? (currentKuzRam.flyrock.clearanceNoticeFr || 'Périmètre indicatif basé sur Lundborg (1981). Ne constitue JAMAIS une distance de sécurité garantie. Le protocole d\'évacuation validé par le responsable des tirs de la mine prévaut obligatoirement.') : (currentKuzRam.flyrock.clearanceNoticeEn || 'Empirical envelope based on Lundborg (1981). NEVER consider model output as a guaranteed safe distance. Statutory mine clearance procedures and blast warden sign-offs strictly govern.')}
+          </div>
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
-              <span className="text-[10px] text-slate-500 block">{lang === 'fr' ? 'Éjection Face Libre' : 'Face Burst Throw'}</span>
+              <span className="text-[10px] text-slate-500 block">{lang === 'fr' ? 'Éjection Face Libre' : 'Face Throw Envelope'}</span>
               <span className="text-base font-bold text-slate-800">{currentKuzRam.flyrock.faceBurdenThrowM} m</span>
             </div>
             <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
-              <span className="text-[10px] text-slate-500 block">{lang === 'fr' ? 'Cratérisation Sommet' : 'Cratering Throw'}</span>
+              <span className="text-[10px] text-slate-500 block">{lang === 'fr' ? 'Projection Crête / Bourrage' : 'Cratering / Stemming Throw'}</span>
               <span className="text-base font-bold text-slate-800">{currentKuzRam.flyrock.crateringThrowM} m</span>
             </div>
             <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-center">
-              <span className="text-[10px] text-amber-700 font-semibold block">{lang === 'fr' ? 'Retrait Matériel (1.35x)' : 'Equipment Safe Dist'}</span>
-              <span className="text-base font-black text-amber-900">{currentKuzRam.flyrock.equipmentEvacuationDistanceM} m</span>
+              <span className="text-[10px] text-amber-700 font-semibold block">{lang === 'fr' ? 'Limite Empirique Lundborg' : 'Lundborg Max Envelope'}</span>
+              <span className="text-base font-black text-amber-900">{currentKuzRam.flyrock.lundborgMaxThrowM || currentKuzRam.flyrock.maxFlyrockDistanceM} m</span>
             </div>
             <div className="bg-red-50 p-2.5 rounded-lg border border-red-200 text-center">
-              <span className="text-[10px] text-red-700 font-semibold block">{lang === 'fr' ? 'Évacuation Personnel (2.0x)' : 'Personnel Evacuation'}</span>
+              <span className="text-[10px] text-red-700 font-semibold block">{lang === 'fr' ? 'Périmètre d’Évacuation Conseillé' : 'Advisory Evacuation Buffer'}</span>
               <span className="text-base font-black text-red-700">{currentKuzRam.flyrock.personnelEvacuationDistanceM} m</span>
             </div>
           </div>

@@ -14,6 +14,8 @@ export interface ValidationMetricsResult {
   biasP80Mm: number;
   meanAbsErrorPercent: number;
   thresholdExceeded: boolean; // True if MAPE > threshold (default 15%)
+  status?: 'ok' | 'insufficient_data';
+  message?: string;
 }
 
 export const DEFAULT_SAMPLE_TEMPLATE = `Aperture (mm)\tMass Retained (kg)
@@ -81,13 +83,53 @@ export function computeSieveDistribution(sieveData: SieveDataGroundTruth[]): {
 
 export function computeValidationComparison(
   imageMetrics: FragmentationMetrics,
-  groundTruth: GroundTruth,
-  engineName = 'Engine A',
+  groundTruth?: GroundTruth,
+  engineName = 'Standard Watershed',
   thresholdPercent = 15
 ): ValidationMetricsResult {
-  const gtP20 = groundTruth.computedP20 || 60;
-  const gtP50 = groundTruth.computedP50 || 120;
-  const gtP80 = groundTruth.computedP80 || 220;
+  if (!groundTruth || (!groundTruth.computedP50 && (!groundTruth.sieveData || groundTruth.sieveData.length < 3))) {
+    return {
+      engine: engineName,
+      errorP20Percent: 0,
+      errorP50Percent: 0,
+      errorP80Percent: 0,
+      biasP20Mm: 0,
+      biasP50Mm: 0,
+      biasP80Mm: 0,
+      meanAbsErrorPercent: 0,
+      thresholdExceeded: false,
+      status: 'insufficient_data',
+      message: 'No physical sieve ground truth entered. Add physical sieve data to calculate error.',
+    };
+  }
+
+  // If sieveData exists but computed values are missing, compute them dynamically
+  let gtP20 = groundTruth.computedP20;
+  let gtP50 = groundTruth.computedP50;
+  let gtP80 = groundTruth.computedP80;
+
+  if ((!gtP20 || !gtP50 || !gtP80) && groundTruth.sieveData && groundTruth.sieveData.length >= 3) {
+    const computed = computeSieveDistribution(groundTruth.sieveData);
+    gtP20 = computed.p20;
+    gtP50 = computed.p50;
+    gtP80 = computed.p80;
+  }
+
+  if (!gtP20 || !gtP50 || !gtP80 || gtP20 <= 0 || gtP50 <= 0 || gtP80 <= 0) {
+    return {
+      engine: engineName,
+      errorP20Percent: 0,
+      errorP50Percent: 0,
+      errorP80Percent: 0,
+      biasP20Mm: 0,
+      biasP50Mm: 0,
+      biasP80Mm: 0,
+      meanAbsErrorPercent: 0,
+      thresholdExceeded: false,
+      status: 'insufficient_data',
+      message: 'Ground truth percentiles must be positive non-zero values.',
+    };
+  }
 
   const biasP20 = imageMetrics.p20 - gtP20;
   const biasP50 = imageMetrics.p50 - gtP50;
@@ -109,6 +151,7 @@ export function computeValidationComparison(
     biasP80Mm: Number(biasP80.toFixed(1)),
     meanAbsErrorPercent: Number(mape.toFixed(1)),
     thresholdExceeded: mape > thresholdPercent,
+    status: 'ok',
   };
 }
 

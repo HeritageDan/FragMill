@@ -3,11 +3,8 @@ import type {
   Point2D,
   Calibration,
   AiEngineParams,
-  HybridEngineParams,
 } from '../../types';
 import {
-  computeConvexHull,
-  computeFeretDiameters,
   runClassicalSegmentation,
   DEFAULT_CLASSICAL_PARAMS,
   filterFragmentsByRoiAndExclusions,
@@ -27,21 +24,21 @@ export interface ModelMetadata {
 export const AVAILABLE_AI_MODELS: ModelMetadata[] = [
   {
     id: 'enhanced_morphological',
-    name: 'Enhanced Multi-Scale Saliency & Crevice Engine',
-    framework: 'Client-Side TypedArray Image Processing (100% Offline)',
+    name: 'Fine-Grain Morphological Preset (High Sensitivity)',
+    framework: 'Client-Side Mathematical Morphology (100% Offline)',
     sizeMb: 0.1,
-    url: 'local://fragmill-enhanced-engine',
+    url: 'local://fragmill-fine-preset',
     downloaded: true,
     isFallback: true,
   },
   {
-    id: 'sam2_tiny_webgpu',
-    name: 'SAM 2.1 Tiny (Experimental WebGPU Integration)',
-    framework: 'WebGPU Pipeline (Requires WebGPU device)',
-    sizeMb: 38.5,
-    url: 'https://huggingface.co/facebook/sam2.1-hiera-tiny',
-    downloaded: false,
-    isFallback: false,
+    id: 'composite_multiscale',
+    name: 'Multi-Scale Composite Preset',
+    framework: 'Adaptive Multi-Resolution Watershed (100% Offline)',
+    sizeMb: 0.1,
+    url: 'local://fragmill-composite-preset',
+    downloaded: true,
+    isFallback: true,
   },
 ];
 
@@ -93,7 +90,7 @@ function computeBoxIoU(f1: Fragment, f2: Fragment): number {
   return unionArea > 0 ? interArea / unionArea : 0;
 }
 
-// Engine B: In-browser Enhanced Saliency & Crevice Segmentation with NMS
+// Engine B: Fine-Grain Watershed (High Sensitivity Preset with NMS filtering)
 export async function runAiSegmentation(
   imageElement: HTMLImageElement,
   calibration: Calibration,
@@ -102,9 +99,9 @@ export async function runAiSegmentation(
   roiPolygon?: Point2D[],
   exclusionPolygons?: Point2D[][]
 ): Promise<Fragment[]> {
-  onProgress?.(25, 'Filtering rock boundary saliency & energy field...');
+  onProgress?.(25, 'Applying high-contrast CLAHE & fine-grain watershed...');
 
-  // High-precision adaptive multi-scale segmentation
+  // High-precision adaptive multi-scale segmentation preset
   const classicalResult = await runClassicalSegmentation(
     imageElement,
     calibration,
@@ -120,15 +117,10 @@ export async function runAiSegmentation(
     exclusionPolygons
   );
 
-  onProgress?.(70, 'Applying Non-Maximum Suppression (NMS) & proposal ranking...');
+  onProgress?.(70, 'Applying Non-Maximum Suppression (NMS) on overlapping proposals...');
 
-  // Sort candidate proposals by confidence and area
-  const candidates = [...classicalResult.fragments].map((f) => ({
-    ...f,
-    confidence: Number(
-      Math.min(0.98, Math.max(0.86, 0.90 + (f.solidity - 0.7) * 0.2 + (f.areaMm2 > 100 ? 0.04 : 0))).toFixed(2)
-    ),
-  }));
+  // Retain geometric confidence computed honestly from solidity and area
+  const candidates = [...classicalResult.fragments];
   candidates.sort((a, b) => b.areaMm2 - a.areaMm2);
 
   // Apply Box IoU Non-Maximum Suppression based on params
@@ -152,32 +144,31 @@ export async function runAiSegmentation(
     }
   }
 
-  onProgress?.(100, 'Segmentation complete.');
+  onProgress?.(100, 'Fine-grain segmentation complete.');
   return filterFragmentsByRoiAndExclusions(filtered, roiPolygon, exclusionPolygons);
 }
 
-// Engine C: Hybrid Segmentation (AI large boulder seeds + Classical fine fraction)
+// Engine C: Multi-Scale Composite Preset (combines coarse and fine resolution watershed results)
 export async function runHybridSegmentation(
-  aiFragments: Fragment[],
-  classicalFragments: Fragment[],
+  coarseFragments: Fragment[],
+  fineFragments: Fragment[],
   roiPolygon?: Point2D[],
   exclusionPolygons?: Point2D[][]
 ): Promise<Fragment[]> {
-  // Take large fragments (minFeret >= 70mm) from AI (cleaner convex rock borders)
-  const largeAi = aiFragments.filter((f) => f.minFeretMm >= 70);
+  // Take large fragments (minFeret >= 70mm) from coarse pass (cleaner rock borders)
+  const largeCoarse = coarseFragments.filter((f) => f.minFeretMm >= 70);
 
-  // Take medium and fines (< 70mm) from classical watershed (finer texture resolution)
-  const nonOverlappingClassical = classicalFragments.filter((cf) => {
+  // Take medium and fines (< 70mm) from fine pass (higher local texture sensitivity)
+  const nonOverlappingFine = fineFragments.filter((cf) => {
     if (cf.minFeretMm >= 70) return false;
-    // Check if overlaps with any AI large rock centroid
-    for (const af of largeAi) {
-      const dist = Math.hypot(af.centroid.x - cf.centroid.x, af.centroid.y - cf.centroid.y);
-      const minDist = Math.max(30, af.minFeretMm * 0.4);
+    for (const lf of largeCoarse) {
+      const dist = Math.hypot(lf.centroid.x - cf.centroid.x, lf.centroid.y - cf.centroid.y);
+      const minDist = Math.max(30, lf.minFeretMm * 0.4);
       if (dist < minDist) return false;
     }
     return true;
   });
 
-  const combined = [...largeAi, ...nonOverlappingClassical];
+  const combined = [...largeCoarse, ...nonOverlappingFine];
   return filterFragmentsByRoiAndExclusions(combined, roiPolygon, exclusionPolygons);
 }

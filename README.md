@@ -25,10 +25,9 @@ Developed specifically for research and field operations in Cameroon and Central
 - **Statistical Corrections**: Swebrec and Rosin-Rammler continuous nonlinear coordinate-descent regression on log-scale cumulative passing, physics-grounded Swebrec unresolved fines extrapolation, and zero-allocation bootstrap confidence intervals (1,000 resamples).
 - **Field Mode Wizard**: 5-step touch-friendly wizard for non-specialists on mobile devices.
 
-### 2. Stage 2: In-Browser Advanced Segmentation & Manual Editing Suite
-- **Engine B (Enhanced Saliency & Crevice Engine)**: Robust client-side multi-scale saliency, edge clustering, and boundary crevice extraction with Intersection-over-Union (IoU) Non-Maximum Suppression (NMS) for offline rock fragment delineation.
-- **Automatic Candidate Mask Generation**: Multi-scale spatial grid sampling, gradient saliency scoring, and geometrical stability filtering.
-- **Engine C (Hybrid Mode)**: Multi-scale saliency seeds delineate dominant rock blocks while classical morphological watershed separates tightly packed fine-textured particles.
+### 2. Stage 2: Morphological Presets & Manual Editing Suite
+- **Engine B (Fine-Grain Watershed Preset)**: High-contrast CLAHE (clip limit 2.4) and stricter distance-transform thresholding (0.40) to resolve fine crevices and tight fragment boundaries, followed by IoU Non-Maximum Suppression (NMS) on candidate boxes.
+- **Engine C (Multi-Scale Composite Preset)**: Blends large fragment seeds from a low-threshold watershed with fine-fraction fragments from a high-sensitivity pass.
 - **Manual Editing Suite**: Add rock polygons, delete misidentified fragments, merge adjacent fragments, split boulders with a drawn line, and brush unresolved fines with full undo/redo history (saved non-destructively as new run versions).
 
 ### 3. Stage 3: Ground Truth Entry & Model Validation
@@ -119,17 +118,15 @@ Generates optimized static web assets inside the `dist/` directory ready for dep
 
 ## Pre-Loaded Demo Dataset
 
-FragMill initializes automatically with rich, real-world data from an artisanal and small-scale gold mining pilot study in Cameroon:
-- **Project**: *Bétaré Oya Mine-to-Mill Pilot Study* (East Region, Cameroon).
+FragMill initializes with synthetic, calibrated demonstration datasets modeled on artisanal and small-scale gold mining operations in Cameroon:
+- **Project**: *Bétaré Oya Mine-to-Mill Pilot (Synthetic Demo Dataset)* (East Region, Cameroon).
 - **Site**: *Pit #3 Granodiorite Bench* ($\rho = 2.68\ \text{t/m}^3$, joint spacing $0.50\ \text{m}$).
-- **Blast BL-2026-001**: Coarse fragmentation ($P_{80} = 285\ \text{mm}$, jaw crusher bridging, total specific comminution energy $22.6\ \text{kWh/t}$, gold recovery $82.0\%$).
-- **Blast BL-2026-002**: Optimized blast pattern ($P_{80} = 195\ \text{mm}$, smooth primary crushing, comminution energy $16.3\ \text{kWh/t}$, peak gold recovery $89.4\%$).
-- **Blast BL-2026-003**: Over-pulverized blast ($P_{80} = 142\ \text{mm}$, excessive slimes, drop in gravity spiral recovery to $84.7\%$).
+- **Blast BL-2026-001**: Coarse fragmentation scenario ($P_{80} = 285\ \text{mm}$, jaw crusher bridging, comminution energy $22.6\ \text{kWh/t}$, gold recovery $82.0\%$).
+- **Blast BL-2026-002**: Optimized blast pattern scenario ($P_{80} = 195\ \text{mm}$, smooth crushing, comminution energy $16.3\ \text{kWh/t}$, peak gold recovery $89.4\%$).
+- **Blast BL-2026-003**: Over-pulverized scenario ($P_{80} = 142\ \text{mm}$, excessive slimes, drop in gravity recovery to $84.7\%$).
 
 ---
 
-## Licence & Citation
+## License & Citation
 
-FragMill is released for educational and open research purposes supporting graduation research on blast fragmentation, comminution efficiency, and gold recovery in artisanal and small-scale mining.
-#   F r a g M i l l  
- 
+FragMill is open source under the [MIT License](LICENSE). Released for educational and open research purposes supporting blast fragmentation, comminution efficiency, and gold recovery in artisanal and small-scale mining.

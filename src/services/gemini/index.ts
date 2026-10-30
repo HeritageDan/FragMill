@@ -32,10 +32,13 @@ Analyze this photo and return a strict JSON object with these exact keys:
 }`;
 
   try {
-    const url = `${GEMINI_CONFIG.baseUrl}/${GEMINI_CONFIG.flashModel}:generateContent?key=${apiKey}`;
+    const url = `${GEMINI_CONFIG.baseUrl}/${GEMINI_CONFIG.flashModel}:generateContent`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
       body: JSON.stringify({
         contents: [
           {
@@ -68,14 +71,14 @@ Analyze this photo and return a strict JSON object with these exact keys:
 
     return JSON.parse(text) as GeminiQualityResponse;
   } catch (error: any) {
-    // Graceful fallback if offline or API key invalid
+    // Explicit offline / unconfigured state rather than fabricating perfection
     console.warn('Gemini API call failed or offline:', error.message);
     return {
-      isMuckPile: true,
-      scaleMarkerVisible: true,
+      isMuckPile: false,
+      scaleMarkerVisible: false,
       lightingQuality: 'good',
       obstaclesDetected: [],
-      operatorAdvice: 'Local analysis: Keep camera perpendicular to rock surface and ensure scale bar is unobstructed.',
+      operatorAdvice: 'Cloud AI quality check unavailable (offline or API key unconfigured). Inspect scale bar and lighting manually before processing.',
     };
   }
 }
@@ -118,10 +121,13 @@ INSTRUCTIONS:
 4. Conclude with 2 actionable field recommendations for the next blast pattern.`;
 
   try {
-    const url = `${GEMINI_CONFIG.baseUrl}/${GEMINI_CONFIG.flashModel}:generateContent?key=${apiKey}`;
+    const url = `${GEMINI_CONFIG.baseUrl}/${GEMINI_CONFIG.flashModel}:generateContent`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {

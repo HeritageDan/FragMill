@@ -456,6 +456,7 @@ export interface KuzRamResult {
   };
   xpFragCurve?: CumulativePoint[];
   flyrock?: {
+    lundborgMaxThrowM?: number;
     faceBurdenThrowM: number;
     crateringThrowM: number;
     riflingThrowM: number;
@@ -463,6 +464,8 @@ export interface KuzRamResult {
     safetyFactor: number;
     personnelEvacuationDistanceM: number;
     equipmentEvacuationDistanceM: number;
+    clearanceNoticeEn?: string;
+    clearanceNoticeFr?: string;
   };
   energy?: {
     powderFactorKgPerM3: number;
@@ -482,6 +485,7 @@ export interface BayesianCalibrationResult {
   credibleInterval95A: [number, number];
   acceptanceRate: number;
   mcmcSamplesA: number[];
+  rHat?: number;
   predictiveCurve: {
     sizeMm: number;
     medianPassing: number;

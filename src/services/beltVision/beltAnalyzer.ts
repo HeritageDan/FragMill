@@ -181,7 +181,20 @@ export function analyzeRealConveyorFrame(
 ): { rocks: RockDetection[]; stats: BeltStats; chokeEvent?: CrusherChokeEvent } {
   const ctx = canvas.getContext('2d');
   if (!ctx || canvas.width === 0 || canvas.height === 0) {
-    return generateSimulatedBeltFrame(config);
+    return {
+      rocks: [],
+      stats: {
+        instantTph: 0,
+        beltUtilizationPercent: 0,
+        p20Mm: 0,
+        p50Mm: 0,
+        p80Mm: 0,
+        topSizeMm: 0,
+        totalRocksDetected: 0,
+        oversizeCount: 0,
+        currentAlert: false,
+      },
+    };
   }
 
   const w = canvas.width;
@@ -284,9 +297,22 @@ export function analyzeRealConveyorFrame(
     }
   }
 
-  // If no rocks detected from frame, fall back to low-count sample
+  // If no rocks detected from frame, do NOT invent fake data
   if (sizes.length === 0) {
-    return generateSimulatedBeltFrame(config);
+    return {
+      rocks: [],
+      stats: {
+        instantTph: 0,
+        beltUtilizationPercent: 0,
+        p20Mm: 0,
+        p50Mm: 0,
+        p80Mm: 0,
+        topSizeMm: 0,
+        totalRocksDetected: 0,
+        oversizeCount: 0,
+        currentAlert: false,
+      },
+    };
   }
 
   sizes.sort((a, b) => a - b);

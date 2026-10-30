@@ -21,8 +21,10 @@ export const DEFAULT_ROCK_TABLES: KuzRamRockTables = {
 export function calculateRockFactorA(tables: KuzRamRockTables): number {
   const rdi = 25 * tables.density - 50;
   // Cunningham (1987): A = 0.06 * (RMD + JPS + JPA + RDI + HF)
-  const jps = tables.jf;
-  const jpa = tables.jfo;
+  // For massive rock (RMD = 50), joint spacing does not govern primary fragmentation, so JF = 0.
+  const isMassive = tables.rmd >= 50;
+  const jps = isMassive ? 0 : tables.jf;
+  const jpa = isMassive ? 0 : tables.jfo;
   const sum = tables.rmd + jps + jpa + rdi + tables.hf;
   const a = 0.06 * sum;
   return Number(Math.max(1, a).toFixed(2));
@@ -44,6 +46,17 @@ export function computeKuzRam(
   const CCL = params.columnChargeLength; // m
   const L = Math.max(0.1, BCL + CCL); // Total charge length (m)
 
+  // Validate critical blast engineering inputs
+  if (!B || B <= 0 || !S || S <= 0 || !H || H <= 0) {
+    throw new Error('Invalid blast geometry: burden, spacing, and bench height must be positive values.');
+  }
+  if (Q === undefined || Q <= 0) {
+    throw new Error('Invalid explosive parameters: chargePerHole must be greater than 0 kg.');
+  }
+  if (!D || D <= 0) {
+    throw new Error('Invalid drill hole parameters: holeDiameter must be greater than 0 mm.');
+  }
+
   // Powder factor K (kg/m3) = Q / (B * S * H)
   const volumePerHole = B * S * H;
   const K = Math.max(0.1, Q / Math.max(0.1, volumePerHole));
@@ -56,10 +69,14 @@ export function computeKuzRam(
     if (rockMass.jointOrientation === 'dip_out_of_face') jpaVal = 20;
     else if (rockMass.jointOrientation === 'dip_into_face') jpaVal = 40;
 
-    // JPS: Joint spacing (<0.1m = 10, 0.1-1.0m = 20, >1.0m = 50)
+    // JPS: Joint spacing evaluated relative to drill pattern spacing (B, S)
+    const patternMin = Math.min(B, S);
     let jpsVal = 20;
-    if (rockMass.meanJointSpacing < 0.1) jpsVal = 10;
-    else if (rockMass.meanJointSpacing > 1.0) jpsVal = 50;
+    if (rockMass.meanJointSpacing < 0.1) {
+      jpsVal = 10;
+    } else if (rockMass.meanJointSpacing > patternMin * 0.5 || rockMass.meanJointSpacing > 1.5) {
+      jpsVal = 50;
+    }
 
     // HF: Hardness Factor = E/3 if E < 50 GPa, otherwise UCS/5
     let hfVal = 15;
@@ -69,8 +86,16 @@ export function computeKuzRam(
       hfVal = rockMass.ucsMPa / 5;
     }
 
+    // RMD: Cunningham (1987) table: 10 = powdery/friable, 20 = jointed blocky, 50 = massive
+    let rmdVal = 20;
+    if (rockMass.estimatedGsiOrRmr && rockMass.estimatedGsiOrRmr >= 75) {
+      rmdVal = 50; // massive rock mass
+    } else if (rockMass.estimatedGsiOrRmr && rockMass.estimatedGsiOrRmr < 40) {
+      rmdVal = 10; // friable
+    }
+
     const tables: KuzRamRockTables = {
-      rmd: rockMass.estimatedGsiOrRmr && rockMass.estimatedGsiOrRmr < 40 ? 10 : 20,
+      rmd: rmdVal,
       jf: jpsVal,
       jfo: jpaVal,
       density: rockMass.density || 2.68,
@@ -168,20 +193,22 @@ export function computeKuzRam(
     { sizeMm: 800, passingPercent: evalKcoPassing(800) },
   ];
 
-  // Flyrock Safety Analysis (Richards & Moore 2004 / Lundborg 1981)
-  // Face burst throw (m), Cratering throw (m), Rifling throw (m)
+  // Flyrock Safety Analysis (Empirical Lundborg 1981 & Richards & Moore 2004)
+  // Lundborg empirical maximum throw: Lmax = 143 * d^(2/3) [d in inches]
   const dInches = D / 25.4;
-  const kfFace = 13.5;
-  const kfCrater = 9.8;
-  const kfRifling = 17.5;
+  const lundborgMaxThrowM = Math.round(143 * Math.pow(dInches, 2 / 3));
+
+  // Richards & Moore (2004) empirical throw trajectories
   const chargePerMeter = Q / Math.max(0.5, L);
-  const faceThrow = Number(((kfFace * Math.pow(chargePerMeter, 2/3)) / Math.max(1, B)).toFixed(1));
-  const craterThrow = Number(((kfCrater * Math.pow(chargePerMeter, 2/3)) / Math.max(1, params.stemmingLength || B)).toFixed(1));
-  const riflingThrow = Number((kfRifling * Math.pow(dInches, 2/3)).toFixed(1));
-  const maxFlyrock = Math.max(faceThrow, craterThrow, riflingThrow);
-  const safetyFactor = 2.0; // ISEE Safety Guideline
-  const personnelEvacM = Math.round(maxFlyrock * safetyFactor);
-  const equipmentEvacM = Math.round(maxFlyrock * 1.35);
+  const faceThrow = Math.round((45 * Math.pow(chargePerMeter, 2 / 3)) / Math.max(0.5, Math.sqrt(B)));
+  const craterThrow = Math.round((35 * Math.pow(chargePerMeter, 2 / 3)) / Math.max(0.5, Math.sqrt(params.stemmingLength || B)));
+  const riflingThrow = lundborgMaxThrowM;
+
+  const maxFlyrock = Math.max(lundborgMaxThrowM, faceThrow, craterThrow, riflingThrow);
+  const safetyFactor = 2.0;
+  // Conservative personnel exclusion envelope (min 500m per mining practice guidelines)
+  const personnelEvacM = Math.max(500, Math.round(maxFlyrock * safetyFactor));
+  const equipmentEvacM = Math.max(300, Math.round(maxFlyrock * 1.35));
 
   // Energy & Greenhouse Gas Metrics
   const rockDensityTPerM3 = rockMass.density || 2.65;
@@ -215,6 +242,7 @@ export function computeKuzRam(
     },
     xpFragCurve: computeXPFrag(x50Mm, n, xMaxMm, K, /emulsion/i.test(params.explosiveType || '')),
     flyrock: {
+      lundborgMaxThrowM,
       faceBurdenThrowM: faceThrow,
       crateringThrowM: craterThrow,
       riflingThrowM: riflingThrow,
@@ -222,6 +250,8 @@ export function computeKuzRam(
       safetyFactor,
       personnelEvacuationDistanceM: personnelEvacM,
       equipmentEvacuationDistanceM: equipmentEvacM,
+      clearanceNoticeEn: 'Empirical Lundborg (1981) & Richards-Moore (2004) envelope. Site clearance rules strictly govern. Never rely on theoretical models as certified safe distances.',
+      clearanceNoticeFr: 'Enveloppe empirique Lundborg (1981) & Richards-Moore (2004). Le plan de tir et les règles du site minier prévalent impérativement. Ne pas considérer comme distance garantie.',
     },
     energy: {
       powderFactorKgPerM3: Number(K.toFixed(2)),
@@ -234,13 +264,25 @@ export function computeKuzRam(
   };
 }
 
-// Bayesian Calibration of Rock Factor A using Metropolis-Hastings MCMC
+// Seeded PRNG (Mulberry32) for reproducible MCMC chains
+function createMulberry32(seed: number) {
+  let s = seed >>> 0;
+  return function () {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Bayesian Calibration of Rock Factor A using Multi-Chain Metropolis-Hastings MCMC with Jacobian correction
 export function runBayesianCalibration(
   priorMeanA: number,
   priorStdA: number,
   observations: Array<{ measuredX50Mm: number; params: BlastParameters; rockMass: RockMass; errorStdMm: number }>,
   numSamples = 4000,
-  burnIn = 1000
+  burnIn = 1000,
+  baseSeed = 42
 ): BayesianCalibrationResult {
   if (observations.length === 0) {
     return {
@@ -252,6 +294,7 @@ export function runBayesianCalibration(
       acceptanceRate: 1.0,
       mcmcSamplesA: [priorMeanA],
       predictiveCurve: [],
+      rHat: 1.0,
     };
   }
 
@@ -269,47 +312,84 @@ export function runBayesianCalibration(
   const logLikelihood = (a: number) => {
     let sum = 0;
     for (const obs of observations) {
-      const pred = computeKuzRam(obs.params, obs.rockMass, a);
-      const diff = obs.measuredX50Mm - pred.meanSizeX50Mm;
-      const sigma = Math.max(5, obs.errorStdMm || 15);
-      sum += -0.5 * Math.pow(diff / sigma, 2) - Math.log(sigma);
+      try {
+        const pred = computeKuzRam(obs.params, obs.rockMass, a);
+        const diff = obs.measuredX50Mm - pred.meanSizeX50Mm;
+        const sigma = Math.max(5, obs.errorStdMm || 15);
+        sum += -0.5 * Math.pow(diff / sigma, 2) - Math.log(sigma);
+      } catch {
+        return -Infinity;
+      }
     }
     return sum;
   };
 
   const logPosterior = (a: number) => logPrior(a) + logLikelihood(a);
 
-  // Metropolis-Hastings
-  let currentA = priorMeanA;
-  let currentLogPost = logPosterior(currentA);
-  const samples: number[] = [];
-  let accepted = 0;
-  const proposalStd = 0.35;
+  // Run 2 parallel chains with overdispersed initial values for Gelman-Rubin diagnostic
+  const numChains = 2;
+  const samplesPerChain = Math.floor(numSamples / numChains);
+  const chains: number[][] = [];
+  let totalAccepted = 0;
+  const proposalStd = 0.25;
 
-  for (let step = 0; step < numSamples + burnIn; step++) {
-    // Random walk proposal in log space
-    const candidateA = currentA * Math.exp((Math.random() - 0.5) * proposalStd);
-    const candidateLogPost = logPosterior(candidateA);
-    const logAlpha = candidateLogPost - currentLogPost;
+  const startValues = [
+    Math.max(1.0, priorMeanA * 0.8),
+    Math.min(25.0, priorMeanA * 1.25),
+  ];
 
-    if (Math.log(Math.random()) < logAlpha) {
-      currentA = candidateA;
-      currentLogPost = candidateLogPost;
-      if (step >= burnIn) accepted++;
+  for (let c = 0; c < numChains; c++) {
+    const rng = createMulberry32(baseSeed + c * 1000 + 13);
+    let currentA = startValues[c];
+    let currentLogPost = logPosterior(currentA);
+    const chainSamples: number[] = [];
+
+    for (let step = 0; step < samplesPerChain + burnIn; step++) {
+      // Random walk proposal in log space: candidateA = currentA * exp(delta)
+      const delta = (rng() - 0.5) * proposalStd;
+      const candidateA = currentA * Math.exp(delta);
+      const candidateLogPost = logPosterior(candidateA);
+
+      // Proposal Jacobian correction for log-space transition:
+      // q(candidate|current) = 1 / (proposalStd * candidateA)
+      // logAlpha = logPosterior(cand) - logPosterior(curr) + ln(candidateA) - ln(currentA)
+      const logJacobian = Math.log(candidateA) - Math.log(currentA);
+      const logAlpha = candidateLogPost - currentLogPost + logJacobian;
+
+      if (Math.log(rng()) < logAlpha) {
+        currentA = candidateA;
+        currentLogPost = candidateLogPost;
+        if (step >= burnIn) totalAccepted++;
+      }
+
+      if (step >= burnIn) {
+        chainSamples.push(currentA);
+      }
     }
-
-    if (step >= burnIn) {
-      samples.push(currentA);
-    }
+    chains.push(chainSamples);
   }
 
-  // Summary statistics
-  samples.sort((a, b) => a - b);
-  const mean = samples.reduce((acc, v) => acc + v, 0) / samples.length;
-  const variance = samples.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / samples.length;
+  // Gelman-Rubin convergence check (R-hat)
+  const n = samplesPerChain;
+  const chainMeans = chains.map((ch) => ch.reduce((acc, v) => acc + v, 0) / n);
+  const overallMean = chainMeans.reduce((acc, v) => acc + v, 0) / numChains;
+
+  const chainVars = chains.map((ch, idx) =>
+    ch.reduce((acc, v) => acc + Math.pow(v - chainMeans[idx], 2), 0) / (n - 1)
+  );
+  const W = chainVars.reduce((acc, v) => acc + v, 0) / numChains;
+  const B = (n / (numChains - 1)) * chainMeans.reduce((acc, m) => acc + Math.pow(m - overallMean, 2), 0);
+  const varHat = ((n - 1) / n) * W + (1 / n) * B;
+  const rHat = W > 1e-6 ? Number(Math.sqrt(varHat / W).toFixed(3)) : 1.0;
+
+  // Combine pooled samples
+  const allSamples = chains.flat();
+  allSamples.sort((a, b) => a - b);
+  const mean = allSamples.reduce((acc, v) => acc + v, 0) / allSamples.length;
+  const variance = allSamples.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / allSamples.length;
   const std = Math.sqrt(variance);
-  const q025 = samples[Math.floor(samples.length * 0.025)];
-  const q975 = samples[Math.floor(samples.length * 0.975)];
+  const q025 = allSamples[Math.floor(allSamples.length * 0.025)];
+  const q975 = allSamples[Math.floor(allSamples.length * 0.975)];
 
   // Compute predictive curve on latest blast observation
   const refObs = observations[observations.length - 1];
@@ -330,9 +410,10 @@ export function runBayesianCalibration(
     posteriorMeanA: Number(mean.toFixed(2)),
     posteriorStdA: Number(std.toFixed(2)),
     credibleInterval95A: [Number(q025.toFixed(2)), Number(q975.toFixed(2))],
-    acceptanceRate: Number((accepted / numSamples).toFixed(2)),
-    mcmcSamplesA: samples.filter((_, i) => i % 10 === 0), // Thinned for chart performance
+    acceptanceRate: Number((totalAccepted / (samplesPerChain * numChains)).toFixed(2)),
+    mcmcSamplesA: allSamples.filter((_, i) => i % 10 === 0), // Thinned for chart performance
     predictiveCurve,
+    rHat,
   };
 }
 

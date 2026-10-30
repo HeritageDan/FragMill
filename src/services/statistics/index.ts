@@ -220,13 +220,40 @@ export function findPercentileSize(curve: CumulativePoint[], targetPercent: numb
   return curve[curve.length - 1].sizeMm;
 }
 
+// Continuous volume-weighted percentile evaluation with log-size interpolation
+export function interpolatePercentileFromItems(
+  sortedItems: Array<{ size: number; vol: number }>,
+  totalVol: number,
+  targetPercent: number
+): number {
+  if (sortedItems.length === 0 || totalVol <= 0) return 0;
+  const targetVol = totalVol * (targetPercent / 100);
+
+  let cumVol = 0;
+  for (let i = 0; i < sortedItems.length; i++) {
+    const prevVol = cumVol;
+    cumVol += sortedItems[i].vol;
+    if (cumVol >= targetVol) {
+      if (i === 0) return sortedItems[0].size;
+      const s1 = sortedItems[i - 1].size;
+      const s2 = sortedItems[i].size;
+      const t = (targetVol - prevVol) / Math.max(1e-9, cumVol - prevVol);
+      const logS1 = Math.log10(Math.max(0.1, s1));
+      const logS2 = Math.log10(Math.max(0.1, s2));
+      const logSize = logS1 + t * (logS2 - logS1);
+      return Math.pow(10, logSize);
+    }
+  }
+  return sortedItems[sortedItems.length - 1].size;
+}
+
 // Rosin-Rammler nonlinear fitting: P(x) = 1 - exp(-(x/xc)^n)
-export function fitRosinRammler(curve: CumulativePoint[]): FitParametersRosinRammler & { converged?: boolean } {
+export function fitRosinRammler(curve: CumulativePoint[]): FitParametersRosinRammler & { converged?: boolean; status?: 'ok' | 'insufficient_data' } {
   // Filter points strictly between 1% and 99% passing
   const valid = curve.filter((p) => p.passingPercent > 1 && p.passingPercent < 99 && p.sizeMm > 0);
   const maxSize = curve.length > 0 ? Math.max(...curve.map((c) => c.sizeMm)) : 500;
   if (valid.length < 3) {
-    return { xc: 150, n: 1.2, r2: 0.9, rmse: 5, converged: true };
+    return { xc: 0, n: 0, r2: 0, rmse: 0, converged: false, status: 'insufficient_data' };
   }
 
   // Linear regression on Weibull coordinates:
@@ -249,19 +276,23 @@ export function fitRosinRammler(curve: CumulativePoint[]): FitParametersRosinRam
   }
 
   const denom = count * sumXX - sumX * sumX;
-  const rawSlope = Math.abs(denom) > 1e-6 ? (count * sumXY - sumX * sumY) / denom : 1.2;
+  if (Math.abs(denom) < 1e-6) {
+    return { xc: 0, n: 0, r2: 0, rmse: 0, converged: false, status: 'insufficient_data' };
+  }
+
+  const rawSlope = (count * sumXY - sumX * sumY) / denom;
   const rawIntercept = (sumY - rawSlope * sumX) / count;
 
   let n = rawSlope;
-  let xc = Math.exp(-rawIntercept / Math.max(0.1, n));
+  let xc = Math.exp(-rawIntercept / Math.max(0.01, n));
 
-  const minXc = Math.max(5, 0.2 * maxSize);
-  const maxXc = 3.0 * maxSize;
-  const converged = !isNaN(xc) && !isNaN(n) && n >= 0.5 && n <= 3.0 && xc >= minXc && xc <= maxXc;
+  const minXc = Math.max(2, 0.1 * maxSize);
+  const maxXc = 4.0 * maxSize;
+  const physicallyValid = !isNaN(xc) && !isNaN(n) && n >= 0.4 && n <= 3.5 && xc >= minXc && xc <= maxXc;
 
   // Bound parameters within physically meaningful ranges
-  n = Math.max(0.5, Math.min(3.0, isNaN(n) ? 1.2 : n));
-  xc = Math.max(minXc, Math.min(maxXc, isNaN(xc) ? 150 : xc));
+  n = Math.max(0.4, Math.min(3.5, isNaN(n) ? 1.0 : n));
+  xc = Math.max(minXc, Math.min(maxXc, isNaN(xc) ? 100 : xc));
 
   // Compute R2 and RMSE (definition identical to Swebrec: RMSE in percentage points % of passing)
   let ssTot = 0;
@@ -281,6 +312,9 @@ export function fitRosinRammler(curve: CumulativePoint[]): FitParametersRosinRam
   const aic = Number((count * Math.log(Math.max(1e-4, rmse * rmse)) + 2 * 2).toFixed(1));
   const bic = Number((count * Math.log(Math.max(1e-4, rmse * rmse)) + 2 * Math.log(count)).toFixed(1));
 
+  // Report converged only if physically valid AND R2 is acceptable
+  const converged = physicallyValid && r2 >= 0.60 && rmse < 25;
+
   return {
     xc: Number(xc.toFixed(1)),
     n: Number(n.toFixed(2)),
@@ -288,7 +322,8 @@ export function fitRosinRammler(curve: CumulativePoint[]): FitParametersRosinRam
     rmse: Number(rmse.toFixed(2)),
     aic,
     bic,
-    converged: converged && rmse < 25,
+    converged,
+    status: converged ? 'ok' : 'insufficient_data',
   };
 }
 
@@ -453,44 +488,25 @@ export function runBootstrapResampling(
 
   for (let it = 0; it < iterations; it++) {
     let totalVol = 0;
+    // Scale uncertainty Monte-Carlo jitter (2% standard deviation)
+    const scaleMultiplier = 1.0 + (Math.random() + Math.random() - 1.0) * 0.02;
     for (let i = 0; i < n; i++) {
       const idx = Math.floor(Math.random() * n);
-      sample[i] = rawItems[idx];
-      totalVol += rawItems[idx].vol;
+      const size = rawItems[idx].size * scaleMultiplier;
+      const vol = (Math.PI / 6) * Math.pow(size, 3);
+      sample[i] = { size, vol };
+      totalVol += vol;
     }
 
     // Sort ascending by size
     sample.sort((a, b) => a.size - b.size);
 
-    let cumVol = 0;
-    const t10 = totalVol * 0.10;
-    const t20 = totalVol * 0.20;
-    const t50 = totalVol * 0.50;
-    const t80 = totalVol * 0.80;
-    const t90 = totalVol * 0.90;
-
-    let p10 = sample[0].size;
-    let p20 = sample[0].size;
-    let p50 = sample[0].size;
-    let p80 = sample[n - 1].size;
-    let p90 = sample[n - 1].size;
-
-    let f10 = false, f20 = false, f50 = false, f80 = false, f90 = false;
-
-    for (let i = 0; i < n; i++) {
-      cumVol += sample[i].vol;
-      if (!f10 && cumVol >= t10) { p10 = sample[i].size; f10 = true; }
-      if (!f20 && cumVol >= t20) { p20 = sample[i].size; f20 = true; }
-      if (!f50 && cumVol >= t50) { p50 = sample[i].size; f50 = true; }
-      if (!f80 && cumVol >= t80) { p80 = sample[i].size; f80 = true; }
-      if (!f90 && cumVol >= t90) { p90 = sample[i].size; f90 = true; break; }
-    }
-
-    p10Samples[it] = p10;
-    p20Samples[it] = p20;
-    p50Samples[it] = p50;
-    p80Samples[it] = p80;
-    p90Samples[it] = p90;
+    // Compute consistent continuous volume-weighted percentiles matching findPercentileSize
+    p10Samples[it] = interpolatePercentileFromItems(sample, totalVol, 10);
+    p20Samples[it] = interpolatePercentileFromItems(sample, totalVol, 20);
+    p50Samples[it] = interpolatePercentileFromItems(sample, totalVol, 50);
+    p80Samples[it] = interpolatePercentileFromItems(sample, totalVol, 80);
+    p90Samples[it] = interpolatePercentileFromItems(sample, totalVol, 90);
   }
 
   const sortAndGetCI = (arr: Float64Array): [number, number] => {
@@ -566,11 +582,10 @@ export function computeFragmentationMetrics(
   // Standard ASTM / Tyler / ISO Sieve Analysis
   const standardSievePassing = computeStandardSieveMeshPassing(correctedCurve);
 
-  // Fast bootstrap
-  const bootstrapCI = runBootstrapResampling(fragments, sizeDef, 250);
+  // Fast bootstrap (1000 iterations per documentation)
+  const bootstrapCI = runBootstrapResampling(fragments, sizeDef, 1000);
 
-  // PROPOSAL 1: 3D Triaxial Stereological Sizing Unfolding
-  // Compute curve weighted by true 3D volume (A x B x C) rather than spherical d^3
+  // 3D Sizing Approximation
   const volumeItems = fragments.map((f) => {
     const size = Math.max(0.1, getFragmentSize(f, sizeDef));
     const vol = f.trueVolume3DMm3 || (Math.PI / 6) * Math.pow(size, 3) * 0.7;
@@ -590,9 +605,9 @@ export function computeFragmentationMetrics(
   const true3D_P50 = findPercentileSize(true3DCurve, 50);
   const true3D_P80 = findPercentileSize(true3DCurve, 80);
 
-  // PROPOSAL 2: Swebrec vs Rosin-Rammler Sub-Mesh Fines Modeling
-  const rrFines = Number(((1 - Math.exp(-Math.pow(finesCutoffMm / rosinRammlerFit.xc, rosinRammlerFit.n))) * 100).toFixed(1));
-  const swRatio = Math.log(swebrecFit.xMax / finesCutoffMm) / Math.max(0.01, Math.log(swebrecFit.xMax / swebrecFit.x50));
+  // Sub-Mesh Fines Modeling
+  const rrFines = Number(((1 - Math.exp(-Math.pow(finesCutoffMm / Math.max(1, rosinRammlerFit.xc), rosinRammlerFit.n || 1))) * 100).toFixed(1));
+  const swRatio = Math.log(swebrecFit.xMax / finesCutoffMm) / Math.max(0.01, Math.log(swebrecFit.xMax / Math.max(1, swebrecFit.x50)));
   const swFines = Number(((1 / (1 + Math.pow(Math.max(0.001, swRatio), swebrecFit.b))) * 100).toFixed(1));
 
   return {
@@ -617,7 +632,7 @@ export function computeFragmentationMetrics(
     standardSievePassing,
     rawCurve,
     correctedCurve,
-    stereologicalCorrectionApplied: true,
+    stereologicalCorrectionApplied: false, // Standard 2D spherical equivalence (pi/6 * d^3 on minFeret); no stereological unfolding applied
     true3D_P50,
     true3D_P80,
     swebrecExtrapolatedFines: {

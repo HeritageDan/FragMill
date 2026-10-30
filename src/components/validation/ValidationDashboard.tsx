@@ -61,19 +61,13 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
   const groundTruth = selectedBlast?.groundTruth;
   const activeRun = selectedBlast?.images[0]?.segmentationRuns?.[0] || null;
 
-  // Sieve data state for active blast
-  const sieveData: SieveDataGroundTruth[] = groundTruth?.sieveData || [
-    { apertureMm: 300, massRetainedKg: 42.0 },
-    { apertureMm: 200, massRetainedKg: 68.5 },
-    { apertureMm: 125, massRetainedKg: 54.0 },
-    { apertureMm: 75, massRetainedKg: 38.0 },
-    { apertureMm: 37.5, massRetainedKg: 22.5 },
-    { apertureMm: 19, massRetainedKg: 14.0 },
-    { apertureMm: 9.5, massRetainedKg: 8.5 },
-    { apertureMm: 4.75, massRetainedKg: 5.2 },
-  ];
+  // Sieve data state for active blast (do NOT fake synthetic data if absent)
+  const sieveData: SieveDataGroundTruth[] = useMemo(() => groundTruth?.sieveData || [], [groundTruth?.sieveData]);
+  const hasRealSieve = Boolean(sieveData && sieveData.length >= 3);
 
-  const sieveMetrics = computeSieveDistribution(sieveData);
+  const sieveMetrics = useMemo(() => {
+    return hasRealSieve ? computeSieveDistribution(sieveData) : { p20: 0, p50: 0, p80: 0, curve: [] };
+  }, [hasRealSieve, sieveData]);
   const sampleTotalMassKg = useMemo(() => sieveData.reduce((acc, r) => acc + (r.massRetainedKg || 0), 0), [sieveData]);
 
   // Single Source of Truth Blast Engineering State for Kuz-Ram calibration
@@ -152,17 +146,19 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
 
   const validationComp = computeValidationComparison(
     comparisonMetrics,
-    {
-      id: groundTruth?.id || 'gt-1',
-      blastId: selectedBlast.id,
-      manualFragments: groundTruth?.manualFragments || [],
-      sieveData,
-      computedP20: sieveMetrics.p20,
-      computedP50: sieveMetrics.p50,
-      computedP80: sieveMetrics.p80,
-      createdAt: 0,
-      updatedAt: 0,
-    },
+    hasRealSieve
+      ? {
+          id: groundTruth?.id || 'gt-1',
+          blastId: selectedBlast.id,
+          manualFragments: groundTruth?.manualFragments || [],
+          sieveData,
+          computedP20: sieveMetrics.p20,
+          computedP50: sieveMetrics.p50,
+          computedP80: sieveMetrics.p80,
+          createdAt: 0,
+          updatedAt: 0,
+        }
+      : undefined,
     engineLabel
   );
 
@@ -602,7 +598,11 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
                     </span>
                   )}
                 </div>
-                {validationComp.thresholdExceeded ? (
+                {validationComp.status === 'insufficient_data' ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 flex items-center gap-1 border border-slate-200">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> {isFr ? 'Données tamis requises (N/A)' : 'Physical Sieve Required (N/A)'}
+                  </span>
+                ) : validationComp.thresholdExceeded ? (
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 flex items-center gap-1">
                     <AlertTriangle className="w-3.5 h-3.5" /> {t('errorThresholdExceeded', lang)}
                   </span>
@@ -629,34 +629,40 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
                     <tr>
                       <td className="py-2 px-3 font-semibold text-slate-700">P20</td>
                       <td className="py-2 px-3 font-bold text-slate-900">{comparisonMetrics.p20} mm</td>
-                      <td className="py-2 px-3 font-bold text-rose-700">{sieveMetrics.p20} mm</td>
-                      <td className="py-2 px-3 text-slate-600">{validationComp.biasP20Mm > 0 ? `+${validationComp.biasP20Mm}` : validationComp.biasP20Mm}</td>
-                      <td className={`py-2 px-3 font-bold ${Math.abs(validationComp.errorP20Percent) > 15 ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {validationComp.errorP20Percent}%
+                      <td className="py-2 px-3 font-bold text-rose-700">{hasRealSieve ? `${sieveMetrics.p20} mm` : 'N/A'}</td>
+                      <td className="py-2 px-3 text-slate-600">
+                        {hasRealSieve ? (validationComp.biasP20Mm > 0 ? `+${validationComp.biasP20Mm}` : validationComp.biasP20Mm) : 'N/A'}
+                      </td>
+                      <td className={`py-2 px-3 font-bold ${!hasRealSieve ? 'text-slate-400' : Math.abs(validationComp.errorP20Percent) > 15 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {hasRealSieve ? `${validationComp.errorP20Percent}%` : 'N/A'}
                       </td>
                     </tr>
                     <tr className="bg-blue-50/40">
                       <td className="py-2 px-3 font-bold text-blue-900">{t('p50', lang)}</td>
                       <td className="py-2 px-3 font-black text-blue-950">{comparisonMetrics.p50} mm</td>
-                      <td className="py-2 px-3 font-bold text-rose-700">{sieveMetrics.p50} mm</td>
-                      <td className="py-2 px-3 text-slate-600">{validationComp.biasP50Mm > 0 ? `+${validationComp.biasP50Mm}` : validationComp.biasP50Mm}</td>
-                      <td className={`py-2 px-3 font-bold ${Math.abs(validationComp.errorP50Percent) > 15 ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {validationComp.errorP50Percent}%
+                      <td className="py-2 px-3 font-bold text-rose-700">{hasRealSieve ? `${sieveMetrics.p50} mm` : 'N/A'}</td>
+                      <td className="py-2 px-3 text-slate-600">
+                        {hasRealSieve ? (validationComp.biasP50Mm > 0 ? `+${validationComp.biasP50Mm}` : validationComp.biasP50Mm) : 'N/A'}
+                      </td>
+                      <td className={`py-2 px-3 font-bold ${!hasRealSieve ? 'text-slate-400' : Math.abs(validationComp.errorP50Percent) > 15 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {hasRealSieve ? `${validationComp.errorP50Percent}%` : 'N/A'}
                       </td>
                     </tr>
                     <tr className="bg-blue-50/40">
                       <td className="py-2 px-3 font-bold text-blue-900">{t('p80', lang)}</td>
                       <td className="py-2 px-3 font-black text-blue-950">{comparisonMetrics.p80} mm</td>
-                      <td className="py-2 px-3 font-bold text-rose-700">{sieveMetrics.p80} mm</td>
-                      <td className="py-2 px-3 text-slate-600">{validationComp.biasP80Mm > 0 ? `+${validationComp.biasP80Mm}` : validationComp.biasP80Mm}</td>
-                      <td className={`py-2 px-3 font-bold ${Math.abs(validationComp.errorP80Percent) > 15 ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {validationComp.errorP80Percent}%
+                      <td className="py-2 px-3 font-bold text-rose-700">{hasRealSieve ? `${sieveMetrics.p80} mm` : 'N/A'}</td>
+                      <td className="py-2 px-3 text-slate-600">
+                        {hasRealSieve ? (validationComp.biasP80Mm > 0 ? `+${validationComp.biasP80Mm}` : validationComp.biasP80Mm) : 'N/A'}
+                      </td>
+                      <td className={`py-2 px-3 font-bold ${!hasRealSieve ? 'text-slate-400' : Math.abs(validationComp.errorP80Percent) > 15 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {hasRealSieve ? `${validationComp.errorP80Percent}%` : 'N/A'}
                       </td>
                     </tr>
                     <tr className="bg-slate-50 font-bold">
                       <td className="py-2 px-3" colSpan={4}>{t('mape', lang)}</td>
-                      <td className={`py-2 px-3 ${validationComp.meanAbsErrorPercent > 15 ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {validationComp.meanAbsErrorPercent}%
+                      <td className={`py-2 px-3 ${!hasRealSieve ? 'text-slate-400' : validationComp.meanAbsErrorPercent > 15 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {hasRealSieve ? `${validationComp.meanAbsErrorPercent}%` : 'N/A'}
                       </td>
                     </tr>
                   </tbody>

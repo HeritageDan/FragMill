@@ -225,6 +225,130 @@ export function calibrateTwoPoint(
   };
 }
 
+/**
+ * Direct Linear Transformation (DLT) for 4-Point Planar Homography:
+ * Solves the 8x8 system M * h = b to find the 3x3 projective transformation matrix H.
+ */
+export function computeHomographyMatrix(src: Point2D[], dst: Point2D[]): number[][] {
+  if (src.length !== 4 || dst.length !== 4) {
+    throw new Error('4-point homography requires exactly 4 corresponding points.');
+  }
+
+  const M: number[][] = [];
+  const b: number[] = [];
+
+  for (let i = 0; i < 4; i++) {
+    const { x, y } = src[i];
+    const { x: u, y: v } = dst[i];
+
+    M.push([x, y, 1, 0, 0, 0, -u * x, -u * y]);
+    b.push(u);
+
+    M.push([0, 0, 0, x, y, 1, -v * x, -v * y]);
+    b.push(v);
+  }
+
+  // Gaussian elimination with partial pivoting (8x8)
+  const n = 8;
+  const A = M.map((row, i) => [...row, b[i]]);
+
+  for (let i = 0; i < n; i++) {
+    let maxRow = i;
+    for (let k = i + 1; k < n; k++) {
+      if (Math.abs(A[k][i]) > Math.abs(A[maxRow][i])) {
+        maxRow = k;
+      }
+    }
+    const temp = A[i];
+    A[i] = A[maxRow];
+    A[maxRow] = temp;
+
+    if (Math.abs(A[i][i]) < 1e-12) {
+      throw new Error('Degenerate quadrilateral geometry for homography.');
+    }
+
+    for (let k = i + 1; k < n; k++) {
+      const factor = A[k][i] / A[i][i];
+      for (let j = i; j <= n; j++) {
+        A[k][j] -= factor * A[i][j];
+      }
+    }
+  }
+
+  // Back substitution
+  const h = new Array<number>(n);
+  for (let i = n - 1; i >= 0; i--) {
+    let sum = A[i][n];
+    for (let j = i + 1; j < n; j++) {
+      sum -= A[i][j] * h[j];
+    }
+    h[i] = sum / A[i][i];
+  }
+
+  return [
+    [h[0], h[1], h[2]],
+    [h[3], h[4], h[5]],
+    [h[6], h[7], 1.0],
+  ];
+}
+
+/**
+ * Applies 3x3 Homography matrix H to transform a 2D image coordinate into metric space.
+ */
+export function applyHomography(H: number[][], pt: Point2D): Point2D {
+  const x = pt.x;
+  const y = pt.y;
+  const denom = H[2][0] * x + H[2][1] * y + H[2][2];
+  if (Math.abs(denom) < 1e-9) return { x: 0, y: 0 };
+  const u = (H[0][0] * x + H[0][1] * y + H[0][2]) / denom;
+  const v = (H[1][0] * x + H[1][1] * y + H[1][2]) / denom;
+  return { x: u, y: v };
+}
+
+/**
+ * Calibrates scale and perspective rectification using a 4-point quadrilateral target of known width & height.
+ */
+export function calibrateFourPointHomography(
+  corners: Point2D[],
+  realWorldWidthMm: number,
+  realWorldHeightMm: number
+): Calibration {
+  if (corners.length !== 4) {
+    throw new Error('4 corner points required for perspective homography calibration.');
+  }
+
+  const dstCorners: Point2D[] = [
+    { x: 0, y: 0 },
+    { x: realWorldWidthMm, y: 0 },
+    { x: realWorldWidthMm, y: realWorldHeightMm },
+    { x: 0, y: realWorldHeightMm },
+  ];
+
+  const H = computeHomographyMatrix(corners, dstCorners);
+
+  // Compute equivalent average pxPerMm across the quad
+  const topEdge = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y);
+  const bottomEdge = Math.hypot(corners[2].x - corners[3].x, corners[2].y - corners[3].y);
+  const leftEdge = Math.hypot(corners[3].x - corners[0].x, corners[3].y - corners[0].y);
+  const rightEdge = Math.hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y);
+
+  const avgWidthPx = (topEdge + bottomEdge) / 2;
+  const avgHeightPx = (leftEdge + rightEdge) / 2;
+  const pxPerMm = (avgWidthPx / realWorldWidthMm + avgHeightPx / realWorldHeightMm) / 2;
+
+  return {
+    method: 'four_point_homography',
+    points: corners,
+    realWorldDistanceMm: realWorldWidthMm,
+    realWorldWidthMm,
+    realWorldHeightMm,
+    pxPerMm: Number(pxPerMm.toFixed(4)),
+    scaleVariationPercent: 0.5,
+    calibrationErrorMm: Number((0.5 / pxPerMm).toFixed(2)),
+    homographyMatrix: H,
+  };
+}
+
 // Convex Hull Algorithm (Graham Scan / Monotone Chain)
 export function computeConvexHull(points: Point2D[]): Point2D[] {
   if (points.length <= 3) return points;
@@ -536,7 +660,10 @@ export async function runClassicalSegmentation(
     overlayWithSizing?: string;
   };
 }> {
-  const pxPerMm = calibration.pxPerMm || 0.5;
+  if (!calibration || !calibration.pxPerMm || calibration.pxPerMm <= 0) {
+    throw new Error('Valid scale calibration (pxPerMm > 0) is required before running image segmentation.');
+  }
+  const pxPerMm = calibration.pxPerMm;
 
   // ── 0. Adaptive Working Resolution ──────────────────────────────────────────
   // Use up to 2048px for high-res images, down to 1024 for smaller ones.
@@ -1368,13 +1495,22 @@ export async function runClassicalSegmentation(
     const ecdMm = 2 * Math.sqrt(areaMm2 / Math.PI);
     const volumeMm3 = (Math.PI / 6) * Math.pow(minFeretMm, 3);
 
-    // 3D Triaxial Ellipsoidal Sizing & Thickness Modeling
+    // Real bounding box dimensions from actual polygon bounds
+    let minPolyX = Infinity, maxPolyX = -Infinity, minPolyY = Infinity, maxPolyY = -Infinity;
+    for (const pt of origPoly) {
+      if (pt.x < minPolyX) minPolyX = pt.x;
+      if (pt.x > maxPolyX) maxPolyX = pt.x;
+      if (pt.y < minPolyY) minPolyY = pt.y;
+      if (pt.y > maxPolyY) maxPolyY = pt.y;
+    }
+    const bboxWidthMm = Number(((maxPolyX - minPolyX) / pxPerMm).toFixed(1));
+    const bboxHeightMm = Number(((maxPolyY - minPolyY) / pxPerMm).toFixed(1));
+
+    // Thickness estimated via empirical flakiness ratio assumption (c/b = 0.62 per Sanchidrian et al.)
     const thicknessMm = Number((minFeretMm * 0.62).toFixed(1));
     const trueVolume3DMm3 = Math.round((Math.PI / 6) * maxFeretMm * minFeretMm * thicknessMm);
-    const peakIdx = peak.y * workW + peak.x;
-    const depthMm = Math.round(4800 + (1 - (dist[peakIdx] || 0) / Math.max(1, maxD)) * 1400);
 
-    // Confidence based on solidity and area consistency (not random!)
+    // Confidence derived from contour solidity and area regularity
     const areaConfidence = Math.min(1, areaMm2 / Math.max(1, params.minFragmentAreaMm2) * 0.1);
     const shapeConfidence = Math.min(1, solidity * 1.05);
     const confidence = Number(Math.min(0.99, (areaConfidence * 0.3 + shapeConfidence * 0.7)).toFixed(2));
@@ -1388,13 +1524,13 @@ export async function runClassicalSegmentation(
       ecdMm: Number(ecdMm.toFixed(1)),
       minFeretMm: Number(minFeretMm.toFixed(1)),
       maxFeretMm: Number(maxFeretMm.toFixed(1)),
-      bboxWidthMm: Number((maxFeretMm * 0.9).toFixed(1)),
-      bboxHeightMm: Number((minFeretMm * 1.1).toFixed(1)),
+      bboxWidthMm,
+      bboxHeightMm,
       aspectRatio: Number(aspectRatio.toFixed(2)),
       solidity: Number(solidity.toFixed(2)),
       volumeMm3: Math.round(volumeMm3),
       confidence,
-      depthMm,
+      depthMm: undefined,
       thicknessMm,
       trueVolume3DMm3,
     });

@@ -19,20 +19,8 @@ export interface SelfTestReport {
   timestamp: number;
 }
 
+// Geometric self-test: verifies convex-hull generation and rotating-caliper Feret sizing accuracy on synthetic geometric primitives
 export async function runCalibrationSelfTest(): Promise<SelfTestReport> {
-  if (typeof document !== 'undefined') {
-    const canvas = document.createElement('canvas');
-    const w = 800;
-    const h = 600;
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, w, h);
-    }
-  }
-
   // Exact known calibration scale: 2 px per mm (0.5 mm per px)
   const pxPerMm = 2.0;
 
