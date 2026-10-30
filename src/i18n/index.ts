@@ -134,9 +134,9 @@ export const translations = {
     specificDrilling: 'Specific Drilling (m/m³)',
 
     // Engines
-    engineA: 'Engine A: Classical (WASM)',
-    engineB: 'Engine B: AI SAM 2.1',
-    engineC: 'Engine C: Hybrid Mode',
+    engineA: 'Engine A: Classical Watershed',
+    engineB: 'Engine B: Enhanced Crevice & Saliency',
+    engineC: 'Engine C: Hybrid Adaptive Mode',
     manualEditEngine: 'Manual Segmentation Review',
     processingMsg: 'Processing fragments...',
 
@@ -508,9 +508,9 @@ export const translations = {
     specificDrilling: 'Foration Spécifique (m/m³)',
 
     // Engines
-    engineA: 'Moteur A : Classique (WASM)',
-    engineB: 'Moteur B : IA SAM 2.1',
-    engineC: 'Moteur C : Mode Hybride',
+    engineA: 'Moteur A : Ligne de partage des eaux classique',
+    engineB: 'Moteur B : Détection avancée fissures & saillies',
+    engineC: 'Moteur C : Mode Adaptatif Hybride',
     manualEditEngine: 'Revue et Édition Manuelle',
     processingMsg: 'Traitement des fragments...',
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { db, getSettings, saveSettings, DEFAULT_SETTINGS } from './db';
 import { seedDemoProject } from './db/seedData';
 import { generateDefaultDrillHolesFromBlast } from './services/drillHoles/drillHoleService';
@@ -15,22 +15,48 @@ import type {
 import { AppHeader, type NavigationTab } from './components/layout/AppHeader';
 import { FieldWizard } from './components/wizard/FieldWizard';
 import { BlastDetailView } from './components/blast/BlastDetailView';
-import { BenchMapView } from './components/spatial/BenchMapView';
-import { ValidationDashboard } from './components/validation/ValidationDashboard';
-import { MineToMillView } from './components/minetomill/MineToMillView';
-import { KuzRamView } from './components/kuzram/KuzRamView';
-import { SettingsView } from './components/settings/SettingsView';
-import { HelpView } from './components/help/HelpView';
-import { Drone3DSizingView } from './components/drone/Drone3DSizingView';
-import { BeltEdgeVisionView } from './components/belt/BeltEdgeVisionView';
-import { BlastTimingSimulatorView } from './components/timing/BlastTimingSimulatorView';
-import { ComminutionDigitalTwinView } from './components/comminution/ComminutionDigitalTwinView';
-import { BlockModelKrigingView } from './components/geostatistics/BlockModelKrigingView';
-import { DrillTelemetryP2PView } from './components/telemetry/DrillTelemetryP2PView';
 import { ActiveBlastBanner } from './components/layout/ActiveBlastBanner';
 import { ReportVaultProvider, useReportVault } from './context/ReportVaultContext';
-import { ReportVaultModal } from './components/report/ReportVaultModal';
 import { RefreshCw, CheckCircle2, X } from 'lucide-react';
+
+// Lazy-loaded secondary views for code-splitting and rapid initial bundle loading
+const BenchMapView = lazy(() => import('./components/spatial/BenchMapView').then((m) => ({ default: m.BenchMapView })));
+const ValidationDashboard = lazy(() => import('./components/validation/ValidationDashboard').then((m) => ({ default: m.ValidationDashboard })));
+const MineToMillView = lazy(() => import('./components/minetomill/MineToMillView').then((m) => ({ default: m.MineToMillView })));
+const KuzRamView = lazy(() => import('./components/kuzram/KuzRamView').then((m) => ({ default: m.KuzRamView })));
+const SettingsView = lazy(() => import('./components/settings/SettingsView').then((m) => ({ default: m.SettingsView })));
+const HelpView = lazy(() => import('./components/help/HelpView').then((m) => ({ default: m.HelpView })));
+const Drone3DSizingView = lazy(() => import('./components/drone/Drone3DSizingView').then((m) => ({ default: m.Drone3DSizingView })));
+const BeltEdgeVisionView = lazy(() => import('./components/belt/BeltEdgeVisionView').then((m) => ({ default: m.BeltEdgeVisionView })));
+const BlastTimingSimulatorView = lazy(() => import('./components/timing/BlastTimingSimulatorView').then((m) => ({ default: m.BlastTimingSimulatorView })));
+const ComminutionDigitalTwinView = lazy(() => import('./components/comminution/ComminutionDigitalTwinView').then((m) => ({ default: m.ComminutionDigitalTwinView })));
+const BlockModelKrigingView = lazy(() => import('./components/geostatistics/BlockModelKrigingView').then((m) => ({ default: m.BlockModelKrigingView })));
+const DrillTelemetryP2PView = lazy(() => import('./components/telemetry/DrillTelemetryP2PView').then((m) => ({ default: m.DrillTelemetryP2PView })));
+const ReportVaultModal = lazy(() => import('./components/report/ReportVaultModal').then((m) => ({ default: m.ReportVaultModal })));
+
+const ViewLoadingFallback = () => (
+  <div className="flex flex-col items-center justify-center p-20 space-y-4 text-slate-400">
+    <div className="w-9 h-9 border-3 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+    <span className="text-xs font-semibold tracking-wider uppercase text-slate-500">Loading module...</span>
+  </div>
+);
+
+const STATIC_FALLBACK_PROJECT: Project = {
+  id: 'proj-1',
+  name: 'Projet Bétaré Oya',
+  description: 'Artisanal Gold Mining',
+  createdAt: 1711843200000,
+  updatedAt: 1711843200000,
+};
+
+const STATIC_FALLBACK_SITE: Site = {
+  id: 'site-1',
+  projectId: 'proj-1',
+  name: 'Carrière Principale Bétaré Oya',
+  locationText: 'Est-Cameroun',
+  createdAt: 1711843200000,
+  updatedAt: 1711843200000,
+};
 
 function AppContent() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -43,11 +69,6 @@ function AppContent() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   const { toastMessage, clearToast } = useReportVault();
-
-  // Initialize and load database
-  useEffect(() => {
-    loadDatabase();
-  }, []);
 
   const loadDatabase = async () => {
     setIsLoading(true);
@@ -69,32 +90,19 @@ function AppContent() {
       const gtList = await db.groundTruths.toArray();
       const mbList = await db.millBatches.toArray();
 
-      // Hydrate blasts with their child images, runs, ground truth, and mill batches
+      // Hydrate blasts with their child images, runs, ground truth, and mill batches from IndexedDB
       const hydratedBlasts = blastList.map((b) => {
-        let baseBlast = b;
-        try {
-          const cachedSnap = localStorage.getItem(`fragmill_blast_${b.id}`);
-          if (cachedSnap) {
-            const parsed = JSON.parse(cachedSnap);
-            if (parsed && parsed.id === b.id) {
-              baseBlast = { ...b, ...parsed };
-            }
-          }
-        } catch (e) {
-          console.warn('Could not read cached blast snapshot:', e);
-        }
-
-        const bImages = imageList.filter((img) => img.blastId === baseBlast.id);
+        const bImages = imageList.filter((img) => img.blastId === b.id);
         const hydratedImages = bImages.map((img) => ({
           ...img,
           segmentationRuns: runList.filter((r) => r.imageId === img.id),
         }));
 
         return {
-          ...baseBlast,
-          images: baseBlast.images && baseBlast.images.length > 0 ? baseBlast.images : hydratedImages,
-          groundTruth: gtList.find((gt) => gt.blastId === baseBlast.id),
-          millBatch: mbList.find((mb) => mb.blastId === baseBlast.id),
+          ...b,
+          images: b.images && b.images.length > 0 ? b.images : hydratedImages,
+          groundTruth: gtList.find((gt) => gt.blastId === b.id),
+          millBatch: mbList.find((mb) => mb.blastId === b.id),
         };
       });
 
@@ -125,6 +133,11 @@ function AppContent() {
     }
   };
 
+  // Initialize and load database
+  useEffect(() => {
+    loadDatabase();
+  }, []);
+
   const handleSelectBlast = (id: string) => {
     setActiveBlastId(id);
     try {
@@ -151,10 +164,9 @@ function AppContent() {
   const handleUpdateBlast = async (updatedBlast: Blast) => {
     await db.blasts.put(updatedBlast);
     try {
-      localStorage.setItem(`fragmill_blast_${updatedBlast.id}`, JSON.stringify(updatedBlast));
       localStorage.setItem('fragmill_last_active_blast_id', updatedBlast.id);
     } catch (e) {
-      console.warn('LocalStorage blast snapshot failed:', e);
+      console.warn('LocalStorage save error:', e);
     }
     setBlasts((prev) => prev.map((b) => (b.id === updatedBlast.id ? updatedBlast : b)));
   };
@@ -406,125 +418,127 @@ function AppContent() {
           />
         )}
 
-        {activeTab === 'drone3d' && activeBlast && (
-          <Drone3DSizingView
-            key={activeBlast.id}
-            blast={activeBlast}
-            project={activeProject || undefined}
-            site={activeSite || undefined}
-            onUpdateBlast={handleUpdateBlast}
-            lang={settings.language}
-          />
-        )}
+        <Suspense fallback={<ViewLoadingFallback />}>
+          {activeTab === 'drone3d' && activeBlast && (
+            <Drone3DSizingView
+              key={activeBlast.id}
+              blast={activeBlast}
+              project={activeProject || undefined}
+              site={activeSite || undefined}
+              onUpdateBlast={handleUpdateBlast}
+              lang={settings.language}
+            />
+          )}
 
-        {activeTab === 'beltvision' && (
-          <BeltEdgeVisionView
-            key={activeBlast.id}
-            blast={activeBlast}
-            project={activeProject || undefined}
-            site={activeSite || undefined}
-            lang={settings.language}
-          />
-        )}
+          {activeTab === 'beltvision' && (
+            <BeltEdgeVisionView
+              key={activeBlast.id}
+              blast={activeBlast}
+              project={activeProject || undefined}
+              site={activeSite || undefined}
+              lang={settings.language}
+            />
+          )}
 
-        {activeTab === 'timing' && activeBlast && (
-          <BlastTimingSimulatorView
-            key={activeBlast.id}
-            blast={activeBlast}
-            project={activeProject || undefined}
-            site={activeSite || undefined}
-            lang={settings.language}
-          />
-        )}
+          {activeTab === 'timing' && activeBlast && (
+            <BlastTimingSimulatorView
+              key={activeBlast.id}
+              blast={activeBlast}
+              project={activeProject || undefined}
+              site={activeSite || undefined}
+              lang={settings.language}
+            />
+          )}
 
-        {activeTab === 'comminution' && activeBlast && (
-          <ComminutionDigitalTwinView
-            key={activeBlast.id}
-            blast={activeBlast}
-            project={activeProject || undefined}
-            site={activeSite || undefined}
-            lang={settings.language}
-          />
-        )}
+          {activeTab === 'comminution' && activeBlast && (
+            <ComminutionDigitalTwinView
+              key={activeBlast.id}
+              blast={activeBlast}
+              project={activeProject || undefined}
+              site={activeSite || undefined}
+              lang={settings.language}
+            />
+          )}
 
-        {activeTab === 'kriging' && (
-          <BlockModelKrigingView
-            key={activeBlast.id}
-            blast={activeBlast}
-            project={activeProject || undefined}
-            site={activeSite || undefined}
-            lang={settings.language}
-          />
-        )}
+          {activeTab === 'kriging' && (
+            <BlockModelKrigingView
+              key={activeBlast.id}
+              blast={activeBlast}
+              project={activeProject || undefined}
+              site={activeSite || undefined}
+              lang={settings.language}
+            />
+          )}
 
-        {activeTab === 'telemetry' && activeBlast && (
-          <DrillTelemetryP2PView
-            key={activeBlast.id}
-            blast={activeBlast}
-            project={activeProject || undefined}
-            site={activeSite || undefined}
-            lang={settings.language}
-          />
-        )}
+          {activeTab === 'telemetry' && activeBlast && (
+            <DrillTelemetryP2PView
+              key={activeBlast.id}
+              blast={activeBlast}
+              project={activeProject || undefined}
+              site={activeSite || undefined}
+              lang={settings.language}
+            />
+          )}
 
-        {activeTab === 'benchmap' && (
-          <BenchMapView
-            blasts={blasts}
-            activeBlastId={activeBlastId}
-            onSelectBlast={(id) => {
-              handleSelectBlast(id);
-              handleSelectTab('blast');
-            }}
-            project={activeProject || undefined}
-            site={activeSite || undefined}
-            lang={settings.language}
-          />
-        )}
+          {activeTab === 'benchmap' && (
+            <BenchMapView
+              blasts={blasts}
+              activeBlastId={activeBlastId}
+              onSelectBlast={(id) => {
+                handleSelectBlast(id);
+                handleSelectTab('blast');
+              }}
+              project={activeProject || undefined}
+              site={activeSite || undefined}
+              lang={settings.language}
+            />
+          )}
 
-        {activeTab === 'validation' && (
-          <ValidationDashboard
-            blasts={blasts}
-            activeBlastId={activeBlastId}
-            onSelectBlast={(id) => handleSelectBlast(id)}
-            onUpdateBlastGroundTruth={handleUpdateBlastGroundTruth}
-            project={activeProject || undefined}
-            site={activeSite || undefined}
-            lang={settings.language}
-          />
-        )}
+          {activeTab === 'validation' && (
+            <ValidationDashboard
+              blasts={blasts}
+              activeBlastId={activeBlastId}
+              onSelectBlast={(id) => handleSelectBlast(id)}
+              onUpdateBlastGroundTruth={handleUpdateBlastGroundTruth}
+              project={activeProject || undefined}
+              site={activeSite || undefined}
+              lang={settings.language}
+            />
+          )}
 
-        {activeTab === 'minetomill' && (
-          <MineToMillView
-            blasts={blasts}
-            activeBlastId={activeBlastId}
-            onSelectBlast={(id) => handleSelectBlast(id)}
-            onUpdateMillBatch={handleUpdateMillBatch}
-            project={activeProject || undefined}
-            site={activeSite || undefined}
-            lang={settings.language}
-          />
-        )}
+          {activeTab === 'minetomill' && (
+            <MineToMillView
+              blasts={blasts}
+              activeBlastId={activeBlastId}
+              onSelectBlast={(id) => handleSelectBlast(id)}
+              onUpdateMillBatch={handleUpdateMillBatch}
+              project={activeProject || undefined}
+              site={activeSite || undefined}
+              lang={settings.language}
+            />
+          )}
 
-        {activeTab === 'kuzram' && (
-          <KuzRamView
-            blasts={blasts}
-            activeBlastId={activeBlastId}
-            onSelectBlast={(id) => handleSelectBlast(id)}
-            project={activeProject || undefined}
-            site={activeSite || undefined}
-            lang={settings.language}
-          />
-        )}
+          {activeTab === 'kuzram' && (
+            <KuzRamView
+              blasts={blasts}
+              activeBlastId={activeBlastId}
+              onSelectBlast={(id) => handleSelectBlast(id)}
+              project={activeProject || undefined}
+              site={activeSite || undefined}
+              lang={settings.language}
+            />
+          )}
 
-        {activeTab === 'settings' && (
-          <SettingsView
-            settings={settings}
-            onUpdateSettings={handleUpdateSettings}
-            lang={settings.language}
-          />
-        )}
+          {activeTab === 'settings' && (
+            <SettingsView
+              settings={settings}
+              onUpdateSettings={handleUpdateSettings}
+              lang={settings.language}
+            />
+          )}
 
-        {activeTab === 'help' && <HelpView lang={settings.language} />}
+          {activeTab === 'help' && <HelpView lang={settings.language} />}
+        </Suspense>
       </main>
 
       {/* Floating Toast Notification for Report Vault Staging */}
@@ -545,31 +559,16 @@ function AppContent() {
 
       {/* Modular Report Vault Modal */}
       {activeBlast && (
-        <ReportVaultModal
-          isOpen={isReportModalOpen}
-          onClose={() => setIsReportModalOpen(false)}
-          project={
-            activeProject || {
-              id: 'proj-1',
-              name: 'Projet Bétaré Oya',
-              description: 'Artisanal Gold Mining',
-              createdAt: Date.now(),
-              updatedAt: Date.now(),
-            }
-          }
-          site={
-            activeSite || {
-              id: 'site-1',
-              projectId: 'proj-1',
-              name: 'Carrière Principale Bétaré Oya',
-              locationText: 'Est-Cameroun',
-              createdAt: Date.now(),
-              updatedAt: Date.now(),
-            }
-          }
-          blast={activeBlast}
-          lang={settings.language}
-        />
+        <Suspense fallback={null}>
+          <ReportVaultModal
+            isOpen={isReportModalOpen}
+            onClose={() => setIsReportModalOpen(false)}
+            project={activeProject || STATIC_FALLBACK_PROJECT}
+            site={activeSite || STATIC_FALLBACK_SITE}
+            blast={activeBlast}
+            lang={settings.language}
+          />
+        </Suspense>
       )}
 
       <footer className="bg-slate-900 text-slate-400 py-3 text-center text-xs border-t border-slate-800">

@@ -121,6 +121,7 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
   const [hardPF, setHardPF] = useState<number>(0.85);
 
   const [showExplanation, setShowExplanation] = useState<boolean>(true);
+  const [pointClickMode, setPointClickMode] = useState<boolean>(false);
   const [krigingGrid, setKrigingGrid] = useState<KrigingGridNode[]>([]);
   const [hoveredCell, setHoveredCell] = useState<{
     xM: number;
@@ -190,6 +191,32 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
 
   const handleCanvasMouseLeave = () => {
     setHoveredCell(null);
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!pointClickMode) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const fracX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const fracY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+
+    const easting = Number((gridBounds.minX + fracX * (gridBounds.maxX - gridBounds.minX)).toFixed(1));
+    const northing = Number((gridBounds.maxY - fracY * (gridBounds.maxY - gridBounds.minY)).toFixed(1));
+
+    const num = boreholes.length + 1;
+    const newBh: BoreholeSample = {
+      id: `BH-P${num}`,
+      easting,
+      northing,
+      elevation: 840,
+      ucsMPa: 110,
+      rqdPercent: 70,
+      jointSpacingM: 0.45,
+      densityTPerM3: 2.68,
+      goldGradeGPT: 1.5,
+    };
+    setBoreholes((prev) => [...prev, newBh]);
   };
 
   // Dynamic spatial grid bounds calculated from real borehole coordinates
@@ -817,6 +844,18 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
                 <Crosshair className="w-3.5 h-3.5" />
                 <span>{isFrench ? 'Zonage Domaines' : 'Blast Domains'}</span>
               </button>
+              <button
+                onClick={() => setPointClickMode((prev) => !prev)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                  pointClickMode
+                    ? 'bg-amber-500 text-slate-950 shadow-sm animate-pulse'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+                title={isFrench ? 'Cliquer sur la carte pour ajouter un point de contrôle géotechnique UCS' : 'Click on the map to place a geotechnical UCS sample point'}
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>{isFrench ? 'Saisie par Clic' : 'Point-Click UCS'}</span>
+              </button>
             </div>
 
             <span className="text-[10px] text-slate-400 font-mono pr-1 hidden sm:inline">
@@ -833,8 +872,17 @@ export const BlockModelKrigingView: React.FC<BlockModelKrigingViewProps> = ({
               height={450}
               onMouseMove={handleCanvasMouseMove}
               onMouseLeave={handleCanvasMouseLeave}
+              onClick={handleCanvasClick}
               className="w-full h-full object-cover"
             />
+
+            {/* Point-click helper banner */}
+            {pointClickMode && (
+              <div className="absolute top-3 left-3 bg-amber-500 text-slate-950 font-bold px-3 py-1 rounded-lg text-xs shadow-lg flex items-center gap-1.5 animate-bounce">
+                <MapPin className="w-3.5 h-3.5" />
+                <span>{isFrench ? 'Cliquez sur la carte pour poser un sondage UCS' : 'Click on the map to place a UCS borehole sample'}</span>
+              </div>
+            )}
 
             {/* Dynamic Legend Overlay */}
             <div className="absolute bottom-3 left-3 right-3 sm:right-auto bg-black/85 backdrop-blur-xs px-3 py-2 rounded-xl text-[10px] text-white border border-white/10 shadow-lg">

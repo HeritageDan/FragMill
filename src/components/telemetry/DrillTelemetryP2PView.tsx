@@ -8,6 +8,8 @@ import {
   parseIREDESXml,
   parseDrillPatternCsv,
   DEMO_P2P_PEERS,
+  simulateRigDrillingTelemetry,
+  RIG_PRECISION_SPECS,
 } from '../../services/telemetry/iredesGenerator';
 import {
   Wifi,
@@ -16,12 +18,10 @@ import {
   CheckCircle2,
   RefreshCw,
   HardDrive,
-  Cpu,
   Smartphone,
   Server,
   AlertTriangle,
   Sliders,
-  SlidersHorizontal,
   PlusCircle,
   HelpCircle,
   Sparkles,
@@ -82,6 +82,7 @@ export const DrillTelemetryP2PView: React.FC<DrillTelemetryP2PViewProps> = ({
   const [rigIpAddress, setRigIpAddress] = useState<string>('192.168.4.50');
   const [targetDepthOffsetM, setTargetDepthOffsetM] = useState<number>(0);
   const [showExplanation, setShowExplanation] = useState<boolean>(false);
+  const [shiftId, setShiftId] = useState<number>(1);
 
   useEffect(() => {
     if (blast.drillHoles && blast.drillHoles.length > 0) {
@@ -245,21 +246,62 @@ export const DrillTelemetryP2PView: React.FC<DrillTelemetryP2PViewProps> = ({
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  // Simulate Realistic MWD Drift vs Ideal Design
+  // Simulate Realistic MWD Drift vs Ideal Design with Rig OEM Physics Model
   const handleSimulateRealDrift = () => {
-    setHoles((prev) =>
-      prev.map((h, idx) => {
-        const drift = Math.round(15 + Math.random() * 85);
-        const depthDiff = Number(((Math.random() - 0.4) * 0.6).toFixed(2));
-        const rop = Number((targetPenetrationRate + (Math.random() - 0.5) * 0.6).toFixed(2));
-        return {
-          ...h,
-          collarDeviationMm: drift,
-          actualDepthM: Number((h.plannedDepthM + depthDiff).toFixed(2)),
-          penetrationRateMPerMin: Math.max(0.4, rop),
-        };
-      })
+    const updated = simulateRigDrillingTelemetry(
+      blast,
+      rigModel,
+      targetPenetrationRate,
+      targetDepthOffsetM,
+      shiftId,
+      holes
     );
+    setHoles(updated);
+    setToastMsg(
+      isFrench
+        ? `✓ Simulation physique MWD calculée (${rigModel} • Poste ${shiftId})`
+        : `✓ Calculated physics MWD telemetry (${rigModel} • Shift ${shiftId})`
+    );
+    setTimeout(() => setToastMsg(null), 3500);
+  };
+
+  const handleRigModelChange = (newRig: string) => {
+    setRigModel(newRig);
+    const updated = simulateRigDrillingTelemetry(
+      blast,
+      newRig,
+      targetPenetrationRate,
+      targetDepthOffsetM,
+      shiftId,
+      holes
+    );
+    setHoles(updated);
+    setToastMsg(
+      isFrench
+        ? `✓ Modèle de foreuse appliqué : ${newRig}`
+        : `✓ Applied drill rig model: ${newRig}`
+    );
+    setTimeout(() => setToastMsg(null), 3000);
+  };
+
+  const handleNextShift = () => {
+    const nextShift = shiftId + 1;
+    setShiftId(nextShift);
+    const updated = simulateRigDrillingTelemetry(
+      blast,
+      rigModel,
+      targetPenetrationRate,
+      targetDepthOffsetM,
+      nextShift,
+      holes
+    );
+    setHoles(updated);
+    setToastMsg(
+      isFrench
+        ? `✓ Nouveau Poste de Foration #${nextShift} simulé (${rigModel})`
+        : `✓ Simulated New Drilling Shift #${nextShift} (${rigModel})`
+    );
+    setTimeout(() => setToastMsg(null), 3500);
   };
 
   const handleResetToIdeal = () => {
@@ -462,18 +504,26 @@ export const DrillTelemetryP2PView: React.FC<DrillTelemetryP2PViewProps> = ({
           </div>
 
           {/* Simulation Drift / Ideal Toggle */}
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
             <button
               onClick={handleSimulateRealDrift}
-              className="px-2.5 py-1 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 rounded-lg font-bold flex items-center gap-1"
-              title={isFrench ? 'Injecter une dérive réaliste pour tester l’audit' : 'Simulate field sensor deviation'}
+              className="px-2.5 py-1 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 rounded-lg font-bold flex items-center gap-1 cursor-pointer"
+              title={isFrench ? 'Calculer la simulation physique déterministe MWD' : 'Run deterministic physics MWD simulation'}
             >
               <Radio className="w-3.5 h-3.5 text-amber-400" />
-              <span>{isFrench ? 'Simuler Dérive Réelle MWD' : 'Simulate Real MWD Drift'}</span>
+              <span>{isFrench ? `Simuler Dérive MWD (Poste #${shiftId})` : `Simulate MWD Drift (Shift #${shiftId})`}</span>
+            </button>
+            <button
+              onClick={handleNextShift}
+              className="px-2 py-1 bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 border border-indigo-500/30 rounded-lg font-bold flex items-center gap-1 cursor-pointer"
+              title={isFrench ? 'Simuler le poste suivant de foration' : 'Simulate next production shift'}
+            >
+              <RefreshCw className="w-3 h-3 text-indigo-400" />
+              <span>{isFrench ? 'Poste Suivant' : 'Next Shift'}</span>
             </button>
             <button
               onClick={handleResetToIdeal}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-bold"
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-bold cursor-pointer"
             >
               {isFrench ? 'Réinitialiser Conforme' : 'Reset to Ideal'}
             </button>
@@ -488,7 +538,7 @@ export const DrillTelemetryP2PView: React.FC<DrillTelemetryP2PViewProps> = ({
             </label>
             <select
               value={rigModel}
-              onChange={(e) => setRigModel(e.target.value)}
+              onChange={(e) => handleRigModelChange(e.target.value)}
               className="w-full bg-slate-800 text-white border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold"
             >
               <option value="Epiroc SmartROC T45">Epiroc SmartROC T45 (GPS Topcon)</option>
@@ -496,6 +546,9 @@ export const DrillTelemetryP2PView: React.FC<DrillTelemetryP2PViewProps> = ({
               <option value="CAT MD6250">Caterpillar MD6250 (Terrain)</option>
               <option value="Atlas Copco ROC D7">Atlas Copco ROC D7 (Manual Guidance)</option>
             </select>
+            <span className="text-[10px] text-indigo-300 font-mono block mt-1">
+              {RIG_PRECISION_SPECS[rigModel]?.guidanceSystem || 'Guidage GPS'}
+            </span>
           </div>
 
           {/* Collar Tolerance Slider */}

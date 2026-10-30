@@ -18,6 +18,8 @@ import {
   RefreshCw,
   Info,
   FileSpreadsheet,
+  MapPin,
+  ShieldAlert,
 } from 'lucide-react';
 import type { Project, Site } from '../../types';
 import { SendToReportButton } from '../report/SendToReportButton';
@@ -153,6 +155,76 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
     const rockA = bayesianResult ? bayesianResult.posteriorMeanA : calculatedA;
     const res = runBlastAdvisor(selectedBlast.parameters, selectedBlast.rockMass, rockA, target);
     setAdvisorResult(res);
+  };
+
+  const exportFlyrockGeoJSON = () => {
+    const flyrock = currentKuzRam.flyrock;
+    if (!flyrock) return;
+    const personnelRadius = flyrock.personnelEvacuationDistanceM;
+    const equipmentRadius = flyrock.equipmentEvacuationDistanceM;
+    const lat = (selectedBlast as any).gpsLat ?? (site as any)?.gpsLat ?? 5.342;
+    const lng = (selectedBlast as any).gpsLng ?? (site as any)?.gpsLng ?? -4.015;
+
+    const makeCircle = (centerLat: number, centerLng: number, radiusM: number, points = 36) => {
+      const coords: number[][] = [];
+      for (let i = 0; i <= points; i++) {
+        const angle = (i / points) * 2 * Math.PI;
+        const dLat = (radiusM / 111320) * Math.cos(angle);
+        const dLng = (radiusM / (111320 * Math.cos((centerLat * Math.PI) / 180))) * Math.sin(angle);
+        coords.push([Number((centerLng + dLng).toFixed(6)), Number((centerLat + dLat).toFixed(6))]);
+      }
+      return coords;
+    };
+
+    const geojson = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {
+            name: `Personnel Exclusion Zone — ${selectedBlast.blastId}`,
+            type: 'personnel_exclusion',
+            radiusM: personnelRadius,
+            standard: 'ISEE Safety Guidelines (2.0× max calculated flyrock)',
+            fill: '#EF4444',
+            'fill-opacity': 0.25,
+            stroke: '#DC2626',
+          },
+          geometry: { type: 'Polygon', coordinates: [makeCircle(lat, lng, personnelRadius)] },
+        },
+        {
+          type: 'Feature',
+          properties: {
+            name: `Equipment Safe Distance — ${selectedBlast.blastId}`,
+            type: 'equipment_exclusion',
+            radiusM: equipmentRadius,
+            standard: 'ISEE Safety Guidelines (1.35× max calculated flyrock)',
+            fill: '#F59E0B',
+            'fill-opacity': 0.2,
+            stroke: '#D97706',
+          },
+          geometry: { type: 'Polygon', coordinates: [makeCircle(lat, lng, equipmentRadius)] },
+        },
+        {
+          type: 'Feature',
+          properties: {
+            name: `Blast Epicentre — ${selectedBlast.blastId}`,
+            rockType: selectedBlast.rockMass.rockType,
+            benchHeightM: selectedBlast.parameters.benchHeight,
+            powderFactorKgM3: currentKuzRam.energy?.powderFactorKgPerM3,
+          },
+          geometry: { type: 'Point', coordinates: [lng, lat] },
+        },
+      ],
+    };
+
+    const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/geo+json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `exclusion_zone_${selectedBlast.blastId}.geojson`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -344,6 +416,55 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Flyrock Safety & Geofencing Card */}
+      {currentKuzRam.flyrock && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+          <div className="flex flex-wrap justify-between items-center gap-3">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-red-600" />
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  {lang === 'fr' ? 'Sécurité des Projections & Périmètre d’Évacuation (ISEE)' : 'Flyrock Geofencing & Exclusion Zone (ISEE Standard)'}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {lang === 'fr'
+                    ? 'Modèle balistique Richards & Moore (2004) / Lundborg (1981) avec facteur de sécurité 2.0x'
+                    : 'Richards & Moore (2004) / Lundborg (1981) ballistic model with 2.0x safety factor'}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={exportFlyrockGeoJSON}
+              className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow cursor-pointer transition"
+              title={lang === 'fr' ? 'Exporter les polygones d’exclusion au format GeoJSON (compatible Google Earth, QGIS, MineStar)' : 'Export blast exclusion polygons to GeoJSON (compatible with Google Earth, QGIS, MineStar)'}
+            >
+              <MapPin className="w-4 h-4" />
+              <span>{lang === 'fr' ? 'Exporter Polygone d’Exclusion (.geojson)' : 'Export Exclusion GeoJSON'}</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
+              <span className="text-[10px] text-slate-500 block">{lang === 'fr' ? 'Éjection Face Libre' : 'Face Burst Throw'}</span>
+              <span className="text-base font-bold text-slate-800">{currentKuzRam.flyrock.faceBurdenThrowM} m</span>
+            </div>
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
+              <span className="text-[10px] text-slate-500 block">{lang === 'fr' ? 'Cratérisation Sommet' : 'Cratering Throw'}</span>
+              <span className="text-base font-bold text-slate-800">{currentKuzRam.flyrock.crateringThrowM} m</span>
+            </div>
+            <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-center">
+              <span className="text-[10px] text-amber-700 font-semibold block">{lang === 'fr' ? 'Retrait Matériel (1.35x)' : 'Equipment Safe Dist'}</span>
+              <span className="text-base font-black text-amber-900">{currentKuzRam.flyrock.equipmentEvacuationDistanceM} m</span>
+            </div>
+            <div className="bg-red-50 p-2.5 rounded-lg border border-red-200 text-center">
+              <span className="text-[10px] text-red-700 font-semibold block">{lang === 'fr' ? 'Évacuation Personnel (2.0x)' : 'Personnel Evacuation'}</span>
+              <span className="text-base font-black text-red-700">{currentKuzRam.flyrock.personnelEvacuationDistanceM} m</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Section 2: Bayesian MCMC Site Calibration */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">

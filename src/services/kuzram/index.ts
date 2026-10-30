@@ -86,7 +86,10 @@ export function computeKuzRam(
 
   // Uniformity Index n: Cunningham (1987, 2005)
   // n = (2.2 - 14 * B/D) * sqrt((1 + S/B)/2) * (1 - W/B) * ((|BCL - CCL|/L + 0.1)^0.1) * (L/H)
-  const term1 = 2.2 - 14 * (B / Math.max(1, D / 1000));
+  // Note: B is in meters and D is in millimeters (e.g. B=3.0m, D=89mm -> B/D=0.0337)
+  const holeDiamMm = D < 1 ? D * 1000 : D;
+  const burdenToDiamRatio = B / Math.max(10, holeDiamMm);
+  const term1 = Math.max(0.6, 2.2 - 14 * burdenToDiamRatio);
   const term2 = Math.sqrt((1 + S / Math.max(0.1, B)) / 2);
   const term3 = Math.max(0.1, 1 - W / Math.max(0.1, B));
   const diffCharge = Math.abs(BCL - CCL);
@@ -210,6 +213,7 @@ export function computeKuzRam(
       bParameter: bParam,
       curve: kcoCurve,
     },
+    xpFragCurve: computeXPFrag(x50Mm, n, xMaxMm, K, /emulsion/i.test(params.explosiveType || '')),
     flyrock: {
       faceBurdenThrowM: faceThrow,
       crateringThrowM: craterThrow,
@@ -415,4 +419,53 @@ export function runBlastAdvisor(
     predictedP80CI: [Number((bestP80 * 0.91).toFixed(1)), Number((bestP80 * 1.09).toFixed(1))],
     sensitivity,
   };
+}
+
+/**
+ * xP-frag Model (Ouchterlony & Sanchidrián, 2019)
+ * Solves the classical Kuz-Ram fines underprediction by splitting the size distribution into
+ * a coarse branch (Swebrec formulation) and a fine branch (calibrated power-exponential function).
+ * Reference: Ouchterlony F., Sanchidrián J.A. (2019) "A fragmentation classification of blasted rock
+ * and the xP-frag model", Int. J. Rock Mech. Min. Sci.
+ */
+export function computeXPFrag(
+  x50Mm: number,
+  n: number,
+  xMaxMm: number,
+  powderFactorKgPerM3: number,
+  isEmulsion = false
+): CumulativePoint[] {
+  if (x50Mm <= 0 || xMaxMm <= x50Mm) return [];
+
+  // b parameter (Swebrec undulation): empirical from Ouchterlony (2019)
+  const bBase = 0.17 * Math.log(Math.max(1.1, xMaxMm / Math.max(1, x50Mm))) * Math.pow(n, 0.8);
+  const bFrag = isEmulsion ? bBase * 1.15 : bBase;
+
+  // Fines exponent 'a': increases with powder factor (more energy -> steeper fine branch)
+  const a = Math.max(0.8, Math.min(2.5, 0.9 + 0.65 * Math.log10(Math.max(0.3, powderFactorKgPerM3) / 0.5)));
+
+  // Transition size xt (fines cutoff): typically 1-3mm
+  const xt = Math.max(0.5, x50Mm * 0.012);
+  const Pc = 50.0; // passing percent at x50 by definition
+
+  const evalXPFrag = (sizeMm: number): number => {
+    if (sizeMm <= 0) return 0;
+    if (sizeMm >= xMaxMm) return 100;
+
+    if (sizeMm >= x50Mm) {
+      // Coarse branch: Swebrec function
+      const ratio = Math.log(xMaxMm / sizeMm) / Math.max(0.001, Math.log(xMaxMm / x50Mm));
+      const passing = 100 / (1 + Math.pow(Math.max(0.001, ratio), bFrag));
+      return Number(Math.max(0, Math.min(100, passing)).toFixed(2));
+    } else {
+      // Fine branch: modified exponential connecting to Pc at x50
+      if (x50Mm <= xt) return 0;
+      const ratio = (x50Mm - sizeMm) / Math.max(0.1, x50Mm - xt);
+      const passing = Pc * Math.exp(-Math.pow(Math.max(0, ratio), a));
+      return Number(Math.max(0, Math.min(Pc, passing)).toFixed(2));
+    }
+  };
+
+  const sizes = [0.5, 1, 2, 3, 5, 10, 15, 20, 25, 37.5, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 600, 800];
+  return sizes.map((s) => ({ sizeMm: s, passingPercent: evalXPFrag(s) }));
 }

@@ -3,6 +3,7 @@ import type { BeltVisionConfig, RockDetection, BeltStats, CrusherChokeEvent } fr
 import {
   DEFAULT_BELT_CONFIG,
   generateSimulatedBeltFrame,
+  analyzeRealConveyorFrame,
   playCrusherChokeAlarmSound,
 } from '../../services/beltVision/beltAnalyzer';
 import {
@@ -48,6 +49,9 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
   const [isRunning, setIsRunning] = useState<boolean>(true);
   const [uploadedBeltImage, setUploadedBeltImage] = useState<string | null>(null);
   const [isWebcamActive, setIsWebcamActive] = useState<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const [stats, setStats] = useState<BeltStats | null>(null);
   const [chokeEvents, setChokeEvents] = useState<CrusherChokeEvent[]>([]);
   const [trendData, setTrendData] = useState<{ time: string; p50: number; p80: number; tph: number }[]>([]);
@@ -61,9 +65,29 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
   const cachedImageRef = useRef<HTMLImageElement | null>(null);
   const webcamStreamRef = useRef<MediaStream | null>(null);
 
+  // Discover connected camera devices
+  const refreshCameraDevices = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.enumerateDevices) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+        setAvailableCameras(videoDevices);
+        if (videoDevices.length > 0 && !selectedCameraId) {
+          setSelectedCameraId(videoDevices[0].deviceId);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not enumerate media devices:', e);
+    }
+  };
+
+  useEffect(() => {
+    refreshCameraDevices();
+  }, []);
+
   const drawDetectedRocks = (
     ctx: CanvasRenderingContext2D,
-    rocks: any[],
+    rocks: RockDetection[],
     width: number,
     height: number
   ) => {
@@ -116,7 +140,7 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
               const ctx = canvas.getContext('2d');
               if (ctx) {
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                const res = generateSimulatedBeltFrame(config, blastP50, 0.25);
+                const res = analyzeRealConveyorFrame(canvas, config);
                 drawDetectedRocks(ctx, res.rocks, canvas.width, canvas.height);
                 setStats(res.stats);
               }
@@ -130,6 +154,7 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
   };
 
   const handleToggleWebcam = async () => {
+    setCameraError(null);
     if (isWebcamActive) {
       if (webcamStreamRef.current) {
         webcamStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -138,22 +163,90 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
       setIsWebcamActive(false);
       setIsRunning(true);
     } else {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        setCameraError(
+          isFrench
+            ? "L'accès à la caméra requiert un contexte sécurisé (HTTPS ou localhost) et un navigateur compatible WebRTC."
+            : "Live camera requires a secure context (HTTPS or localhost) and a WebRTC compatible browser."
+        );
+        return;
+      }
+
       try {
         setUploadedBeltImage(null);
         cachedImageRef.current = null;
+
+        const constraints: MediaStreamConstraints = {
+          video: selectedCameraId
+            ? { deviceId: { exact: selectedCameraId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+            : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        webcamStreamRef.current = stream;
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          try {
+            await videoRef.current.play();
+          } catch (pErr) {
+            console.warn('Video autoPlay prevented, waiting for stream:', pErr);
+          }
+        }
+
+        setIsWebcamActive(true);
+        setIsRunning(true);
+        refreshCameraDevices();
+      } catch (err: any) {
+        console.warn('Webcam initialization failed:', err);
+        setIsWebcamActive(false);
+
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setCameraError(
+            isFrench
+              ? "Accès caméra refusé : Veuillez autoriser l'accès à la webcam dans la barre d'adresse de votre navigateur."
+              : "Camera access denied: Please allow camera permissions in your browser's address bar."
+          );
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          setCameraError(
+            isFrench
+              ? "Aucune caméra physique détectée sur ce terminal. Utilisez le flux simulé ci-dessous ou importez une photo."
+              : "No physical camera detected on this system. You can use the simulated conveyor feed or upload an image."
+          );
+        } else if (err.name === 'NotReadableError') {
+          setCameraError(
+            isFrench
+              ? "La caméra est actuellement verrouillée par un autre processus (Zoom, Teams, etc.)."
+              : "Camera is currently locked or in use by another software (Zoom, Teams, etc.)."
+          );
+        } else {
+          setCameraError(
+            isFrench
+              ? `Erreur d'initialisation caméra : ${err.message || 'Impossible d\'activer le capteur'}`
+              : `Camera error: ${err.message || 'Could not start live video stream'}`
+          );
+        }
+      }
+    }
+  };
+
+  const handleSelectCamera = async (deviceId: string) => {
+    setSelectedCameraId(deviceId);
+    if (isWebcamActive) {
+      if (webcamStreamRef.current) {
+        webcamStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+      try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
         });
         webcamStreamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play();
+          await videoRef.current.play().catch(() => {});
         }
-        setIsWebcamActive(true);
-        setIsRunning(true);
-      } catch (err) {
-        console.warn('Webcam permission denied or unavailable:', err);
-        setIsWebcamActive(false);
+      } catch (e) {
+        console.warn('Could not switch video source:', e);
       }
     }
   };
@@ -171,34 +264,50 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
           const width = canvas.width;
           const height = canvas.height;
 
-          if (isWebcamActive && videoRef.current && videoRef.current.readyState >= 2) {
-            ctx.drawImage(videoRef.current, 0, 0, width, height);
+          if (isWebcamActive) {
+            if (videoRef.current && videoRef.current.readyState >= 2) {
+              ctx.drawImage(videoRef.current, 0, 0, width, height);
 
-            const now = Date.now();
-            if (now - lastSampleTime.current >= config.samplingIntervalMs) {
-              lastSampleTime.current = now;
-              const res = generateSimulatedBeltFrame(config, blastP50);
-              setStats(res.stats);
-              drawDetectedRocks(ctx, res.rocks, width, height);
+              const now = Date.now();
+              if (now - lastSampleTime.current >= config.samplingIntervalMs) {
+                lastSampleTime.current = now;
+                const res = analyzeRealConveyorFrame(canvas, config);
+                setStats(res.stats);
+                drawDetectedRocks(ctx, res.rocks, width, height);
 
-              const timeStr = new Date().toLocaleTimeString().slice(3, 8);
-              setTrendData((prev) => [
-                ...prev.slice(-25),
-                { time: timeStr, p50: res.stats.p50Mm, p80: res.stats.p80Mm, tph: res.stats.instantTph },
-              ]);
+                const timeStr = new Date().toLocaleTimeString().slice(3, 8);
+                setTrendData((prev) => [
+                  ...prev.slice(-25),
+                  { time: timeStr, p50: res.stats.p50Mm, p80: res.stats.p80Mm, tph: res.stats.instantTph },
+                ]);
 
-              if (res.chokeEvent) {
-                setChokeEvents((prev) => [res.chokeEvent!, ...prev.slice(0, 9)]);
-                if (config.alarmSoundEnabled) {
-                  playCrusherChokeAlarmSound();
+                if (res.chokeEvent) {
+                  setChokeEvents((prev) => [res.chokeEvent!, ...prev.slice(0, 9)]);
+                  if (config.alarmSoundEnabled) {
+                    playCrusherChokeAlarmSound();
+                  }
                 }
               }
+            } else {
+              // Video connecting placeholder
+              ctx.fillStyle = '#0f172a';
+              ctx.fillRect(0, 0, width, height);
+              ctx.fillStyle = '#38bdf8';
+              ctx.font = 'bold 15px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.fillText(
+                isFrench ? 'Connexion au flux vidéo direct en cours...' : 'Connecting to live camera video stream...',
+                width / 2,
+                height / 2
+              );
+              ctx.textAlign = 'left';
             }
           } else if (uploadedBeltImage && !isRunning) {
             if (cachedImageRef.current) {
               ctx.drawImage(cachedImageRef.current, 0, 0, width, height);
-              const res = generateSimulatedBeltFrame(config, blastP50, 0.25);
+              const res = analyzeRealConveyorFrame(canvas, config);
               drawDetectedRocks(ctx, res.rocks, width, height);
+              setStats(res.stats);
             }
             return;
           } else if (isRunning) {
@@ -301,11 +410,27 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
         </div>
 
         {/* Global stream actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Multi-camera selector if multiple devices present */}
+          {availableCameras.length > 1 && (
+            <select
+              value={selectedCameraId}
+              onChange={(e) => handleSelectCamera(e.target.value)}
+              className="bg-slate-100 border border-slate-300 text-slate-700 text-xs rounded-xl px-2.5 py-2 font-bold cursor-pointer"
+              title={isFrench ? 'Sélectionner le capteur optique' : 'Select camera device'}
+            >
+              {availableCameras.map((cam, idx) => (
+                <option key={cam.deviceId || idx} value={cam.deviceId}>
+                  {cam.label || (isFrench ? `Caméra #${idx + 1}` : `Camera #${idx + 1}`)}
+                </option>
+              ))}
+            </select>
+          )}
+
           {/* Webcam / Live Camera Toggle */}
           <button
             onClick={handleToggleWebcam}
-            className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+            className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
               isWebcamActive
                 ? 'bg-red-600 text-white shadow-md shadow-red-600/30 ring-2 ring-red-400'
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -326,7 +451,7 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
+            className="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
             title={isFrench ? 'Charger une photo du convoyeur pour analyse' : 'Upload conveyor image for instant analysis'}
           >
             <Upload className="w-3.5 h-3.5" />
@@ -338,7 +463,7 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
                 setUploadedBeltImage(null);
                 setIsRunning(true);
               }}
-              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition"
+              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition cursor-pointer"
               title={isFrench ? 'Revenir au flux continu' : 'Resume live stream'}
             >
               <RotateCcw className="w-4 h-4" />
@@ -347,7 +472,7 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
 
           <button
             onClick={() => setConfig({ ...config, alarmSoundEnabled: !config.alarmSoundEnabled })}
-            className={`p-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition ${
+            className={`p-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
               config.alarmSoundEnabled
                 ? 'bg-blue-50 border-blue-200 text-blue-700'
                 : 'bg-slate-100 border-slate-200 text-slate-500'
@@ -359,7 +484,7 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
 
           <button
             onClick={() => setIsRunning(!isRunning)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow cursor-pointer ${
               isRunning
                 ? 'bg-amber-500 hover:bg-amber-600 text-slate-950'
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white'
@@ -394,6 +519,22 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
           />
         </div>
       </div>
+
+      {/* Camera Error / Permission Notice */}
+      {cameraError && (
+        <div className="bg-red-50 border border-red-200 p-3.5 rounded-xl flex items-center justify-between text-xs text-red-900 shadow-xs animate-fadeIn">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+            <span className="font-semibold">{cameraError}</span>
+          </div>
+          <button
+            onClick={() => setCameraError(null)}
+            className="text-red-700 hover:text-red-900 font-bold ml-2 px-2 py-0.5 rounded bg-red-100 hover:bg-red-200 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Critical Choke Warning Alert Bar */}
       {stats?.currentAlert && (
@@ -430,7 +571,24 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
           </div>
 
           <div className="relative aspect-16/10 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shadow-inner">
-            <video ref={videoRef} className="hidden" playsInline autoPlay muted />
+            <video
+              ref={videoRef}
+              playsInline
+              autoPlay
+              muted
+              style={{
+                position: 'fixed',
+                top: '-9999px',
+                left: '-9999px',
+                width: '320px',
+                height: '240px',
+                opacity: 0,
+                pointerEvents: 'none',
+              }}
+              onLoadedMetadata={() => {
+                videoRef.current?.play().catch(() => {});
+              }}
+            />
             <canvas
               ref={canvasRef}
               width={720}

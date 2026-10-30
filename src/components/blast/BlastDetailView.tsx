@@ -6,6 +6,7 @@ import type {
   EngineType,
   AppSettings,
   Fragment,
+  MillBatch,
 } from '../../types';
 import { CumulativeDistributionChart } from '../charts/FragmentationCharts';
 import { ManualEditor } from '../segmentation/ManualEditor';
@@ -39,19 +40,14 @@ import {
   Minus,
   Grid,
   Tag,
-  Maximize2,
-  Box,
-  Eye,
   Crop,
   X,
+  Factory,
 } from 'lucide-react';
 import { CameraInclinometerModal } from '../camera/CameraInclinometerModal';
 import { HoleChargingProfileView } from './HoleChargingProfileView';
 import { DrillHolesManager } from './DrillHolesManager';
-import {
-  calculateDrillHoleSummary,
-  generateDefaultDrillHolesFromBlast,
-} from '../../services/drillHoles/drillHoleService';
+import { calculateDrillHoleSummary } from '../../services/drillHoles/drillHoleService';
 import { SendToReportButton } from '../report/SendToReportButton';
 import { getBlastState } from '../../services/blastState';
 import { ImageScaleCalibrationModal } from '../camera/ImageScaleCalibrationModal';
@@ -303,6 +299,37 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
     }
     setSaveSuccessMsg(true);
     setTimeout(() => setSaveSuccessMsg(false), 2500);
+  };
+
+  const handleLinkMillBatch = () => {
+    if (blast.millBatch) return;
+    const tonnage = blastState.rock.totalBlastedTonnage || 1500;
+    const newBatch: MillBatch = {
+      id: `mb-${Date.now()}`,
+      blastId: blast.id,
+      batchTonnageTonnes: tonnage,
+      truckCount: Math.ceil(tonnage / 20),
+      meanLoadTonnes: 20,
+      bouldersSecondaryBreakingCount: Math.max(1, Math.round(tonnage * 0.003)),
+      crushingTimeHours: Math.round(tonnage / 90),
+      crushingEnergyKwh: Math.round(tonnage * 0.8),
+      millingThroughputTph: 75,
+      millingEnergyKwh: Math.round(tonnage * 15.5),
+      headGradeGpt: 2.8,
+      tailsGradeGpt: 0.35,
+      concentrateGradeGpt: 120,
+      processingNotes: `Linked from Blast ${blast.blastId}`,
+      crushingSpecificEnergyKwhPerT: 0.8,
+      millingSpecificEnergyKwhPerT: 15.5,
+      totalSpecificEnergyKwhPerT: 16.3,
+      simpleGoldRecoveryPercent: 87.5,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    onUpdateBlast({
+      ...blast,
+      millBatch: newBatch,
+    });
   };
 
   // Handle uploading a photo for this blast
@@ -726,6 +753,23 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
               />
 
               <button
+                onClick={handleLinkMillBatch}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow transition cursor-pointer ${
+                  blast.millBatch
+                    ? 'bg-purple-100 text-purple-900 border border-purple-300'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                }`}
+                title={lang === 'fr' ? 'Lier ce tir au broyeur/usine pour le suivi Mine-to-Mill' : 'Link this blast to the processing plant for Mine-to-Mill tracking'}
+              >
+                <Factory className="w-3.5 h-3.5" />
+                <span>
+                  {blast.millBatch
+                    ? (lang === 'fr' ? `Usine : ${blast.millBatch.batchTonnageTonnes} t ✓` : `Mill Batch: ${blast.millBatch.batchTonnageTonnes} t ✓`)
+                    : (lang === 'fr' ? 'Lier au Broyeur' : 'Link to Mill')}
+                </span>
+              </button>
+
+              <button
                 onClick={async () => {
                   try {
                     const blob = await generateBlastPdfReport(
@@ -927,7 +971,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
               {/* Composite Multi-Image Card (Active when 2+ photos analyzed) */}
               {isMultiImageComposite && (
                 <div
-                  className={`relative group shrink-0 rounded-xl p-2.5 flex flex-col justify-between w-32 h-18 transition cursor-pointer border-2 ${
+                  className={`relative group shrink-0 rounded-xl p-2 flex flex-col justify-between w-36 h-18 transition cursor-pointer border-2 ${
                     isCompositeSelected
                       ? 'border-indigo-600 bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 text-white shadow-md ring-2 ring-indigo-400/40'
                       : 'border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-950 opacity-90 hover:opacity-100'
@@ -935,19 +979,14 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                   onClick={() => setSelectedImageId('composite')}
                   title={isFrench ? 'Voir la synthèse granulométrique combinée de toutes les photos du tir' : 'View combined composite blast sizing from all analyzed photos'}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1 font-extrabold text-[11px]">
-                      <Layers className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>{isFrench ? 'Synthèse Volée' : 'Blast Composite'}</span>
-                    </span>
-                    <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/40">
-                      ★ {isFrench ? 'Tout' : 'All'}
-                    </span>
+                  <div className="flex items-center gap-1.5 font-extrabold text-[10px] leading-tight">
+                    <Layers className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    <span className="truncate">{isFrench ? 'Synthèse Volée' : 'Blast Composite'}</span>
                   </div>
-                  <div className="text-[10px] text-indigo-300 font-medium">
-                    {blastState.optical.analyzedImagesCount}/{blast.images.length} {isFrench ? 'photos' : 'photos'}
+                  <div className="text-[10px] text-indigo-300 font-medium truncate">
+                    {blastState.optical.analyzedImagesCount}/{blast.images.length} {isFrench ? 'photos analysées' : 'photos analyzed'}
                   </div>
-                  <div className="text-[9px] text-emerald-400 font-mono font-bold">
+                  <div className="text-[9px] text-emerald-400 font-mono font-bold truncate">
                     {blastState.optical.fragmentCount} {isFrench ? 'roches' : 'rocks'} &bull; P80 {blastState.optical.p80Mm}mm
                   </div>
                 </div>

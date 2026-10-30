@@ -42,7 +42,6 @@ export const ActiveBlastBanner: React.FC<ActiveBlastBannerProps> = ({
     }
     if (typeof localStorage !== 'undefined') {
       try {
-        localStorage.setItem(`fragmill_blast_${activeBlast.id}`, JSON.stringify(activeBlast));
         localStorage.setItem('fragmill_last_active_blast_id', activeBlast.id);
       } catch (e) {
         console.warn('LocalStorage save error:', e);

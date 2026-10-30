@@ -21,7 +21,7 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
   title,
   lang = 'en',
 }) => {
-  const [activeModel, setActiveModel] = React.useState<'swebrec' | 'rosin_rammler' | 'true3d'>('swebrec');
+  const [activeModel, setActiveModel] = React.useState<'swebrec' | 'xpfrag' | 'rosin_rammler' | 'true3d' | 'all'>('swebrec');
 
   const width = 640;
   const height = 360;
@@ -76,7 +76,7 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
       <div className="flex flex-wrap justify-between items-center mb-1 gap-2">
         <h4 className="text-sm font-bold text-slate-800">{title || defaultTitle}</h4>
 
-        {/* Model Switcher Buttons */}
+        {/* Model Switcher Buttons with Explicit Unique Color Coding */}
         <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs font-semibold">
           <button
             onClick={() => setActiveModel('swebrec')}
@@ -84,7 +84,15 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
               activeModel === 'swebrec' ? 'bg-amber-500 text-slate-950 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            {isFr ? 'Modèle Swebrec (Fines)' : 'Swebrec Fit'}
+            {isFr ? 'Modèle Swebrec' : 'Swebrec Fit'}
+          </button>
+          <button
+            onClick={() => setActiveModel('xpfrag')}
+            className={`px-2.5 py-1 rounded-md transition ${
+              activeModel === 'xpfrag' ? 'bg-teal-600 text-white font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            xP-frag (2019)
           </button>
           <button
             onClick={() => setActiveModel('rosin_rammler')}
@@ -102,37 +110,63 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
           >
             {isFr ? 'Stéréologie 3D' : '3D Stereology'}
           </button>
+          <button
+            onClick={() => setActiveModel('all')}
+            className={`px-2.5 py-1 rounded-md transition ${
+              activeModel === 'all' ? 'bg-slate-900 text-white font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            {isFr ? 'Toutes les Courbes' : 'All Curves'}
+          </button>
         </div>
       </div>
 
-      {/* Legend Bar */}
-      <div className="flex items-center justify-end gap-3 text-xs pb-1">
-        <span className="flex items-center gap-1 font-medium text-blue-700">
-          <span className="w-3 h-0.5 bg-blue-600 inline-block" /> {isFr ? 'Image 2D Brute' : '2D Raw Sizing'}
+      {/* Standardized Legend Bar with Fixed & Distinct Curve Colors */}
+      <div className="flex flex-wrap items-center justify-end gap-2 text-xs pb-1">
+        {/* Fixed Standard: 2D Raw Sizing (Royal Blue) */}
+        <span className="flex items-center gap-1.5 font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+          <span className="w-3.5 h-0.5 bg-blue-700 inline-block" /> {isFr ? 'Image 2D Brute' : '2D Raw Sizing'}
         </span>
-        {activeModel === 'swebrec' && (
-          <span className="flex items-center gap-1 font-medium text-amber-600">
-            <span className="w-3 h-0.5 bg-amber-500 border-dashed inline-block" /> {isFr ? 'Swebrec Extrapolé' : 'Swebrec Fit'}
-          </span>
-        )}
-        {activeModel === 'rosin_rammler' && (
-          <span className="flex items-center gap-1 font-medium text-purple-600">
-            <span className="w-3 h-0.5 bg-purple-600 border-dashed inline-block" /> {isFr ? 'Rosin-Rammler Ajusté' : 'Rosin-Rammler Fit'}
-          </span>
-        )}
-        {activeModel === 'true3d' && (
-          <span className="flex items-center gap-1 font-medium text-emerald-600">
-            <span className="w-3 h-0.5 bg-emerald-500 inline-block" /> {isFr ? 'Volume Triaxial 3D' : '3D Triaxial Volume'}
-          </span>
-        )}
+
+        {/* Fixed Standard: Theoretical Kuz-Ram (Crimson Red) */}
         {kuzRam && (
-          <span className="flex items-center gap-1 font-medium text-purple-600">
-            <span className="w-3 h-0.5 bg-purple-600 inline-block" /> Kuz-Ram
+          <span className="flex items-center gap-1.5 font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">
+            <span className="w-3.5 h-0.5 inline-block" style={{ borderTop: '2px dashed #DC2626' }} /> Kuz-Ram (Théorique)
           </span>
         )}
+
+        {/* Distinct Swebrec (Amber / Gold) */}
+        {(activeModel === 'swebrec' || activeModel === 'all') && (
+          <span className="flex items-center gap-1.5 font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+            <span className="w-3.5 h-0.5 inline-block" style={{ borderTop: '2px dashed #D97706' }} /> {isFr ? 'Swebrec Extrapolé' : 'Swebrec Fit'}
+          </span>
+        )}
+
+        {/* Distinct xP-frag (Deep Teal #0D9488) */}
+        {kuzRam?.xpFragCurve && (activeModel === 'xpfrag' || activeModel === 'all') && (
+          <span className="flex items-center gap-1.5 font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+            <span className="w-3.5 h-0.5 inline-block" style={{ borderTop: '2.5px dashed #0D9488' }} /> xP-frag (2019)
+          </span>
+        )}
+
+        {/* Distinct Rosin-Rammler (Purple / Violet) */}
+        {(activeModel === 'rosin_rammler' || activeModel === 'all') && (
+          <span className="flex items-center gap-1.5 font-bold text-purple-800 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+            <span className="w-3.5 h-0.5 inline-block" style={{ borderTop: '2px dotted #9333EA' }} /> {isFr ? 'Rosin-Rammler Ajusté' : 'Rosin-Rammler Fit'}
+          </span>
+        )}
+
+        {/* Distinct 3D Stereology (Emerald Green) */}
+        {(activeModel === 'true3d' || activeModel === 'all') && (
+          <span className="flex items-center gap-1.5 font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+            <span className="w-3.5 h-0.5 bg-emerald-600 inline-block" /> {isFr ? 'Stéréologie 3D' : '3D Stereology'}
+          </span>
+        )}
+
+        {/* Physical Sieve GT (Dark Slate Diamond) */}
         {sieveData && sieveData.length > 0 && (
-          <span className="flex items-center gap-1 font-medium text-rose-600">
-            <span className="w-2 h-2 bg-rose-600 inline-block rounded-xs" /> {isFr ? 'Tamis Réel' : 'Sieve GT'}
+          <span className="flex items-center gap-1.5 font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
+            <span className="w-2 h-2 bg-slate-900 inline-block rotate-45" /> {isFr ? 'Tamis Réel (Pesée)' : 'Sieve GT'}
           </span>
         )}
       </div>
@@ -225,41 +259,52 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
             {isFr ? 'Passant Cumulé (Masse / Volume %)' : 'Cumulative Passing (Mass / Volume %)'}
           </text>
 
-          {/* Kuz-Ram Model Curve */}
+          {/* 1. Kuz-Ram Theoretical Curve (Standardized Crimson Red #DC2626) */}
           {kuzRam && (
             <path
               d={buildPath(kuzRam.curve)}
               fill="none"
-              stroke="#8B5CF6"
-              strokeWidth="2.2"
-              strokeDasharray="5 3"
+              stroke="#DC2626"
+              strokeWidth="2.5"
+              strokeDasharray="6 3"
             />
           )}
 
-          {/* Swebrec Extrapolated Curve */}
-          {activeModel === 'swebrec' && (
+          {/* 2. Swebrec Extrapolated Curve (Distinct Amber #D97706) */}
+          {(activeModel === 'swebrec' || activeModel === 'all') && (
             <path
               d={buildPath(metrics.correctedCurve)}
               fill="none"
-              stroke="#F59E0B"
+              stroke="#D97706"
               strokeWidth="2.5"
-              strokeDasharray="4 2"
+              strokeDasharray="5 2 2 2"
             />
           )}
 
-          {/* Rosin-Rammler Fitted Curve */}
-          {activeModel === 'rosin_rammler' && rrCurve.length > 0 && (
+          {/* 2b. xP-frag Curve (Distinct Deep Teal #0D9488) */}
+          {kuzRam?.xpFragCurve && (activeModel === 'xpfrag' || activeModel === 'all') && (
+            <path
+              d={buildPath(kuzRam.xpFragCurve)}
+              fill="none"
+              stroke="#0D9488"
+              strokeWidth="2.5"
+              strokeDasharray="8 4"
+            />
+          )}
+
+          {/* 3. Rosin-Rammler Fitted Curve (Distinct Purple / Violet #9333EA) */}
+          {(activeModel === 'rosin_rammler' || activeModel === 'all') && rrCurve.length > 0 && (
             <path
               d={buildPath(rrCurve)}
               fill="none"
-              stroke="#8B5CF6"
+              stroke="#9333EA"
               strokeWidth="2.5"
-              strokeDasharray="5 3"
+              strokeDasharray="3 3"
             />
           )}
 
-          {/* True 3D Stereological Curve */}
-          {activeModel === 'true3d' && (
+          {/* 4. True 3D Stereological Curve (Distinct Emerald Green #059669) */}
+          {(activeModel === 'true3d' || activeModel === 'all') && (
             <path
               d={buildPath(
                 metrics.rawCurve.map((pt) => ({
@@ -268,18 +313,18 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
                 }))
               )}
               fill="none"
-              stroke="#10B981"
+              stroke="#059669"
               strokeWidth="2.8"
             />
           )}
 
-          {/* Raw Image 2D Curve */}
+          {/* 5. Fixed 2D Raw Sizing Curve (Standard Royal Blue #1D4ED8) */}
           <path
             d={buildPath(metrics.rawCurve)}
             fill="none"
-            stroke="#2E75B6"
-            strokeWidth={activeModel === 'true3d' ? '1.5' : '2.8'}
-            strokeOpacity={activeModel === 'true3d' ? 0.6 : 1}
+            stroke="#1D4ED8"
+            strokeWidth={activeModel === 'true3d' ? '2.0' : '3.0'}
+            strokeOpacity={activeModel === 'true3d' ? 0.75 : 1}
           />
 
           {/* Percentile P50 and P80 indicator points */}
@@ -289,7 +334,7 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
                 cx={scaleX(metrics.p50)}
                 cy={scaleY(50)}
                 r="4.5"
-                fill="#2E75B6"
+                fill="#1D4ED8"
                 stroke="#FFFFFF"
                 strokeWidth="1.5"
               />
@@ -312,7 +357,7 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
                 cx={scaleX(metrics.p80)}
                 cy={scaleY(80)}
                 r="4.5"
-                fill="#2E75B6"
+                fill="#1D4ED8"
                 stroke="#FFFFFF"
                 strokeWidth="1.5"
               />
@@ -329,21 +374,25 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
             </g>
           )}
 
-          {/* Sieve Ground Truth Points */}
+          {/* Sieve Ground Truth Points (Dark Slate Diamond points) */}
           {sieveData &&
             sieveData.map((s, idx) => {
               if (!s.passingPercent || s.apertureMm <= 0) return null;
+              const cx = scaleX(s.apertureMm);
+              const cy = scaleY(s.passingPercent);
               return (
-                <rect
-                  key={`sieve-${idx}`}
-                  x={scaleX(s.apertureMm) - 3.5}
-                  y={scaleY(s.passingPercent) - 3.5}
-                  width="7"
-                  height="7"
-                  fill="#E11D48"
-                  stroke="#FFFFFF"
-                  strokeWidth="1.2"
-                />
+                <g key={`sieve-${idx}`}>
+                  <rect
+                    x={cx - 4}
+                    y={cy - 4}
+                    width="8"
+                    height="8"
+                    transform={`rotate(45 ${cx} ${cy})`}
+                    fill="#0F172A"
+                    stroke="#FFFFFF"
+                    strokeWidth="1.5"
+                  />
+                </g>
               );
             })}
         </svg>
@@ -381,6 +430,19 @@ export const CumulativeDistributionChart: React.FC<CumulativeChartProps> = ({
             {isFr
               ? `P50(3D) = ${metrics.true3D_P50 || metrics.p50} mm | P80(3D) = ${metrics.true3D_P80 || metrics.p80} mm (élimine le biais de surface 2D des blocs aplatis)`
               : `P50(3D) = ${metrics.true3D_P50 || metrics.p50} mm | P80(3D) = ${metrics.true3D_P80 || metrics.p80} mm (corrects 2D surface projection bias from slabby boulders)`}
+          </div>
+        )}
+
+        {activeModel === 'all' && (
+          <div className="text-slate-700 flex flex-wrap gap-4 items-center">
+            <span className="font-bold text-slate-900">
+              {isFr ? 'Superposition & Comparaison Totale :' : 'Multi-Curve Overlay Comparison:'}
+            </span>
+            <span className="text-blue-700 font-semibold">2D Raw P80={metrics.p80}mm</span>
+            {kuzRam && <span className="text-red-600 font-semibold">Kuz-Ram P80={kuzRam.p80Mm}mm</span>}
+            <span className="text-amber-700 font-semibold">Swebrec b={metrics.swebrecFit?.b || 1.8}</span>
+            <span className="text-purple-700 font-semibold">Rosin-Rammler n={metrics.rosinRammlerFit?.n || 1.25}</span>
+            <span className="text-emerald-700 font-semibold">3D P80={metrics.true3D_P80 || metrics.p80}mm</span>
           </div>
         )}
       </div>

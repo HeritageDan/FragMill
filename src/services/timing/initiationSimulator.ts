@@ -152,6 +152,80 @@ export function calculateUSBMPPV(
 }
 
 /**
+ * Blast Vibration Frequency Content Estimation
+ * Based on scaled-distance frequency model (Siskind et al. 1980, USBM RI 8507 / OSMRE 816.67).
+ * Dominant frequency decreases with scaled distance: f_dom = 160 / (SD^0.52).
+ *
+ * Regulatory limits under OSMRE Part 816.67 & DIN 4150-3:
+ * - >40 Hz: PPV limit = 50.8 mm/s (2.0 in/s)
+ * - 10-40 Hz: PPV limit = 19.0 mm/s (0.75 in/s)
+ * - 2-10 Hz: PPV limit = 12.7 mm/s (0.5 in/s)
+ */
+export function estimateBlastFrequencySpectrum(
+  distanceM: number,
+  maxChargePerDelayKg: number,
+  estimatedPPVMmS: number
+): {
+  dominantFrequencyHz: number;
+  scaledDistance: number;
+  osmreFrequencyBand: '>40 Hz' | '10-40 Hz' | '2-10 Hz';
+  osmrePPVLimitMmS: number;
+  isCompliant: boolean;
+  complianceMarginPercent: number;
+  spectrumBands: Array<{ bandHz: string; estimatedPPVMmS: number; limitMmS: number; pass: boolean }>;
+} {
+  const scaledDistance = distanceM / Math.sqrt(Math.max(0.1, maxChargePerDelayKg));
+  const dominantFrequencyHz = Math.min(200, Math.max(1.5, 160 / Math.pow(Math.max(1, scaledDistance), 0.52)));
+
+  let osmreFrequencyBand: '>40 Hz' | '10-40 Hz' | '2-10 Hz';
+  let osmrePPVLimitMmS: number;
+
+  if (dominantFrequencyHz > 40) {
+    osmreFrequencyBand = '>40 Hz';
+    osmrePPVLimitMmS = 50.8;
+  } else if (dominantFrequencyHz >= 10) {
+    osmreFrequencyBand = '10-40 Hz';
+    osmrePPVLimitMmS = 19.0;
+  } else {
+    osmreFrequencyBand = '2-10 Hz';
+    osmrePPVLimitMmS = 12.7;
+  }
+
+  const isCompliant = estimatedPPVMmS <= osmrePPVLimitMmS;
+  const complianceMarginPercent = Number(((1 - estimatedPPVMmS / osmrePPVLimitMmS) * 100).toFixed(1));
+
+  const spectrumBands = [
+    { bandHz: '1-2 Hz', peakFactor: 0.15 },
+    { bandHz: '2-4 Hz', peakFactor: 0.30 },
+    { bandHz: '4-8 Hz', peakFactor: 0.55 },
+    { bandHz: '8-16 Hz', peakFactor: 0.80 },
+    { bandHz: '16-31 Hz', peakFactor: 1.00 },
+    { bandHz: '31-63 Hz', peakFactor: 0.85 },
+    { bandHz: '63-125 Hz', peakFactor: 0.55 },
+    { bandHz: '125-250 Hz', peakFactor: 0.30 },
+    { bandHz: '250-500 Hz', peakFactor: 0.12 },
+  ].map(({ bandHz, peakFactor }) => {
+    const bandPPV = Number((estimatedPPVMmS * peakFactor).toFixed(2));
+    const loHz = parseFloat(bandHz.split('-')[0]);
+    let bandLimit: number;
+    if (loHz > 40) bandLimit = 50.8;
+    else if (loHz >= 10) bandLimit = 19.0;
+    else bandLimit = 12.7;
+    return { bandHz, estimatedPPVMmS: bandPPV, limitMmS: bandLimit, pass: bandPPV <= bandLimit };
+  });
+
+  return {
+    dominantFrequencyHz: Number(dominantFrequencyHz.toFixed(1)),
+    scaledDistance: Number(scaledDistance.toFixed(2)),
+    osmreFrequencyBand,
+    osmrePPVLimitMmS,
+    isCompliant,
+    complianceMarginPercent,
+    spectrumBands,
+  };
+}
+
+/**
  * Inter-Hole Face Relief Velocity Analysis:
  * Verifies that the rock burden in front of each hole has adequate velocity (25 - 45 m/s)
  * and time to detach before the subsequent row fires.

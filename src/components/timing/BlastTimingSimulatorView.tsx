@@ -5,6 +5,7 @@ import {
   generatePatternTiming,
   computeIsochroneContours,
   calculateUSBMPPV,
+  estimateBlastFrequencySpectrum,
   generateFaceProfile,
   type InitiationPatternType,
 } from '../../services/timing/initiationSimulator';
@@ -15,7 +16,6 @@ import {
   RotateCcw,
   Activity,
   ShieldAlert,
-  Clock,
   Waves,
   Zap,
 } from 'lucide-react';
@@ -292,6 +292,10 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
   }, [holes, currentTimeMs, rows, cols, burden, spacing, isFrench, isochrones]);
 
   const ppvEstimate = calculateUSBMPPV(distanceToStructureM, chargeKg);
+  const freqSpec = useMemo(
+    () => estimateBlastFrequencySpectrum(distanceToStructureM, chargeKg, ppvEstimate.estimatedPPVMmS),
+    [distanceToStructureM, chargeKg, ppvEstimate.estimatedPPVMmS]
+  );
   const actualBenchHeight = blast.drillHoles && blast.drillHoles.length > 0
     ? Math.max(...blast.drillHoles.map((h) => h.depthM)) - (blast.drillHoles[0]?.subdrillM || 0)
     : (blast.parameters.benchHeight || 10.0);
@@ -486,6 +490,61 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
               }`}>
                 {ppvEstimate.isCompliant ? (isFrench ? 'CONFORME' : 'PASS') : (isFrench ? 'RISQUE' : 'EXCEEDED')}
               </span>
+            </div>
+          </div>
+
+          {/* OSMRE 816.67 Frequency Spectrum Compliance Card */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="flex items-center gap-2 text-slate-900 font-extrabold text-sm">
+                <Activity className="w-4 h-4 text-purple-600" />
+                <span>{isFrench ? 'Spectre Fréquentiel (OSMRE 816.67)' : '1/3-Octave Frequency (OSMRE)'}</span>
+              </div>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                freqSpec.isCompliant ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'
+              }`}>
+                {freqSpec.isCompliant ? (isFrench ? 'CONFORME' : 'COMPLIANT') : (isFrench ? 'HORS LIMITE' : 'EXCEEDED')}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="bg-purple-50/60 p-2 rounded-lg border border-purple-100">
+                <span className="text-[10px] text-purple-700 block font-semibold">{isFrench ? 'Fréq. Dominante' : 'Dominant Freq.'}</span>
+                <span className="text-base font-black text-purple-950">{freqSpec.dominantFrequencyHz} Hz</span>
+              </div>
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <span className="text-[10px] text-slate-500 block font-semibold">{isFrench ? 'Bande Réglementaire' : 'OSMRE Band'}</span>
+                <span className="text-base font-bold text-slate-800">{freqSpec.osmreFrequencyBand}</span>
+              </div>
+              <div className={`p-2 rounded-lg border ${
+                freqSpec.complianceMarginPercent >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
+              }`}>
+                <span className="text-[10px] block font-semibold">{isFrench ? 'Marge Sécurité' : 'Safety Margin'}</span>
+                <span className="text-base font-black">
+                  {freqSpec.complianceMarginPercent >= 0 ? `+${freqSpec.complianceMarginPercent}%` : `${freqSpec.complianceMarginPercent}%`}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] text-slate-500 font-semibold block uppercase tracking-wider">
+                {isFrench ? 'Vérification par Bandes d’Octaves (DIN/OSMRE) :' : '1/3-Octave Band Checks (DIN/OSMRE):'}
+              </span>
+              <div className="grid grid-cols-3 gap-1 text-[10px]">
+                {freqSpec.spectrumBands.slice(1, 7).map((band) => (
+                  <div
+                    key={band.bandHz}
+                    className={`p-1.5 rounded text-center border ${
+                      band.pass
+                        ? 'bg-slate-50 border-slate-200 text-slate-700'
+                        : 'bg-red-50 border-red-200 text-red-800 font-bold'
+                    }`}
+                  >
+                    <span className="font-semibold block">{band.bandHz}</span>
+                    <span>{band.estimatedPPVMmS} mm/s</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 

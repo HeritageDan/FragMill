@@ -54,8 +54,11 @@ describe('Cunningham Kuz-Ram Blast Formulation', () => {
     const res = computeKuzRam(baseParams, baseRock);
     expect(res.meanSizeX50Mm).toBeGreaterThan(50);
     expect(res.meanSizeX50Mm).toBeLessThan(400);
-    expect(res.uniformityIndexN).toBeGreaterThan(0.6);
-    expect(res.uniformityIndexN).toBeLessThan(2.5);
+    // Prior to Cunningham unit bug fix (B in m, D in mm), term1 was -39.8 forcing n to 0.8
+    // With correct empirical units, n should be physically realistic (> 1.0)
+    expect(res.uniformityIndexN).toBeGreaterThan(1.0);
+    expect(res.uniformityIndexN).toBeLessThan(2.2);
+    expect(res.uniformityIndexN).not.toBe(0.8);
     expect(res.p80Mm).toBeGreaterThan(res.p50Mm);
     expect(res.p50Mm).toBeGreaterThan(res.p20Mm);
   });

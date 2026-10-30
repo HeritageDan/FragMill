@@ -21,13 +21,14 @@ import type {
   BoreholeSample,
   HoleTimingInfo,
 } from '../types/advanced';
-import { calculateRockFactorA, computeKuzRam } from './kuzram';
+import { calculateRockFactorA, computeKuzRam, computeXPFrag } from './kuzram';
 import { fitRosinRammler, fitSwebrec, computeFragmentationMetrics } from './statistics';
 import { computeSieveDistribution } from './validation';
 import { calculateUSBMPPV, generatePatternTiming } from './timing/initiationSimulator';
 import { generateDemoDroneSurvey } from './drone3d/droneSizing';
 import { generateDrillTelemetryFromBlast } from './telemetry/iredesGenerator';
 import { DEFAULT_VARIOGRAM, computeKrigingGrid, generateDemoBoreholes } from './geostatistics/krigingEngine';
+import { calculateBondSpecificEnergy, calculateMorrellSpecificEnergy } from './comminution/bondMorrellEngine';
 
 export interface BlastGeometryState {
   benchHeight: number;
@@ -103,6 +104,7 @@ export interface BlastKuzRamState {
   oversizePercent: number;
   finesPercent: number;
   predictedCurve: CumulativePoint[];
+  xpFragCurve?: CumulativePoint[];
 }
 
 export interface BlastOpticalState {
@@ -607,6 +609,16 @@ export function getBlastState(
     oversizePercent: kuzOversize,
     finesPercent: kuzFines,
     predictedCurve: kuzCurve,
+    xpFragCurve: computeXPFrag(
+      x50Mm,
+      unifN,
+      Math.min(
+        Math.max(300, (rm.meanJointSpacing || 0.5) * 1000 * 1.5),
+        Math.max(x50Mm * 2.5, benchHeight * 1000 * 0.35)
+      ),
+      kuzK,
+      isEmulsion
+    ),
   };
 
   // 5. OPTICAL FRAGMENTATION & DATA QUALITY (Multi-Image Spatial Synthesis Engine)
@@ -800,20 +812,23 @@ export function getBlastState(
     };
   }
 
-  // 7. COMMINUTION & PLANT TWIN (Single calculation per quantity)
+  // 7. COMMINUTION & PLANT TWIN (Bond & Morrell Physics Single Source of Truth)
   const mb = blast.millBatch;
   const hasMillBatch = Boolean(mb && mb.batchTonnageTonnes > 0);
 
-  // Exact single comminution energy formula:
-  // Primary crushing: ~ 0.50 kWh/t nominal, scaling with feed P80
+  // Comminution physics parameters derived from rock mass UCS
+  const bondWiGrinding = Math.max(8, Math.min(25, ucsMPa / 6.5));
+  const rockAxb = Math.max(20, Math.min(120, 12000 / Math.max(10, ucsMPa)));
+
+  // Primary crushing: Bond Third Theory from optP80 to 110mm crusher product
   const crushingKwhPerT = mb?.crushingSpecificEnergyKwhPerT
     ? mb.crushingSpecificEnergyKwhPerT
-    : Number((0.45 + 0.35 * Math.pow(optP80 / 200, 1.3)).toFixed(2));
+    : calculateBondSpecificEnergy(optP80, 110 * 1000, bondWiGrinding * 0.6);
 
-  // Grinding energy (SAG + Ball mill)
+  // Grinding energy: Morrell Comminution Model (SAG + Ball mill) with blast micro-crack softening
   const grindingKwhPerT = mb?.millingSpecificEnergyKwhPerT
     ? mb.millingSpecificEnergyKwhPerT
-    : Number((13.5 + 4.5 * ((optP80 - 150) / 150)).toFixed(2));
+    : calculateMorrellSpecificEnergy(110, 75, rockAxb, powderFactorKgPerM3);
 
   const totalComminutionKwhPerT = Number((crushingKwhPerT + grindingKwhPerT).toFixed(2));
 
@@ -937,8 +952,8 @@ export function getBlastState(
     const ratio = testP80 / Math.max(1, optP80);
     const tDrillBlast = (drillingCostPerTon + blastingCostPerTon) * Math.pow(1 / ratio, 0.45);
     const tSec = Number(((Math.pow(testP80 / 140, 2.2) * 3.2 * secondaryBoulderPrice) / 1000).toFixed(2));
-    const tCrush = (0.45 + 0.35 * Math.pow(testP80 / 200, 1.3)) * powerPrice;
-    const tMill = (13.5 + 4.5 * ((testP80 - 150) / 150)) * powerPrice;
+    const tCrush = calculateBondSpecificEnergy(testP80, 110 * 1000, bondWiGrinding * 0.6) * powerPrice;
+    const tMill = calculateMorrellSpecificEnergy(110, 75, rockAxb, powderFactorKgPerM3) * powerPrice;
     const tTotal = tDrillBlast + tSec + tCrush + tMill;
     if (tTotal < minCostOnCurve) {
       minCostOnCurve = tTotal;

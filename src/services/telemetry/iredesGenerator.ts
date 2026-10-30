@@ -88,6 +88,130 @@ export function calculateTealeSpecificEnergy(
 }
 
 /**
+ * Rig Precision Profiles based on OEM Manufacturer Specifications
+ */
+export interface RigSpec {
+  name: string;
+  guidanceSystem: string;
+  baseCollarMeanMm: number;
+  baseCollarStdMm: number;
+  depthErrorStdM: number;
+  ropMultiplier: number;
+}
+
+export const RIG_PRECISION_SPECS: Record<string, RigSpec> = {
+  'Epiroc SmartROC T45': {
+    name: 'Epiroc SmartROC T45 (GPS Topcon)',
+    guidanceSystem: 'RTK GNSS Auto-Align (±15mm)',
+    baseCollarMeanMm: 22,
+    baseCollarStdMm: 8,
+    depthErrorStdM: 0.04,
+    ropMultiplier: 1.0,
+  },
+  'Sandvik Leopard DI650i': {
+    name: 'Sandvik Leopard DI650i (TIM3D)',
+    guidanceSystem: 'TIM3D GNSS (±20mm)',
+    baseCollarMeanMm: 28,
+    baseCollarStdMm: 11,
+    depthErrorStdM: 0.06,
+    ropMultiplier: 1.05,
+  },
+  'CAT MD6250': {
+    name: 'Caterpillar MD6250 (Terrain)',
+    guidanceSystem: 'MineStar Terrain GNSS (±30mm)',
+    baseCollarMeanMm: 35,
+    baseCollarStdMm: 14,
+    depthErrorStdM: 0.08,
+    ropMultiplier: 1.1,
+  },
+  'Atlas Copco ROC D7': {
+    name: 'Atlas Copco ROC D7 (Manual Guidance)',
+    guidanceSystem: 'Manual Optical Sights (±50mm)',
+    baseCollarMeanMm: 56,
+    baseCollarStdMm: 22,
+    depthErrorStdM: 0.15,
+    ropMultiplier: 0.9,
+  },
+};
+
+/**
+ * Powerful Physics-Grounded & Deterministic MWD Drilling Deviation Simulator.
+ * Simulates collar positioning errors based on rig OEM guidance precision (GPS RTK vs Manual),
+ * rock mass hardness (UCS), and drill string mechanics.
+ * Results are 100% reproducible for identical input parameters.
+ */
+export function simulateRigDrillingTelemetry(
+  blast: Blast,
+  rigModelName: string = 'Epiroc SmartROC T45',
+  targetRopMPerMin: number = 1.35,
+  depthOffsetM: number = 0,
+  shiftId: number = 1,
+  existingHoles?: IREDESHole[]
+): IREDESHole[] {
+  const spec = RIG_PRECISION_SPECS[rigModelName] || RIG_PRECISION_SPECS['Epiroc SmartROC T45'];
+  const ucs = blast.rockMass?.ucsMPa || 120;
+  // Geotechnical rock deflection: harder rock increases bit wandering at collar collaring
+  const rockDeflectionFactor = Math.max(0, (ucs - 80) / 100) * 3.5;
+
+  const holesToSimulate = existingHoles && existingHoles.length > 0 ? existingHoles : generateDrillTelemetryFromBlast(blast);
+
+  const pseudoRandom = (seed: number): number => {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+  };
+
+  const pseudoGaussian = (seed: number): number => {
+    const u1 = Math.max(1e-6, pseudoRandom(seed));
+    const u2 = pseudoRandom(seed + 8888);
+    return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+  };
+
+  const seedBase = (blast.blastId + rigModelName + shiftId)
+    .split('')
+    .reduce((acc, ch, idx) => acc + ch.charCodeAt(0) * (idx + 1) * 31, 0);
+
+  return holesToSimulate.map((h, i) => {
+    const holeSeed = seedBase + i * 97 + (h.holeId.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 50);
+    const zCollar = pseudoGaussian(holeSeed);
+    const zDepth = pseudoGaussian(holeSeed + 137);
+    const zRop = pseudoGaussian(holeSeed + 293);
+
+    // Realistic collar error based on rig guidance precision and rock hardness
+    const collarErrorMm = Math.max(8, Math.round(spec.baseCollarMeanMm + rockDeflectionFactor + zCollar * spec.baseCollarStdMm));
+    const depthDriftM = parseFloat((depthOffsetM + zDepth * spec.depthErrorStdM).toFixed(2));
+    const actualDepthM = parseFloat((h.plannedDepthM + depthDriftM).toFixed(2));
+
+    const signX = pseudoRandom(holeSeed + 5) > 0.5 ? 1 : -1;
+    const signY = pseudoRandom(holeSeed + 11) > 0.5 ? 1 : -1;
+    const actualX = parseFloat((h.plannedX + (collarErrorMm / 1000) * signX).toFixed(3));
+    const actualY = parseFloat((h.plannedY + (collarErrorMm / 1000) * signY).toFixed(3));
+
+    // Downhole deviation (angular drift in degrees)
+    const angularDriftDeg = parseFloat(Math.max(0.2, (spec.baseCollarStdMm / 12) + Math.abs(zDepth) * 0.4).toFixed(2));
+    const toeWanderMm = Math.round(collarErrorMm + actualDepthM * Math.tan((angularDriftDeg * Math.PI) / 180) * 1000);
+
+    const rop = parseFloat(Math.max(0.4, targetRopMPerMin * spec.ropMultiplier + zRop * 0.12).toFixed(2));
+    const diam = blast.parameters.holeDiameter || 89;
+    const teale = calculateTealeSpecificEnergy(diam, rop);
+
+    return {
+      ...h,
+      actualX,
+      actualY,
+      actualDepthM,
+      collarDeviationMm: collarErrorMm,
+      depthDeviationM: depthDriftM,
+      penetrationRateMPerMin: rop,
+      mwdSpecificEnergyMpa: teale.specificEnergyMpa,
+      rockHardnessClass: teale.hardnessClass,
+      toeDeviationMm: toeWanderMm,
+      angularDeviationDeg: angularDriftDeg,
+      rigId: rigModelName,
+    };
+  });
+}
+
+/**
  * Procedurally generation of realistic drill telemetry for QA/QC compliance auditing
  */
 export function generateDrillTelemetryFromBlast(blast: Blast): IREDESHole[] {

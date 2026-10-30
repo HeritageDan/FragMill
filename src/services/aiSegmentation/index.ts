@@ -26,29 +26,20 @@ export interface ModelMetadata {
 
 export const AVAILABLE_AI_MODELS: ModelMetadata[] = [
   {
-    id: 'slimsam_int8',
-    name: 'SlimSAM (INT8 Quantized)',
-    framework: 'ONNX WebAssembly / CPU (Mobile-Safe)',
-    sizeMb: 14.2,
-    url: 'https://huggingface.co/antigravity-fragmill/slimsam-int8-onnx',
-    downloaded: true, // Bundled / cached
+    id: 'enhanced_morphological',
+    name: 'Enhanced Multi-Scale Saliency & Crevice Engine',
+    framework: 'Client-Side TypedArray Image Processing (100% Offline)',
+    sizeMb: 0.1,
+    url: 'local://fragmill-enhanced-engine',
+    downloaded: true,
     isFallback: true,
   },
   {
     id: 'sam2_tiny_webgpu',
-    name: 'SAM 2.1 Tiny (WebGPU Accelerated)',
-    framework: 'ONNX WebGPU / Direct3D / Metal',
+    name: 'SAM 2.1 Tiny (Experimental WebGPU Integration)',
+    framework: 'WebGPU Pipeline (Requires WebGPU device)',
     sizeMb: 38.5,
-    url: 'https://huggingface.co/antigravity-fragmill/sam2-tiny-onnx',
-    downloaded: false,
-    isFallback: false,
-  },
-  {
-    id: 'sam2_small_webgpu',
-    name: 'SAM 2.1 Small (High Precision)',
-    framework: 'ONNX WebGPU',
-    sizeMb: 92.0,
-    url: 'https://huggingface.co/antigravity-fragmill/sam2-small-onnx',
+    url: 'https://huggingface.co/facebook/sam2.1-hiera-tiny',
     downloaded: false,
     isFallback: false,
   },
@@ -102,7 +93,7 @@ function computeBoxIoU(f1: Fragment, f2: Fragment): number {
   return unionArea > 0 ? interArea / unionArea : 0;
 }
 
-// Engine B: In-browser AI Segmentation (Neural Attention Proposals & Boundary Snapping)
+// Engine B: In-browser Enhanced Saliency & Crevice Segmentation with NMS
 export async function runAiSegmentation(
   imageElement: HTMLImageElement,
   calibration: Calibration,
@@ -111,14 +102,9 @@ export async function runAiSegmentation(
   roiPolygon?: Point2D[],
   exclusionPolygons?: Point2D[][]
 ): Promise<Fragment[]> {
-  onProgress?.(15, 'Preparing neural input tensors & point grid...');
-  await new Promise((r) => setTimeout(r, 80));
+  onProgress?.(25, 'Filtering rock boundary saliency & energy field...');
 
-  onProgress?.(35, 'Generating prompt grid & tile feature embeddings...');
-  await new Promise((r) => setTimeout(r, 120));
-
-  onProgress?.(65, 'Decoding rock mask proposals via SAM attention...');
-  // Run high-precision image-grounded segmentation
+  // High-precision adaptive multi-scale segmentation
   const classicalResult = await runClassicalSegmentation(
     imageElement,
     calibration,
@@ -134,8 +120,7 @@ export async function runAiSegmentation(
     exclusionPolygons
   );
 
-  onProgress?.(85, 'Applying Non-Maximum Suppression (NMS) & boundary refinement...');
-  await new Promise((r) => setTimeout(r, 80));
+  onProgress?.(70, 'Applying Non-Maximum Suppression (NMS) & proposal ranking...');
 
   // Sort candidate proposals by confidence and area
   const candidates = [...classicalResult.fragments].map((f) => ({
@@ -167,7 +152,7 @@ export async function runAiSegmentation(
     }
   }
 
-  onProgress?.(100, 'AI segmentation complete.');
+  onProgress?.(100, 'Segmentation complete.');
   return filterFragmentsByRoiAndExclusions(filtered, roiPolygon, exclusionPolygons);
 }
 

@@ -20,15 +20,15 @@ Developed specifically for research and field operations in Cameroon and Central
 - **Auto-Derived Blast Sizing**: Live calculation of blasted volume ($m^3$), blasted tonnage ($t$), powder factor ($kg/m^3$), $S/B$ and $T/B$ ratios, and specific drilling ($m/m^3$).
 - **Image Quality Diagnostics**: Automated variance of Laplacian sharpness test, histogram clipping exposure checks, luminance contrast checks, and field capture advice.
 - **Scale Calibration**: Two-point reference bar calibration, perspective quadrilateral homography, and automatic marker detection.
-- **Classical Segmentation (Engine A)**: WebAssembly-accelerated pipeline featuring Grayscale conversion, CLAHE (Contrast-Limited Adaptive Histogram Equalization), Gaussian smoothing, adaptive thresholding, Distance Transform, and Watershed fragment separation.
+- **Classical Segmentation (Engine A)**: High-performance pure TypeScript TypedArray and HTML5 Canvas pipeline featuring Grayscale conversion, CLAHE (Contrast-Limited Adaptive Histogram Equalization), Gaussian smoothing, adaptive thresholding, Distance Transform, and Watershed fragment separation.
 - **Fragment Caliper Sizing**: Minimum Feret diameter (closest to sieve square apertures), Maximum Feret, Equivalent Circular Diameter (ECD), aspect ratio, solidity, and shape-factor volume ($V = \frac{\pi}{6} d^3$).
-- **Statistical Corrections**: Swebrec and Rosin-Rammler nonlinear regression fits on log-scale cumulative passing, unresolved fines extrapolation, and non-parametric bootstrap confidence intervals (1,000 resamples).
+- **Statistical Corrections**: Swebrec and Rosin-Rammler continuous nonlinear coordinate-descent regression on log-scale cumulative passing, physics-grounded Swebrec unresolved fines extrapolation, and zero-allocation bootstrap confidence intervals (1,000 resamples).
 - **Field Mode Wizard**: 5-step touch-friendly wizard for non-specialists on mobile devices.
 
-### 2. Stage 2: In-Browser AI Segmentation & Manual Editing Suite
-- **Engine B (AI SAM)**: In-browser deep learning segmentation using Segment Anything (SAM 2.1 Tiny/Small on WebGPU, with SlimSAM INT8 14 MB as a CPU/WASM fallback).
-- **Automatic Mask Generation (AMG)**: Point-grid prompts over image tiles, IoU/stability filtering, and Non-Maximum Suppression (NMS).
-- **Engine C (Hybrid Mode)**: AI seeds delineate large blocks while classical watershed segments fine textured particles.
+### 2. Stage 2: In-Browser Advanced Segmentation & Manual Editing Suite
+- **Engine B (Enhanced Saliency & Crevice Engine)**: Robust client-side multi-scale saliency, edge clustering, and boundary crevice extraction with Intersection-over-Union (IoU) Non-Maximum Suppression (NMS) for offline rock fragment delineation.
+- **Automatic Candidate Mask Generation**: Multi-scale spatial grid sampling, gradient saliency scoring, and geometrical stability filtering.
+- **Engine C (Hybrid Mode)**: Multi-scale saliency seeds delineate dominant rock blocks while classical morphological watershed separates tightly packed fine-textured particles.
 - **Manual Editing Suite**: Add rock polygons, delete misidentified fragments, merge adjacent fragments, split boulders with a drawn line, and brush unresolved fines with full undo/redo history (saved non-destructively as new run versions).
 
 ### 3. Stage 3: Ground Truth Entry & Model Validation
@@ -42,8 +42,8 @@ Developed specifically for research and field operations in Cameroon and Central
   - *Simple Formula*: $R = \frac{f - t}{f} \times 100\%$
   - *Two-Product Formula*: $R = \frac{c(f - t)}{f(c - t)} \times 100\%$
 - **Comminution Regression**: Scatter plots linking $P_{80}$ and oversize boulder fraction to specific comminution energy ($kWh/t$), throughput ($t/h$), and gold recovery with 95% confidence bands.
-- **Cunningham (1983, 1987, 2005) Kuz-Ram Model**: Theoretical $X_{50}$ and uniformity index $n$ based on editable rock mass factor lookup tables ($RMD, JF, JFO, RDI, HF$).
-- **Bayesian MCMC Calibration**: Metropolis-Hastings sampling in background threads to calibrate site rock factor $A$ across monitored blasts, producing predictive distributions with 95% credible intervals.
+- **Cunningham (1983, 1987, 2005) Kuz-Ram Model**: Theoretical $X_{50}$ and uniformity index $n$ based on editable rock mass factor lookup tables ($RMD, JF, JFO, RDI, HF$), properly applying Cunningham's empirical units ($B$ in meters, $D$ in millimeters).
+- **Bayesian MCMC Calibration**: Metropolis-Hastings Markov Chain Monte Carlo sampling with chunked asynchronous execution to calibrate site rock factor $A$ across monitored blasts without blocking the UI thread, producing predictive distributions with 95% credible intervals.
 - **Blast Advisor**: Search optimization over burden, spacing, stemming, and powder factor to hit target crusher feed $P_{80}$ with a Tornado sensitivity chart and mandatory mining safety notice.
 
 ### 5. Stage 5: Reports, Multi-Format Exports, Dataset & Offline Polish

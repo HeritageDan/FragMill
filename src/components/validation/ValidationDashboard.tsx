@@ -14,10 +14,10 @@ import {
   Plus,
   Trash2,
   Upload,
-  FileUp,
   Sparkles,
   Check,
   X,
+  HelpCircle,
 } from 'lucide-react';
 import type { Project, Site } from '../../types';
 import { SendToReportButton } from '../report/SendToReportButton';
@@ -74,6 +74,7 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
   ];
 
   const sieveMetrics = computeSieveDistribution(sieveData);
+  const sampleTotalMassKg = useMemo(() => sieveData.reduce((acc, r) => acc + (r.massRetainedKg || 0), 0), [sieveData]);
 
   // Single Source of Truth Blast Engineering State for Kuz-Ram calibration
   const blastState = useMemo(() => (selectedBlast ? getBlastState(selectedBlast) : null), [selectedBlast]);
@@ -184,6 +185,9 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
 
   const saveSieve = (updatedSieve: SieveDataGroundTruth[]) => {
     const metrics = computeSieveDistribution(updatedSieve);
+    const optP50 = blastState?.optical.p50Mm || blastState?.kuzRam.p50Mm || 1;
+    const kBias = Number((optP50 / Math.max(1, metrics.p50)).toFixed(3));
+    const posteriorA = blastState?.optical.posteriorMeanA || blastState?.rock.rockFactorA;
     const updatedGt: GroundTruth = {
       id: groundTruth?.id || `gt-${Date.now()}`,
       blastId: selectedBlast.id,
@@ -192,6 +196,8 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
       computedP20: metrics.p20,
       computedP50: metrics.p50,
       computedP80: metrics.p80,
+      calibratedKBiasFactor: kBias,
+      calibratedPosteriorMeanA: posteriorA,
       notes: groundTruth?.notes || 'Field screen calibration sample',
       createdAt: groundTruth?.createdAt || Date.now(),
       updatedAt: Date.now(),
@@ -454,13 +460,64 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
             </div>
           </div>
 
+          {/* Sieve Screening & Ground Truth Educational Card */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                <HelpCircle className="w-3.5 h-3.5 text-blue-600" />
+                {isFr ? 'Comprendre les Colonnes & la Pesée Physique' : 'Understanding Sieve Columns & Retained Mass'}
+              </span>
+              <span className="font-bold text-blue-800 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded text-[11px]">
+                {isFr ? `Échantillon Total : ${sampleTotalMassKg.toFixed(1)} kg` : `Total Sample: ${sampleTotalMassKg.toFixed(1)} kg`}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-slate-600 pt-1 border-t border-slate-200">
+              <div className="p-2 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                <b className="text-slate-900 block mb-0.5">{isFr ? '1. Tamis / Screen (mm)' : '1. Screen (mm)'}</b>
+                <p className="text-[10px] leading-tight text-slate-500">
+                  {isFr
+                    ? 'Ouverture de maille du crible. Les blocs plus gros que cette taille sont arrêtés sur cette grille.'
+                    : 'Square aperture opening of the screen. Rocks larger than this size cannot pass through.'}
+                </p>
+              </div>
+
+              <div className="p-2 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                <b className="text-slate-900 block mb-0.5">{isFr ? '2. Masse / Mass (kg)' : '2. Mass (kg)'}</b>
+                <p className="text-[10px] leading-tight text-slate-500">
+                  {isFr
+                    ? 'Poids pesé sur balance des roches piégées sur ce tamis (le « Refus » de cette tranche).'
+                    : 'Scale weight of rocks caught on this deck (the physical retained fraction).'}
+                </p>
+              </div>
+
+              <div className="p-2 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                <b className="text-slate-900 block mb-0.5">{isFr ? '3. Passant / Passing %' : '3. Passing %'}</b>
+                <p className="text-[10px] leading-tight text-slate-500">
+                  {isFr
+                    ? 'Pourcentage en masse de l\'échantillon ayant traversé cette maille (blocs plus fins que ce tamis).'
+                    : 'Percentage of total sample weight that passed through this aperture (fragments finer than this size).'}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold">
                 <tr>
-                  <th className="py-2 px-2">{t('screenMm', lang)}</th>
-                  <th className="py-2 px-2">{t('massKg', lang)}</th>
-                  <th className="py-2 px-2">{t('passingPercent', lang)}</th>
+                  <th className="py-2 px-2">
+                    <div>{t('screenMm', lang)}</div>
+                    <span className="text-[10px] font-normal text-slate-400 block">{isFr ? 'Ouverture' : 'Aperture'}</span>
+                  </th>
+                  <th className="py-2 px-2">
+                    <div>{t('massKg', lang)}</div>
+                    <span className="text-[10px] font-normal text-slate-400 block">{isFr ? 'Refus pesé' : 'Retained wt'}</span>
+                  </th>
+                  <th className="py-2 px-2">
+                    <div>{t('passingPercent', lang)}</div>
+                    <span className="text-[10px] font-normal text-slate-400 block">{isFr ? 'Passant cumulé' : 'Cumulative'}</span>
+                  </th>
                   <th className="py-2 px-1 text-center">{t('action', lang)}</th>
                 </tr>
               </thead>
@@ -604,6 +661,25 @@ export const ValidationDashboard: React.FC<ValidationDashboardProps> = ({
                     </tr>
                   </tbody>
                 </table>
+              </div>
+
+              {/* Persistent Calibration Transfer Indicator */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-wrap items-center justify-between text-xs gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span className="font-bold text-slate-800">
+                    {isFr ? 'Facteur de Calibrage Inter-Tirs (Persistant) :' : 'Cumulative Inter-Blast Calibration (Persistent):'}
+                  </span>
+                  <span className="font-mono font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                    K-bias = {groundTruth?.calibratedKBiasFactor ?? Number((comparisonMetrics.p50 / Math.max(1, sieveMetrics.p50)).toFixed(3))}
+                  </span>
+                  <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    A_postérieur = {groundTruth?.calibratedPosteriorMeanA ?? blastState?.optical.posteriorMeanA ?? blastState?.rock.rockFactorA}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 italic">
+                  {isFr ? 'Enregistré dans le profil du tir' : 'Persisted into blast record'}
+                </span>
               </div>
             </div>
           )}

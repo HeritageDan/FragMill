@@ -469,8 +469,6 @@ export const Drone3DSizingView: React.FC<Drone3DSizingViewProps> = ({
     }
     if (typeof localStorage !== 'undefined') {
       try {
-        const snap = { ...blast, droneSurvey: surveyData, updatedAt: Date.now() };
-        localStorage.setItem(`fragmill_blast_${blast.id}`, JSON.stringify(snap));
         localStorage.setItem('fragmill_last_active_blast_id', blast.id);
       } catch (e) {
         console.warn('LocalStorage save failed:', e);

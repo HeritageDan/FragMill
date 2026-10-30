@@ -394,6 +394,8 @@ export interface GroundTruth {
   computedP20?: number;
   computedP50?: number;
   computedP80?: number;
+  calibratedKBiasFactor?: number;
+  calibratedPosteriorMeanA?: number;
   notes?: string;
   createdAt: number;
   updatedAt: number;
@@ -452,6 +454,7 @@ export interface KuzRamResult {
     bParameter: number;
     curve: CumulativePoint[];
   };
+  xpFragCurve?: CumulativePoint[];
   flyrock?: {
     faceBurdenThrowM: number;
     crateringThrowM: number;

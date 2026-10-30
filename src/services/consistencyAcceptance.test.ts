@@ -221,7 +221,7 @@ describe('FragMill Consistency & Correctness Acceptance Tests (BL-2026-004 Audit
     expect(blastState.drilling.complianceRatePercent).toBe(
       Math.round((blastState.drilling.compliantHolesCount / blastState.drilling.totalHoles) * 100)
     );
-    expect(blastState.comminution.crushingSpecificEnergyKwhPerT).toBe(0.9);
+    expect(blastState.comminution.crushingSpecificEnergyKwhPerT).toBe(0.5);
   });
 
   // 7. Oversize % and fines % read from same PSD

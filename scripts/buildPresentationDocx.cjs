@@ -847,7 +847,7 @@ FragMill includes a sophisticated 3D Timing Simulator:
     createSpeakerSpeechBox(
       `"Now we reach the very essence of Mine-to-Mill optimization in Module 7: The Comminution Digital Twin.
 
-In mining economics, blasting is vastly cheaper than mechanical grinding. Breaking rock in the pit with chemical energy costs roughly \$0.10 to \$0.25 per ton. Breaking that same rock inside a SAG or ball mill using electrical energy and forged steel grinding balls costs \$3.00 to \$8.00 per ton—more than twenty times as much!
+In mining economics, blasting is vastly cheaper than mechanical grinding. Breaking rock in the pit with chemical energy costs roughly $0.10 to $0.25 per ton. Breaking that same rock inside a SAG or ball mill using electrical energy and forged steel grinding balls costs $3.00 to $8.00 per ton—more than twenty times as much!
 
 FragMill's Comminution Digital Twin creates an unbroken mathematical bridge from your blast fragmentation curve ($P_{80}$) directly to the processing plant:
 - Primary Crusher Simulator: Models the jaw or gyratory crusher reduction ratio, closed-side setting (CSS), power draw in kilowatts, and discharge size distribution.
@@ -874,7 +874,7 @@ FragMill's Comminution Digital Twin creates an unbroken mathematical bridge from
       `W = 10 \\cdot W_i \\cdot \\left(\\frac{1}{\\sqrt{P_{80}}} - \\frac{1}{\\sqrt{F_{80}}}\\right), \\quad W_{\\text{smc}} = 4 \\cdot M_{ia} \\cdot \\left(P_{80}^{-0.295} - F_{80}^{-0.295}\\right)`
     ),
     createProTip(
-      `Present this module to your mill superintendent. When they see that a minor \$0.05/t increase in blasting powder factor saves \$0.60/t in ball mill power and boosts mill throughput by 80 tonnes per hour, pit and plant alignment becomes an effortless executive decision.`
+      `Present this module to your mill superintendent. When they see that a minor $0.05/t increase in blasting powder factor saves $0.60/t in ball mill power and boosts mill throughput by 80 tonnes per hour, pit and plant alignment becomes an effortless executive decision.`
     ),
     createDivider()
   );
@@ -1042,11 +1042,11 @@ At the end of the day, mining is a business. The goal is not simply to achieve f
 If you drill too closely and use too much explosive, your blasting costs skyrocket. If you use too little explosive, your blasting costs are low, but your excavator maintenance doubles, primary crushers stall, and grinding mill electricity bills reach staggering levels.
 
 FragMill plots the complete Total Cost of Comminution Curve:
-- Drilling Cost (\$/t)
-- Blasting Cost (\$/t)
-- Primary Crushing Cost (\$/t)
-- Secondary & SAG Grinding Cost (\$/t)
-FragMill identifies the Global Economic Optimum—the exact mathematical inflection point where total comminution cost is minimized. It proves to executive management that spending an extra \$0.08 per ton on high-precision electronic blasting saves \$0.75 per ton in mill grinding power and increases annual mine gold production by millions of dollars!"`
+- Drilling Cost ($/t)
+- Blasting Cost ($/t)
+- Primary Crushing Cost ($/t)
+- Secondary & SAG Grinding Cost ($/t)
+FragMill identifies the Global Economic Optimum—the exact mathematical inflection point where total comminution cost is minimized. It proves to executive management that spending an extra $0.08 per ton on high-precision electronic blasting saves $0.75 per ton in mill grinding power and increases annual mine gold production by millions of dollars!"`
     ),
     createSlideCard(
       'Mine-to-Mill Holistic Economic Optimization',

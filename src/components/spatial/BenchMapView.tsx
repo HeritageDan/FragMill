@@ -5,14 +5,11 @@ import {
   Layers,
   Compass,
   TrendingUp,
-  AlertTriangle,
-  CheckCircle2,
   ChevronRight,
   Sliders,
   ShieldAlert,
   HelpCircle,
   Sparkles,
-  Grid,
 } from 'lucide-react';
 import { t } from '../../i18n';
 import { SendToReportButton } from '../report/SendToReportButton';

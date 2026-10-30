@@ -332,7 +332,7 @@ export const DrillHolesManager: React.FC<DrillHolesManagerProps> = ({
             </button>
 
             {showTestMenu && (
-              <div className="absolute right-0 mt-2 w-84 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 p-2.5 z-50 animate-in fade-in zoom-in-95 space-y-2">
+              <div className="absolute left-0 mt-2 w-84 sm:w-96 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-200 p-2.5 z-50 animate-in fade-in zoom-in-95 space-y-2">
                 <div className="px-2.5 py-1.5 border-b border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   <div className="flex items-center gap-1.5 text-indigo-900 font-extrabold">
                     <Database className="w-3.5 h-3.5 text-indigo-600" />

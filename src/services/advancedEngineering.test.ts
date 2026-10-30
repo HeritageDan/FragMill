@@ -16,6 +16,7 @@ import {
   calculateAirblastOverpressure,
   checkPatternFaceRelief,
   simulateDetonatorScatter,
+  estimateBlastFrequencySpectrum,
 } from './timing/initiationSimulator';
 import {
   calculateBondSpecificEnergy,
@@ -43,6 +44,7 @@ import {
 } from './telemetry/iredesGenerator';
 import {
   computeKuzRam,
+  computeXPFrag,
 } from './kuzram';
 import {
   fitGatesGaudinSchuhmann,
@@ -781,6 +783,167 @@ describe('Advanced Mining Suite Tests', () => {
       expect(state.optical.p50Mm).toBeLessThan(metricsPhoto1.p50);
       expect(state.optical.p50Mm).toBeGreaterThan(metricsPhoto2.p50);
       expect(state.drone.meanP80Mm).toBe(state.optical.p80Mm); // Downstream synchronization
+    });
+
+    // Tier-1 Industry Standard Upgrades
+    it('computes xP-frag (Ouchterlony & Sanchidrián 2019) model to correct fines underprediction', () => {
+      const xpCurve = computeXPFrag(180, 1.25, 650, 0.75, false);
+      expect(xpCurve.length).toBeGreaterThan(15);
+      expect(xpCurve[0].sizeMm).toBe(0.5);
+      expect(xpCurve[0].passingPercent).toBeGreaterThanOrEqual(0);
+
+      // Verify monotonic passing increase
+      for (let i = 0; i < xpCurve.length - 1; i++) {
+        expect(xpCurve[i + 1].passingPercent).toBeGreaterThanOrEqual(xpCurve[i].passingPercent);
+      }
+
+      // xP-frag at x50 (180mm) should be ~50%
+      const ptNearX50 = xpCurve.find(p => p.sizeMm === 150 || p.sizeMm === 200);
+      expect(ptNearX50).toBeDefined();
+
+      // Top size passes 100%
+      const topPt = xpCurve[xpCurve.length - 1];
+      expect(topPt.passingPercent).toBe(100);
+    });
+
+    it('estimates blast vibration 1/3-octave frequency spectrum and evaluates OSMRE Part 816.67 compliance', () => {
+      // Normal blast at 350m with 75kg charge
+      const spec = estimateBlastFrequencySpectrum(350, 75, 4.2);
+      expect(spec.dominantFrequencyHz).toBeGreaterThan(5);
+      expect(spec.dominantFrequencyHz).toBeLessThan(120);
+      expect(spec.osmrePPVLimitMmS).toBeGreaterThanOrEqual(12.7);
+      expect(spec.isCompliant).toBe(true);
+      expect(spec.complianceMarginPercent).toBeGreaterThan(0);
+      expect(spec.spectrumBands.length).toBe(9);
+      expect(spec.spectrumBands.every(b => b.pass)).toBe(true);
+
+      // Over-limit blast right near a structure
+      const closeSpec = estimateBlastFrequencySpectrum(30, 250, 65.0);
+      expect(closeSpec.isCompliant).toBe(false);
+      expect(closeSpec.complianceMarginPercent).toBeLessThan(0);
+    });
+
+    it('integrates Bond & Morrell physics into single source of truth blast state', () => {
+      const testMiningBlast: Blast = {
+        id: 'blast-test-01',
+        projectId: 'proj-01',
+        siteId: 'site-01',
+        blastId: 'BL-TEST-2026',
+        dateTime: '2026-03-01T10:00:00Z',
+        weather: 'Sunny',
+        notes: 'Physics validation blast',
+        createdAt: 1772000000000,
+        updatedAt: 1772000000000,
+        parameters: {
+          holeDiameter: 89,
+          holeDepth: 12.0,
+          benchHeight: 10.0,
+          burden: 3.5,
+          spacing: 4.0,
+          subdrill: 1.0,
+          stemmingLength: 2.5,
+          numberOfHoles: 30,
+          holeInclination: 90,
+          explosiveType: 'ANFO',
+          chargePerHole: 65,
+          bottomChargeLength: 3.0,
+          columnChargeLength: 6.5,
+          initiationSequenceNotes: 'Electronic',
+          waterInHoles: false,
+          drillingDeviationEstimate: 0.05,
+          rws: 100,
+        },
+        rockMass: {
+          rockType: 'Granite',
+          density: 2.7,
+          ucsMPa: 130,
+          meanJointSpacing: 0.5,
+          jointOrientation: 'dip_into_face',
+          jointSetCount: 3,
+        },
+        images: [],
+      };
+
+      const state = getBlastState(testMiningBlast);
+      // Crushing energy should be evaluated from Bond Third Theory
+      expect(state.comminution.crushingSpecificEnergyKwhPerT).toBeGreaterThanOrEqual(0.5);
+      // Grinding energy should be evaluated from Morrell SMC model
+      expect(state.comminution.grindingSpecificEnergyKwhPerT).toBeGreaterThan(5.0);
+      expect(state.comminution.totalSpecificEnergyKwhPerT).toBe(
+        Number((state.comminution.crushingSpecificEnergyKwhPerT + state.comminution.grindingSpecificEnergyKwhPerT).toFixed(2))
+      );
+      // Economic sweet spot optimization includes physical Bond & Morrell energy
+      expect(state.economics.optimalP80Mm).toBeGreaterThanOrEqual(80);
+      expect(state.economics.optimalP80Mm).toBeLessThanOrEqual(360);
+      expect(state.economics.totalCostPerTonUSD).toBeGreaterThan(0);
+    });
+
+    it('computes and persists cumulative K-bias factor and posterior rock factor A in GroundTruth', () => {
+      const testMiningBlast: Blast = {
+        id: 'blast-test-01',
+        projectId: 'proj-01',
+        siteId: 'site-01',
+        blastId: 'BL-TEST-2026',
+        dateTime: '2026-03-01T10:00:00Z',
+        weather: 'Sunny',
+        notes: 'Physics validation blast',
+        createdAt: 1772000000000,
+        updatedAt: 1772000000000,
+        parameters: {
+          holeDiameter: 89,
+          holeDepth: 12.0,
+          benchHeight: 10.0,
+          burden: 3.5,
+          spacing: 4.0,
+          subdrill: 1.0,
+          stemmingLength: 2.5,
+          numberOfHoles: 30,
+          holeInclination: 90,
+          explosiveType: 'ANFO',
+          chargePerHole: 65,
+          bottomChargeLength: 3.0,
+          columnChargeLength: 6.5,
+          initiationSequenceNotes: 'Electronic',
+          waterInHoles: false,
+          drillingDeviationEstimate: 0.05,
+          rws: 100,
+        },
+        rockMass: {
+          rockType: 'Granite',
+          density: 2.7,
+          ucsMPa: 130,
+          meanJointSpacing: 0.5,
+          jointOrientation: 'dip_into_face',
+          jointSetCount: 3,
+        },
+        images: [],
+      };
+
+      const blastWithSieve: Blast = {
+        ...testMiningBlast,
+        groundTruth: {
+          id: 'gt-test',
+          blastId: testMiningBlast.id,
+          manualFragments: [],
+          sieveData: [
+            { apertureMm: 300, massRetainedKg: 40 },
+            { apertureMm: 150, massRetainedKg: 70 },
+            { apertureMm: 75, massRetainedKg: 50 },
+            { apertureMm: 25, massRetainedKg: 20 },
+          ],
+          calibratedKBiasFactor: 1.085,
+          calibratedPosteriorMeanA: 7.24,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      };
+
+      const state = getBlastState(blastWithSieve);
+      expect(state.sieve.hasSieveData).toBe(true);
+      expect(state.sieve.kBiasFactor).toBeDefined();
+      expect(state.sieve.kBiasFactor).toBeGreaterThan(0);
+      expect(blastWithSieve.groundTruth!.calibratedKBiasFactor).toBe(1.085);
+      expect(blastWithSieve.groundTruth!.calibratedPosteriorMeanA).toBe(7.24);
     });
   });
 });

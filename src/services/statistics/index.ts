@@ -293,31 +293,60 @@ export function fitRosinRammler(curve: CumulativePoint[]): FitParametersRosinRam
 }
 
 // Swebrec distribution fitting:
-// P(x) = 1 / (1 + [ln(xmax/x) / ln(xmax/x50)]^b)
+// P(x) = 1 / (1 + [ln(xmax/x) / ln(xmax/x50)]^b) * 100
+// Per Ouchterlony (2005), x50 is the anchor median size where P(x50) = 50%,
+// while xMax (maximum fragment size) and b (inflection exponent) are continuous regression parameters.
 export function fitSwebrec(curve: CumulativePoint[], measuredX50: number): FitParametersSwebrec {
-  const maxSize = curve[curve.length - 1]?.sizeMm || 400;
-  let bestXmax = maxSize * 1.2;
-  let bestX50 = measuredX50 || 120;
+  const maxSize = curve.length > 0 ? Math.max(...curve.map((c) => c.sizeMm)) : 400;
+  let initX50 = measuredX50;
+  if (!initX50 || initX50 <= 0) {
+    const p50Pt = curve.find((c) => c.passingPercent >= 50);
+    initX50 = p50Pt ? p50Pt.sizeMm : maxSize * 0.4;
+  }
+  const x50 = initX50;
+  let bestXmax = maxSize * 1.25;
   let bestB = 1.8;
   let minRmse = Infinity;
 
-  // Grid refinement search for (xMax, b)
-  const candidateXmax = [maxSize * 1.05, maxSize * 1.2, maxSize * 1.5, maxSize * 2.0];
-  const candidateB = [1.2, 1.5, 1.8, 2.2, 2.8, 3.5];
+  // Multi-grid search over (xMax, b) with anchored x50
+  const candidateXmax = [
+    maxSize * 1.02,
+    maxSize * 1.05,
+    maxSize * 1.1,
+    maxSize * 1.15,
+    maxSize * 1.25,
+    maxSize * 1.35,
+    maxSize * 1.5,
+    maxSize * 1.75,
+    maxSize * 2.0,
+  ];
+  const candidateB = [0.8, 1.1, 1.4, 1.7, 2.0, 2.4, 2.8, 3.3, 4.0, 5.0];
+
+  const evalSse = (xMax: number, b: number): { sse: number; count: number } => {
+    let sse = 0;
+    let count = 0;
+    const logXmaxOverX50 = Math.max(0.01, Math.log(xMax / Math.max(0.1, x50)));
+    for (const pt of curve) {
+      if (pt.sizeMm > 0) {
+        let pred: number;
+        if (pt.sizeMm >= xMax) {
+          pred = 100;
+        } else {
+          const ratio = Math.log(xMax / pt.sizeMm) / logXmaxOverX50;
+          pred = (1 / (1 + Math.pow(Math.max(0.001, ratio), b))) * 100;
+        }
+        sse += Math.pow(pt.passingPercent - pred, 2);
+        count++;
+      }
+    }
+    return { sse, count };
+  };
 
   for (const xMax of candidateXmax) {
+    if (xMax <= x50) continue;
     for (const b of candidateB) {
-      let ssRes = 0;
-      let count = 0;
-      for (const pt of curve) {
-        if (pt.sizeMm > 0 && pt.sizeMm < xMax) {
-          const ratio = Math.log(xMax / pt.sizeMm) / Math.max(0.01, Math.log(xMax / bestX50));
-          const pred = (1 / (1 + Math.pow(Math.max(0.001, ratio), b))) * 100;
-          ssRes += Math.pow(pt.passingPercent - pred, 2);
-          count++;
-        }
-      }
-      const rmse = Math.sqrt(ssRes / Math.max(1, count));
+      const { sse, count } = evalSse(xMax, b);
+      const rmse = Math.sqrt(sse / Math.max(1, count));
       if (rmse < minRmse) {
         minRmse = rmse;
         bestXmax = xMax;
@@ -326,33 +355,63 @@ export function fitSwebrec(curve: CumulativePoint[], measuredX50: number): FitPa
     }
   }
 
-  // Refine around best
+  // Continuous coordinate descent fine-tuning on xMax and b
+  let refinedXmax = bestXmax;
+  let refinedB = bestB;
+  let currentMinSse = evalSse(refinedXmax, refinedB).sse;
+
+  const stepXmax = Math.max(0.5, maxSize * 0.03);
+  const stepB = 0.05;
+
+  for (let iter = 0; iter < 20; iter++) {
+    let improved = false;
+    for (const dxMax of [-stepXmax, 0, stepXmax]) {
+      const testXmax = refinedXmax + dxMax;
+      if (testXmax <= maxSize * 1.005 || testXmax <= x50) continue;
+      for (const db of [-stepB, 0, stepB]) {
+        const testB = refinedB + db;
+        if (testB < 0.3 || testB > 8.0) continue;
+        const { sse } = evalSse(testXmax, testB);
+        if (sse < currentMinSse - 1e-4) {
+          currentMinSse = sse;
+          refinedXmax = testXmax;
+          refinedB = testB;
+          improved = true;
+        }
+      }
+    }
+    if (!improved) break;
+  }
+
   const count = curve.length;
-  const meanP = curve.reduce((s, p) => s + p.passingPercent, 0) / count;
+  const meanP = curve.reduce((s, p) => s + p.passingPercent, 0) / Math.max(1, count);
   let ssTot = 0;
   let ssRes = 0;
+  const finalLogRatio = Math.max(0.01, Math.log(refinedXmax / Math.max(0.1, x50)));
+
   for (const pt of curve) {
-    if (pt.sizeMm >= bestXmax) {
-      ssRes += Math.pow(pt.passingPercent - 100, 2);
+    let pred: number;
+    if (pt.sizeMm >= refinedXmax) {
+      pred = 100;
     } else {
-      const ratio = Math.log(bestXmax / pt.sizeMm) / Math.max(0.01, Math.log(bestXmax / bestX50));
-      const pred = (1 / (1 + Math.pow(Math.max(0.001, ratio), bestB))) * 100;
-      ssRes += Math.pow(pt.passingPercent - pred, 2);
+      const ratio = Math.log(refinedXmax / pt.sizeMm) / finalLogRatio;
+      pred = (1 / (1 + Math.pow(Math.max(0.001, ratio), refinedB))) * 100;
     }
+    ssRes += Math.pow(pt.passingPercent - pred, 2);
     ssTot += Math.pow(pt.passingPercent - meanP, 2);
   }
 
   const r2 = Math.max(0, 1 - ssRes / Math.max(1e-6, ssTot));
-  const rmse = Math.sqrt(ssRes / count);
+  const rmse = Math.sqrt(ssRes / Math.max(1, count));
 
-  // Model selection criteria (k=3 parameters: xMax, x50, b)
-  const aic = Number((count * Math.log(Math.max(1e-4, rmse * rmse)) + 2 * 3).toFixed(1));
-  const bic = Number((count * Math.log(Math.max(1e-4, rmse * rmse)) + 3 * Math.log(count)).toFixed(1));
+  // Model selection criteria (k=2 parameters: xMax, b with anchored x50)
+  const aic = Number((count * Math.log(Math.max(1e-4, rmse * rmse)) + 2 * 2).toFixed(1));
+  const bic = Number((count * Math.log(Math.max(1e-4, rmse * rmse)) + 2 * Math.log(Math.max(1, count))).toFixed(1));
 
   return {
-    xMax: Number(bestXmax.toFixed(1)),
-    x50: Number(bestX50.toFixed(1)),
-    b: Number(bestB.toFixed(2)),
+    xMax: Number(refinedXmax.toFixed(1)),
+    x50: Number(x50.toFixed(1)),
+    b: Number(refinedB.toFixed(2)),
     r2: Number(r2.toFixed(3)),
     rmse: Number(rmse.toFixed(2)),
     aic,
@@ -360,13 +419,14 @@ export function fitSwebrec(curve: CumulativePoint[], measuredX50: number): FitPa
   };
 }
 
-// Bootstrap resampling for non-parametric 95% confidence intervals (1,000 iterations)
+// High-performance bootstrap resampling for non-parametric 95% confidence intervals
 export function runBootstrapResampling(
   fragments: Fragment[],
   sizeDef: SizeDefinition = 'min_feret',
   iterations = 1000
 ): BootstrapConfidenceInterval {
-  if (fragments.length < 5) {
+  const n = fragments.length;
+  if (n < 5) {
     return {
       p10: [0, 0],
       p20: [0, 0],
@@ -376,35 +436,68 @@ export function runBootstrapResampling(
     };
   }
 
-  const p10Samples: number[] = [];
-  const p20Samples: number[] = [];
-  const p50Samples: number[] = [];
-  const p80Samples: number[] = [];
-  const p90Samples: number[] = [];
-
-  const n = fragments.length;
-
-  for (let it = 0; it < iterations; it++) {
-    // Resample with replacement
-    const resampled: Fragment[] = [];
-    for (let i = 0; i < n; i++) {
-      const idx = Math.floor(Math.random() * n);
-      resampled.push(fragments[idx]);
-    }
-
-    const curve = calculateCumulativeDistribution(resampled, sizeDef);
-    p10Samples.push(findPercentileSize(curve, 10));
-    p20Samples.push(findPercentileSize(curve, 20));
-    p50Samples.push(findPercentileSize(curve, 50));
-    p80Samples.push(findPercentileSize(curve, 80));
-    p90Samples.push(findPercentileSize(curve, 90));
+  // Pre-extract sizes and volumes
+  const rawItems = new Array<{ size: number; vol: number }>(n);
+  for (let i = 0; i < n; i++) {
+    const size = Math.max(0.1, getFragmentSize(fragments[i], sizeDef));
+    rawItems[i] = { size, vol: (Math.PI / 6) * Math.pow(size, 3) };
   }
 
-  const sortAndGetCI = (arr: number[]): [number, number] => {
-    arr.sort((a, b) => a - b);
+  const p10Samples = new Float64Array(iterations);
+  const p20Samples = new Float64Array(iterations);
+  const p50Samples = new Float64Array(iterations);
+  const p80Samples = new Float64Array(iterations);
+  const p90Samples = new Float64Array(iterations);
+
+  const sample = new Array<{ size: number; vol: number }>(n);
+
+  for (let it = 0; it < iterations; it++) {
+    let totalVol = 0;
+    for (let i = 0; i < n; i++) {
+      const idx = Math.floor(Math.random() * n);
+      sample[i] = rawItems[idx];
+      totalVol += rawItems[idx].vol;
+    }
+
+    // Sort ascending by size
+    sample.sort((a, b) => a.size - b.size);
+
+    let cumVol = 0;
+    const t10 = totalVol * 0.10;
+    const t20 = totalVol * 0.20;
+    const t50 = totalVol * 0.50;
+    const t80 = totalVol * 0.80;
+    const t90 = totalVol * 0.90;
+
+    let p10 = sample[0].size;
+    let p20 = sample[0].size;
+    let p50 = sample[0].size;
+    let p80 = sample[n - 1].size;
+    let p90 = sample[n - 1].size;
+
+    let f10 = false, f20 = false, f50 = false, f80 = false, f90 = false;
+
+    for (let i = 0; i < n; i++) {
+      cumVol += sample[i].vol;
+      if (!f10 && cumVol >= t10) { p10 = sample[i].size; f10 = true; }
+      if (!f20 && cumVol >= t20) { p20 = sample[i].size; f20 = true; }
+      if (!f50 && cumVol >= t50) { p50 = sample[i].size; f50 = true; }
+      if (!f80 && cumVol >= t80) { p80 = sample[i].size; f80 = true; }
+      if (!f90 && cumVol >= t90) { p90 = sample[i].size; f90 = true; break; }
+    }
+
+    p10Samples[it] = p10;
+    p20Samples[it] = p20;
+    p50Samples[it] = p50;
+    p80Samples[it] = p80;
+    p90Samples[it] = p90;
+  }
+
+  const sortAndGetCI = (arr: Float64Array): [number, number] => {
+    arr.sort();
     const low = arr[Math.floor(iterations * 0.025)];
     const high = arr[Math.floor(iterations * 0.975)];
-    return [low, high];
+    return [Number(low.toFixed(1)), Number(high.toFixed(1))];
   };
 
   return {
@@ -515,7 +608,7 @@ export function computeFragmentationMetrics(
     uniformityIndex,
     oversizePercent,
     finesPercent,
-    unresolvedFinesPercent: Number((finesPercent * 0.5).toFixed(1)),
+    unresolvedFinesPercent: Math.max(0, Math.min(100, swFines)),
     bootstrapCI,
     swebrecFit,
     rosinRammlerFit,

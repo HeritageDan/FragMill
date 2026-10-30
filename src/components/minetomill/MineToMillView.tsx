@@ -9,13 +9,10 @@ import {
   Activity,
   Award,
   Factory,
-  CheckCircle2,
   AlertCircle,
   Save,
   DollarSign,
   Leaf,
-  TrendingDown,
-  Sliders,
 } from 'lucide-react';
 import type { Project, Site } from '../../types';
 import { SendToReportButton } from '../report/SendToReportButton';
