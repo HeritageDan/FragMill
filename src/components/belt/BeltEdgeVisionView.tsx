@@ -21,6 +21,7 @@ import {
   Upload,
   RotateCcw,
   Camera,
+  FlaskConical,
 } from 'lucide-react';
 import type { Blast, Project, Site } from '../../types';
 import { SendToReportButton } from '../report/SendToReportButton';
@@ -378,6 +379,28 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
 
   return (
     <div className="space-y-6">
+      {/* Experimental Module Alert Banner */}
+      <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-xl flex items-center justify-between gap-3 text-amber-900 shadow-xs">
+        <div className="flex items-center gap-3">
+          <FlaskConical className="w-5 h-5 text-amber-600 shrink-0" />
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-amber-800">
+              {isFrench ? 'Module Expérimental' : 'Experimental Module'}
+            </div>
+            <p className="text-xs font-medium text-amber-900 mt-0.5">
+              {isFrench
+                ? 'Expérimental : utilise des données de démonstration simulées sauf si vous importez votre propre levé/images'
+                : 'Experimental: uses simulated demo data unless you upload your own survey/images'}
+            </p>
+          </div>
+        </div>
+        {!uploadedBeltImage && !isWebcamActive && (
+          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-200 text-amber-900 uppercase shrink-0">
+            {isFrench ? 'Données Simulées' : 'Simulated Data'}
+          </span>
+        )}
+      </div>
+
       {/* Top Banner */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap justify-between items-center gap-3">
         <div className="flex items-center gap-3">
@@ -394,11 +417,13 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
                 Live FRAGTRACK
               </span>
               <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                uploadedBeltImage ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-purple-100 text-purple-800'
+                uploadedBeltImage || isWebcamActive ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-800 border border-amber-300'
               }`}>
                 {uploadedBeltImage
-                  ? (isFrench ? 'IMAGE CONVOYEUR ANALYSÉE' : 'BELT IMAGE ANALYZED')
-                  : (isFrench ? 'FLUX VISION EDGE EN DIRECT' : 'EDGE-AI CAMERA STREAM')}
+                  ? (isFrench ? 'IMAGE CONVOYEUR IMPORTÉE' : 'IMPORTED BELT IMAGE')
+                  : isWebcamActive
+                  ? (isFrench ? 'FLUX WEBCAM EN DIRECT' : 'LIVE WEBCAM STREAM')
+                  : (isFrench ? 'FLUX DÉMO SIMULÉ' : 'SIMULATED DEMO STREAM')}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -609,13 +634,27 @@ export const BeltEdgeVisionView: React.FC<BeltEdgeVisionViewProps> = ({ blast, p
           {/* Live Metrics Cards */}
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-              <span className="text-slate-500 block text-[10px] font-bold uppercase">{isFrench ? 'P50 Instantané' : 'Instant P50'}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 block text-[10px] font-bold uppercase">{isFrench ? 'P50 Instantané' : 'Instant P50'}</span>
+                {!uploadedBeltImage && !isWebcamActive && (
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1 py-0.2 rounded">
+                    {isFrench ? 'Simulé' : 'Simulated'}
+                  </span>
+                )}
+              </div>
               <span className="text-xl font-black text-slate-900">{stats?.p50Mm || 0} mm</span>
               <span className="text-[10px] text-slate-400 block mt-0.5">{isFrench ? 'Taille médiane' : 'Median fragment'}</span>
             </div>
 
             <div className="bg-blue-50 p-3.5 rounded-2xl border border-blue-200 shadow-xs">
-              <span className="text-blue-700 block text-[10px] font-bold uppercase">{isFrench ? 'P80 Instantané' : 'Instant P80'}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-blue-700 block text-[10px] font-bold uppercase">{isFrench ? 'P80 Instantané' : 'Instant P80'}</span>
+                {!uploadedBeltImage && !isWebcamActive && (
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1 py-0.2 rounded">
+                    {isFrench ? 'Simulé' : 'Simulated'}
+                  </span>
+                )}
+              </div>
               <span className="text-xl font-black text-blue-950">{stats?.p80Mm || 0} mm</span>
               <span className="text-[10px] text-blue-600 block mt-0.5">{isFrench ? 'Indice comminution' : 'Comminution cut'}</span>
             </div>

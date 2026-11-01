@@ -17,6 +17,7 @@ import {
   Sliders,
   Sparkles,
   RefreshCw,
+  FlaskConical,
 } from 'lucide-react';
 import { SendToReportButton } from '../report/SendToReportButton';
 
@@ -607,6 +608,28 @@ export const Drone3DSizingView: React.FC<Drone3DSizingViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Experimental Module Alert Banner */}
+      <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-xl flex items-center justify-between gap-3 text-amber-900 shadow-xs">
+        <div className="flex items-center gap-3">
+          <FlaskConical className="w-5 h-5 text-amber-600 shrink-0" />
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-amber-800">
+              {isFrench ? 'Module Expérimental' : 'Experimental Module'}
+            </div>
+            <p className="text-xs font-medium text-amber-900 mt-0.5">
+              {isFrench
+                ? 'Expérimental : utilise des données de démonstration simulées sauf si vous importez votre propre levé/images'
+                : 'Experimental: uses simulated demo data unless you upload your own survey/images'}
+            </p>
+          </div>
+        </div>
+        {!uploadedImage && (
+          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-200 text-amber-900 uppercase shrink-0">
+            {isFrench ? 'Données Simulées' : 'Simulated Data'}
+          </span>
+        )}
+      </div>
+
       {/* Top Header Banner */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap justify-between items-center gap-3">
         <div className="flex items-center gap-3">
@@ -625,16 +648,16 @@ export const Drone3DSizingView: React.FC<Drone3DSizingViewProps> = ({
                 className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                   uploadedImage
                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                    : 'bg-blue-100 text-blue-800'
+                    : 'bg-amber-100 text-amber-800 border border-amber-300'
                 }`}
               >
                 {uploadedImage
                   ? isFrench
-                    ? 'SURVEY ACTIF (DYNAMIQUE)'
-                    : 'ACTIVE SURVEY (DYNAMIC)'
+                    ? 'SURVEY IMPORTÉ'
+                    : 'IMPORTED SURVEY'
                   : isFrench
-                  ? 'SYNCHRONISÉ AVEC LE TIR'
-                  : 'SYNCHRONIZED WITH BLAST'}
+                  ? 'DONNÉES DÉMO SIMULÉES'
+                  : 'SIMULATED DEMO DATA'}
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -843,6 +866,11 @@ export const Drone3DSizingView: React.FC<Drone3DSizingViewProps> = ({
                     <span className="text-slate-500">
                       ({((activeSector.volumeM3 / Math.max(1, surveyData.totalVolumeM3)) * 100).toFixed(1)}%)
                     </span>
+                    {!uploadedImage && (
+                      <span className="ml-1 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200">
+                        {isFrench ? 'Simulé' : 'Simulated'}
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -854,7 +882,14 @@ export const Drone3DSizingView: React.FC<Drone3DSizingViewProps> = ({
                   <span className="text-base font-black text-slate-900">{activeSector.p50Mm} mm</span>
                 </div>
                 <div className="bg-blue-50 p-2.5 rounded-xl border border-blue-100">
-                  <span className="text-blue-700 block text-[10px] font-bold">P80 (2D)</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-blue-700 block text-[10px] font-bold">P80 (2D)</span>
+                    {!uploadedImage && (
+                      <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1 py-0.2 rounded">
+                        {isFrench ? 'Simulé' : 'Simulated'}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-base font-black text-blue-950">{activeSector.p80Mm} mm</span>
                 </div>
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">

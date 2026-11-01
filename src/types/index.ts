@@ -597,6 +597,7 @@ export interface AppSettings {
   geminiModelFlash: string;
   geminiModelPro: string;
   validationErrorThresholdPercent: number; // default 15%
+  showExperimentalModules: boolean;
   economicParams?: EconomicParameters;
 }
 

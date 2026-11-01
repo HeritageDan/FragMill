@@ -53,6 +53,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   geminiModelFlash: 'gemini-2.5-flash',
   geminiModelPro: 'gemini-2.5-pro',
   validationErrorThresholdPercent: 15,
+  showExperimentalModules: false,
 };
 
 export async function getSettings(): Promise<AppSettings> {

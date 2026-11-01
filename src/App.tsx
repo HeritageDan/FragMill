@@ -28,6 +28,7 @@ const SettingsView = lazy(() => import('./components/settings/SettingsView').the
 const HelpView = lazy(() => import('./components/help/HelpView').then((m) => ({ default: m.HelpView })));
 const Drone3DSizingView = lazy(() => import('./components/drone/Drone3DSizingView').then((m) => ({ default: m.Drone3DSizingView })));
 const BeltEdgeVisionView = lazy(() => import('./components/belt/BeltEdgeVisionView').then((m) => ({ default: m.BeltEdgeVisionView })));
+const ExperimentalWorkspaceView = lazy(() => import('./components/experimental/ExperimentalWorkspaceView').then((m) => ({ default: m.ExperimentalWorkspaceView })));
 const BlastTimingSimulatorView = lazy(() => import('./components/timing/BlastTimingSimulatorView').then((m) => ({ default: m.BlastTimingSimulatorView })));
 const ComminutionDigitalTwinView = lazy(() => import('./components/comminution/ComminutionDigitalTwinView').then((m) => ({ default: m.ComminutionDigitalTwinView })));
 const ReportVaultModal = lazy(() => import('./components/report/ReportVaultModal').then((m) => ({ default: m.ReportVaultModal })));
@@ -421,24 +422,15 @@ function AppContent() {
         )}
 
         <Suspense fallback={<ViewLoadingFallback />}>
-          {activeTab === 'drone3d' && activeBlast && (
-            <Drone3DSizingView
-              key={activeBlast.id}
-              blast={activeBlast}
+          {(activeTab === 'experimental' || activeTab === 'drone3d' || activeTab === 'beltvision') && (
+            <ExperimentalWorkspaceView
+              key={activeBlast?.id || 'exp'}
+              blast={activeBlast || null}
               project={activeProject || undefined}
               site={activeSite || undefined}
               onUpdateBlast={handleUpdateBlast}
               lang={settings.language}
-            />
-          )}
-
-          {activeTab === 'beltvision' && (
-            <BeltEdgeVisionView
-              key={activeBlast.id}
-              blast={activeBlast}
-              project={activeProject || undefined}
-              site={activeSite || undefined}
-              lang={settings.language}
+              activeSubTab={activeTab === 'beltvision' ? 'beltvision' : 'drone3d'}
             />
           )}
 

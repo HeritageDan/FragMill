@@ -19,6 +19,7 @@ import {
   Video,
   Flame,
   FileText,
+  FlaskConical,
 } from 'lucide-react';
 import { useReportVault } from '../../context/ReportVaultContext';
 
@@ -33,6 +34,7 @@ export type NavigationTab =
   | 'validation'
   | 'minetomill'
   | 'kuzram'
+  | 'experimental'
   | 'settings'
   | 'help';
 
@@ -261,24 +263,19 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <Compass className="w-4 h-4" />
               {isFrench ? 'Tirs & Images' : 'Blast Records & Sizing'}
             </button>
-            <button
-              onClick={() => onSelectTab('drone3d')}
-              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
-                activeTab === 'drone3d' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Plane className="w-4 h-4" />
-              {isFrench ? 'Drone 3D & Ortho' : 'Drone 3D Sizing'}
-            </button>
-            <button
-              onClick={() => onSelectTab('beltvision')}
-              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
-                activeTab === 'beltvision' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Video className="w-4 h-4" />
-              {isFrench ? 'Vision Convoyeur' : 'Belt Edge Vision'}
-            </button>
+            {settings?.showExperimentalModules && (
+              <button
+                onClick={() => onSelectTab('experimental')}
+                className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
+                  activeTab === 'experimental' || activeTab === 'drone3d' || activeTab === 'beltvision'
+                    ? 'bg-amber-600 text-white font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <FlaskConical className="w-4 h-4 text-amber-300" />
+                {isFrench ? 'Expérimental' : 'Experimental'}
+              </button>
+            )}
             <button
               onClick={() => onSelectTab('timing')}
               className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
