@@ -1,0 +1,469 @@
+import * as xlsx from 'xlsx';
+import type { GeoLabTestType, QualityWarning } from '../../types/geolab';
+import { getTestDefinition } from '../tests/index';
+
+export interface CellValidationError {
+  sheet: string;
+  cell: string;
+  message: { en: string; fr: string };
+}
+
+export interface ParseResult<TInput = any, TResults = any> {
+  success: boolean;
+  errors: CellValidationError[];
+  warnings: QualityWarning[];
+  rawInput?: TInput;
+  computedResults?: TResults;
+  detectedStandard?: string;
+  sourceSheet?: string;
+}
+
+/**
+ * Validates and parses an uploaded geotechnical .xlsx file with cell-level error tracking.
+ */
+export async function parseAndValidateUploadedExcel(
+  fileBuffer: ArrayBuffer,
+  testType: GeoLabTestType
+): Promise<ParseResult> {
+  let wb: xlsx.WorkBook;
+  try {
+    wb = xlsx.read(new Uint8Array(fileBuffer), { type: 'array' });
+  } catch (err: any) {
+    return {
+      success: false,
+      errors: [
+        {
+          sheet: 'Workbook',
+          cell: 'A1',
+          message: {
+            en: `Failed to read Excel workbook: ${err.message || 'Corrupted file'}`,
+            fr: `Impossible de lire le classeur Excel : ${err.message || 'Fichier corrompu'}`,
+          },
+        },
+      ],
+      warnings: [],
+    };
+  }
+
+  if (!wb.SheetNames || wb.SheetNames.length === 0) {
+    return {
+      success: false,
+      errors: [
+        {
+          sheet: 'Workbook',
+          cell: 'A1',
+          message: {
+            en: 'Workbook contains no sheets.',
+            fr: 'Le classeur ne contient aucune feuille.',
+          },
+        },
+      ],
+      warnings: [],
+    };
+  }
+
+  // Check if standard GeoLab template sheet 'Data Entry' exists
+  let targetSheetName = wb.SheetNames.find((n) => n.toLowerCase().includes('data') || n.toLowerCase().includes('entry'));
+  if (!targetSheetName) {
+    // If not found, use first non-empty sheet
+    targetSheetName = wb.SheetNames[0];
+  }
+
+  const ws = wb.Sheets[targetSheetName];
+  if (!ws) {
+    return {
+      success: false,
+      errors: [
+        {
+          sheet: targetSheetName,
+          cell: 'A1',
+          message: {
+            en: `Sheet "${targetSheetName}" is empty or missing.`,
+            fr: `La feuille "${targetSheetName}" est vide ou manquante.`,
+          },
+        },
+      ],
+      warnings: [],
+    };
+  }
+
+  const errors: CellValidationError[] = [];
+  const testDef = getTestDefinition(testType);
+
+  let rawInput: any = null;
+
+  if (testType === 'proctor') {
+    rawInput = parseProctorSheet(ws, targetSheetName, errors);
+  } else if (testType === 'grain_size') {
+    rawInput = parseGrainSizeSheet(ws, targetSheetName, errors);
+  } else if (testType === 'water_content') {
+    rawInput = parseWaterContentSheet(ws, targetSheetName, errors);
+  }
+
+  if (errors.length > 0 || !rawInput) {
+    return {
+      success: false,
+      errors,
+      warnings: [],
+      sourceSheet: targetSheetName,
+    };
+  }
+
+  // Compute deterministic results
+  const computedResults = testDef.calculate(rawInput);
+  const warnings = testDef.checks(rawInput, computedResults);
+
+  return {
+    success: true,
+    errors: [],
+    warnings,
+    rawInput,
+    computedResults,
+    detectedStandard: testDef.defaultStandard,
+    sourceSheet: targetSheetName,
+  };
+}
+
+// -------------------------------------------------------------
+// Parsers per test type
+// -------------------------------------------------------------
+function parseProctorSheet(ws: xlsx.WorkSheet, sheetName: string, errors: CellValidationError[]) {
+  // Check if it's the Classeur1 summary format (rows 6-10 with cols N, O)
+  const isClasseur1Format = ws['N6'] !== undefined && ws['O6'] !== undefined;
+
+  if (isClasseur1Format) {
+    const particleDensityGs = ws['B46']?.v ?? 2.82;
+    const manualOpmMoisture = ws['B49']?.v !== undefined ? ws['B49'].v * 100 : undefined;
+    const manualOpmDensity = ws['B50']?.v ?? undefined;
+
+    const points: any[] = [];
+    for (let r = 6; r <= 10; r++) {
+      const cellW = ws[`N${r}`];
+      const cellRho = ws[`O${r}`];
+      if (cellW && cellRho && typeof cellW.v === 'number' && typeof cellRho.v === 'number') {
+        points.push({
+          pointIndex: r - 5,
+          waterContentPercent: cellW.v > 1 ? cellW.v : cellW.v * 100,
+          dryDensityGcm3: cellRho.v,
+        });
+      }
+    }
+
+    if (points.length < 3) {
+      errors.push({
+        sheet: sheetName,
+        cell: 'N6:O10',
+        message: {
+          en: `Found fewer than 3 valid compaction points (${points.length} found).`,
+          fr: `Moins de 3 points de compactage valides trouvés (${points.length} trouvés).`,
+        },
+      });
+      return null;
+    }
+
+    return {
+      mouldType: 'cbr',
+      mouldVolumeCm3: 2124,
+      particleDensityGs: Number(particleDensityGs),
+      targetCompactionPercent: 95,
+      manualOpmMoisturePercent: manualOpmMoisture,
+      manualOpmDryDensityGcm3: manualOpmDensity,
+      points,
+    };
+  }
+
+  // Default GeoLab template parser
+  // Look for parameters in A5..B10
+  let particleDensityGs = 2.70;
+  let mouldVol = 2124;
+  let mouldType: any = 'cbr';
+
+  const data = xlsx.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
+  let tableHeaderRowIdx = -1;
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const firstCell = String(row[0] || '').toLowerCase();
+    if (firstCell.includes('poids spécifique') || firstCell.includes('particle density') || firstCell.includes('ρs')) {
+      const val = parseFloat(row[1]);
+      if (!isNaN(val) && val > 0) particleDensityGs = val;
+    }
+    if (firstCell.includes('volume') || firstCell.includes('mould volume')) {
+      const val = parseFloat(row[1]);
+      if (!isNaN(val) && val > 0) mouldVol = val;
+    }
+    // Table header row must contain multiple columns
+    if (row.filter((c: any) => c !== '' && c !== null && c !== undefined).length >= 3) {
+      if (
+        firstCell.includes('point') ||
+        firstCell.includes('n°') ||
+        String(row[1] || '').toLowerCase().includes('teneur') ||
+        String(row[1] || '').toLowerCase().includes('moisture') ||
+        String(row[1] || '').toLowerCase().includes('w')
+      ) {
+        tableHeaderRowIdx = i;
+        break;
+      }
+    }
+  }
+
+  if (tableHeaderRowIdx === -1) {
+    errors.push({
+      sheet: sheetName,
+      cell: 'A8',
+      message: {
+        en: 'Could not locate compaction points table header (Point #, Moisture w, Dry Density).',
+        fr: 'En-tête du tableau des points de compactage introuvable (N° Point, Teneur en eau, Densité sèche).',
+      },
+    });
+    return null;
+  }
+
+  const points: any[] = [];
+  for (let r = tableHeaderRowIdx + 1; r < data.length; r++) {
+    const row = data[r];
+    if (!row || row.length === 0 || row[0] === '') continue;
+
+    const ptIdx = parseInt(row[0]);
+    const wVal = parseFloat(row[1]);
+    const rhoDryVal = parseFloat(row[2]);
+
+    if (isNaN(wVal) || isNaN(rhoDryVal)) {
+      errors.push({
+        sheet: sheetName,
+        cell: `B${r + 1}:C${r + 1}`,
+        message: {
+          en: `Row ${r + 1}: Invalid numeric values for water content or dry density.`,
+          fr: `Ligne ${r + 1} : Valeurs numériques invalides pour la teneur en eau ou la densité sèche.`,
+        },
+      });
+      continue;
+    }
+
+    points.push({
+      pointIndex: isNaN(ptIdx) ? points.length + 1 : ptIdx,
+      waterContentPercent: wVal > 1 ? wVal : wVal * 100,
+      dryDensityGcm3: rhoDryVal,
+      wetDensityGcm3: row[3] ? parseFloat(row[3]) : undefined,
+    });
+  }
+
+  if (points.length < 3) {
+    errors.push({
+      sheet: sheetName,
+      cell: `A${tableHeaderRowIdx + 2}`,
+      message: {
+        en: `At least 3 compaction points are required (found ${points.length}).`,
+        fr: `Au moins 3 points de compactage sont requis (${points.length} trouvés).`,
+      },
+    });
+    return null;
+  }
+
+  return {
+    mouldType,
+    mouldVolumeCm3: mouldVol,
+    particleDensityGs,
+    targetCompactionPercent: 95,
+    points,
+  };
+}
+
+function parseGrainSizeSheet(ws: xlsx.WorkSheet, sheetName: string, errors: CellValidationError[]) {
+  // Check if it's the Classeur1 format (Col I = sieve, Col J = passing)
+  if (ws['I9'] !== undefined && ws['J9'] !== undefined) {
+    const sieves: any[] = [];
+    for (let r = 9; r <= 34; r++) {
+      const cellSieve = ws[`I${r}`];
+      const cellPass = ws[`J${r}`];
+      if (cellSieve && cellSieve.v !== undefined && cellSieve.v !== '' && cellPass && cellPass.v !== undefined && cellPass.v !== '') {
+        const d = parseFloat(cellSieve.v);
+        const p = parseFloat(cellPass.v);
+        if (!isNaN(d) && !isNaN(p)) {
+          sieves.push({
+            sieveMm: d,
+            passingPercent: p > 1 ? p : p * 100,
+          });
+        }
+      }
+    }
+
+    if (sieves.length >= 4) {
+      return { sieves };
+    }
+  }
+
+  // Template format
+  const data = xlsx.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
+  let headerIdx = -1;
+  let initMass = 2000;
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const firstCell = String(row[0] || '').toLowerCase();
+    if (firstCell.includes('masse sèche') || firstCell.includes('dry sample mass')) {
+      const val = parseFloat(row[1]);
+      if (!isNaN(val) && val > 0) initMass = val;
+    }
+    if (firstCell.includes('maille') || firstCell.includes('sieve') || firstCell.includes('aperture')) {
+      headerIdx = i;
+      break;
+    }
+  }
+
+  if (headerIdx === -1) {
+    errors.push({
+      sheet: sheetName,
+      cell: 'A8',
+      message: {
+        en: 'Could not find sieve table headers (Sieve mm, Passing %, Retained g).',
+        fr: 'En-tête du tableau de tamisage introuvable (Maille mm, Passant %, Refus g).',
+      },
+    });
+    return null;
+  }
+
+  const sieves: any[] = [];
+  for (let r = headerIdx + 1; r < data.length; r++) {
+    const row = data[r];
+    if (!row || row.length === 0 || row[0] === '') continue;
+
+    const sieveMm = parseFloat(row[0]);
+    if (isNaN(sieveMm) || sieveMm <= 0) {
+      errors.push({
+        sheet: sheetName,
+        cell: `A${r + 1}`,
+        message: {
+          en: `Row ${r + 1}: Invalid sieve aperture: "${row[0]}". Must be a positive number.`,
+          fr: `Ligne ${r + 1} : Ouverture de tamis invalide : "${row[0]}". Doit être un nombre positif.`,
+        },
+      });
+      continue;
+    }
+
+    const passPct = row[1] !== '' ? parseFloat(row[1]) : undefined;
+    const retMass = row[2] !== '' ? parseFloat(row[2]) : undefined;
+
+    sieves.push({
+      sieveMm,
+      passingPercent: passPct,
+      retainedMassG: retMass,
+      minSpecPercent: row[3] !== '' ? parseFloat(row[3]) : undefined,
+      maxSpecPercent: row[4] !== '' ? parseFloat(row[4]) : undefined,
+    });
+  }
+
+  if (sieves.length < 4) {
+    errors.push({
+      sheet: sheetName,
+      cell: `A${headerIdx + 2}`,
+      message: {
+        en: `At least 4 sieves required (found ${sieves.length}).`,
+        fr: `Au moins 4 tamis sont requis (${sieves.length} trouvés).`,
+      },
+    });
+    return null;
+  }
+
+  return {
+    initialDryMassG: initMass,
+    sieves,
+  };
+}
+
+function parseWaterContentSheet(ws: xlsx.WorkSheet, sheetName: string, errors: CellValidationError[]) {
+  // Check if direct value in B45 (as in Classeur1)
+  if (ws['B45'] && typeof ws['B45'].v === 'number') {
+    return {
+      directNaturalWaterContentPercent: ws['B45'].v,
+      specimens: [],
+    };
+  }
+
+  // Template format
+  const data = xlsx.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
+  let headerIdx = -1;
+  let maxTol = 0.5;
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const firstCell = String(row[0] || '').toLowerCase();
+    if (firstCell.includes('tolérance') || firstCell.includes('tolerance')) {
+      const val = parseFloat(row[1]);
+      if (!isNaN(val) && val > 0) maxTol = val;
+    }
+    // Table header row must contain multiple columns
+    if (row.filter((c: any) => c !== '' && c !== null && c !== undefined).length >= 3) {
+      if (
+        firstCell.includes('éprouvette') ||
+        firstCell.includes('specimen') ||
+        String(row[1] || '').toLowerCase().includes('tare') ||
+        String(row[2] || '').toLowerCase().includes('tare') ||
+        String(row[2] || '').toLowerCase().includes('m0')
+      ) {
+        headerIdx = i;
+        break;
+      }
+    }
+  }
+
+  if (headerIdx === -1) {
+    errors.push({
+      sheet: sheetName,
+      cell: 'A8',
+      message: {
+        en: 'Could not find specimens table headers (Specimen, Tare m0, Wet m1, Dry m2).',
+        fr: 'En-tête du tableau des éprouvettes introuvable (Éprouvette, Tare m0, Humide m1, Sec m2).',
+      },
+    });
+    return null;
+  }
+
+  const specimens: any[] = [];
+  for (let r = headerIdx + 1; r < data.length; r++) {
+    const row = data[r];
+    if (!row || row.length === 0 || row[0] === '') continue;
+
+    const specId = String(row[0]);
+    const tare = parseFloat(row[2]);
+    const wet = parseFloat(row[3]);
+    const dry = parseFloat(row[4]);
+
+    if (isNaN(tare) || isNaN(wet) || isNaN(dry)) {
+      errors.push({
+        sheet: sheetName,
+        cell: `C${r + 1}:E${r + 1}`,
+        message: {
+          en: `Row ${r + 1}: Masses must be valid numbers (tare, wet, dry).`,
+          fr: `Ligne ${r + 1} : Les masses doivent être des nombres valides (tare, humide, sec).`,
+        },
+      });
+      continue;
+    }
+
+    specimens.push({
+      specimenId: specId,
+      containerId: row[1] ? String(row[1]) : `T-${specimens.length + 1}`,
+      tareMassG: tare,
+      wetSoilPlusTareG: wet,
+      drySoilPlusTareG: dry,
+    });
+  }
+
+  if (specimens.length === 0) {
+    errors.push({
+      sheet: sheetName,
+      cell: `A${headerIdx + 2}`,
+      message: {
+        en: 'No valid specimens found in upload.',
+        fr: 'Aucune éprouvette valide trouvée dans le fichier.',
+      },
+    });
+    return null;
+  }
+
+  return {
+    maxTolerancePercent: maxTol,
+    specimens,
+  };
+}

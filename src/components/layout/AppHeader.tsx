@@ -41,6 +41,8 @@ interface AppHeaderProps {
   onNewBlast: () => void;
   onLoadDemoProject: () => void;
   onOpenReportVault?: () => void;
+  activeAppModule?: 'fragmill' | 'geolab';
+  onSwitchAppModule?: (mod: 'fragmill' | 'geolab') => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -56,6 +58,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onNewBlast,
   onLoadDemoProject,
   onOpenReportVault,
+  activeAppModule = 'fragmill',
+  onSwitchAppModule,
 }) => {
   const isFrench = settings.language === 'fr';
   const { stagedCount, totalSections } = useReportVault();
@@ -109,6 +113,32 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               {currentProject?.name || 'Artisanal & Small-Scale Mining Fragmentation Lab'}
             </p>
           </div>
+
+          {/* Module Switcher: FragMill | GeoLab */}
+          {onSwitchAppModule && (
+            <div className="flex items-center gap-1 bg-slate-800/90 p-1 rounded-lg border border-slate-700 ml-2">
+              <button
+                onClick={() => onSwitchAppModule('fragmill')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                  activeAppModule === 'fragmill'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                FragMill
+              </button>
+              <button
+                onClick={() => onSwitchAppModule('geolab')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                  activeAppModule === 'geolab'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                GeoLab
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Global Controls: Mode Toggle, Theme, Language, Blast Selector */}

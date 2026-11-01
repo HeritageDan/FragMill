@@ -29,6 +29,7 @@ const SettingsView = lazy(() => import('./components/settings/SettingsView').the
 const HelpView = lazy(() => import('./components/help/HelpView').then((m) => ({ default: m.HelpView })));
 const ExperimentalWorkspaceView = lazy(() => import('./components/experimental/ExperimentalWorkspaceView').then((m) => ({ default: m.ExperimentalWorkspaceView })));
 const ReportVaultModal = lazy(() => import('./components/report/ReportVaultModal').then((m) => ({ default: m.ReportVaultModal })));
+const GeoLabShell = lazy(() => import('./components/geolab/GeoLabShell').then((m) => ({ default: m.GeoLabShell })));
 
 const ViewLoadingFallback = () => (
   <div className="flex flex-col items-center justify-center p-20 space-y-4 text-slate-400">
@@ -136,6 +137,22 @@ function AppContent() {
   const [experimentalSubTab, setExperimentalSubTab] = useState<ExperimentalSubTab>('drone3d');
   const [isLoading, setIsLoading] = useState(true);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [activeAppModule, setActiveAppModule] = useState<'fragmill' | 'geolab'>(() => {
+    try {
+      return (localStorage.getItem('fragmill_active_app_module') as 'fragmill' | 'geolab') || 'fragmill';
+    } catch {
+      return 'fragmill';
+    }
+  });
+
+  const handleSwitchAppModule = (mod: 'fragmill' | 'geolab') => {
+    setActiveAppModule(mod);
+    try {
+      localStorage.setItem('fragmill_active_app_module', mod);
+    } catch {
+      // ignore
+    }
+  };
 
   const loadDatabase = async () => {
     setIsLoading(true);
@@ -447,6 +464,17 @@ function AppContent() {
     );
   }
 
+  if (activeAppModule === 'geolab') {
+    return (
+      <Suspense fallback={<ViewLoadingFallback />}>
+        <GeoLabShell
+          language={settings.language}
+          onSwitchToFragMill={() => handleSwitchAppModule('fragmill')}
+        />
+      </Suspense>
+    );
+  }
+
   return (
     <ReportVaultProvider
       activeBlastId={activeBlastId}
@@ -466,6 +494,8 @@ function AppContent() {
         onNewBlast={handleNewBlast}
         onLoadDemoProject={handleLoadDemoProject}
         onOpenReportVault={() => setIsReportModalOpen(true)}
+        activeAppModule={activeAppModule}
+        onSwitchAppModule={handleSwitchAppModule}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-5">

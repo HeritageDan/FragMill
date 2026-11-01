@@ -9,6 +9,13 @@ import type {
   MillBatch,
   AppSettings,
 } from '../types';
+import type {
+  GeoLabClient,
+  GeoLabProject,
+  GeoLabSample,
+  GeoLabAnalysis,
+  OrganisationProfile,
+} from '../types/geolab';
 
 export class FragMillDatabase extends Dexie {
   projects!: Table<Project, string>;
@@ -20,6 +27,12 @@ export class FragMillDatabase extends Dexie {
   millBatches!: Table<MillBatch, string>;
   settings!: Table<{ key: string; value: any }, string>;
   cachedModels!: Table<{ id: string; name: string; size: number; buffer: ArrayBuffer; updatedAt: number }, string>;
+
+  // GeoLab Tables
+  clients!: Table<GeoLabClient, string>;
+  geolabProjects!: Table<GeoLabProject, string>;
+  samples!: Table<GeoLabSample, string>;
+  analyses!: Table<GeoLabAnalysis, string>;
 
   constructor() {
     super('FragMillDB');
@@ -33,6 +46,13 @@ export class FragMillDatabase extends Dexie {
       millBatches: 'id, blastId',
       settings: 'key',
       cachedModels: 'id, name, size',
+    });
+
+    this.version(2).stores({
+      clients: 'id, companyName, email, isArchived, createdAt',
+      geolabProjects: 'id, clientId, projectName, isArchived, createdAt',
+      samples: 'id, projectId, sampleId, samplingDate, createdAt',
+      analyses: 'id, sampleId, testType, status, reportNumber, createdAt',
     });
   }
 }
@@ -56,6 +76,23 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showExperimentalModules: false,
 };
 
+export const DEFAULT_ORGANISATION_PROFILE: OrganisationProfile = {
+  companyName: 'GeoLab Materials & Soil Testing Laboratory',
+  address: '142 Boulevard de la Recherche, 75013 Paris, France',
+  phone: '+33 (0)1 45 87 90 20',
+  email: 'contact@geolab-testing.com',
+  accreditationNumber: 'COFRAC / ISO 17025 N° 1-4820',
+  primaryColor: '#1e40af',
+  signatories: [
+    { role: 'prepared', name: 'J. Dupont', title: 'Laboratory Technician' },
+    { role: 'checked', name: 'M. Lambert, EurGeol', title: 'Quality Assurance Lead' },
+    { role: 'approved', name: 'Dr. H. Kemekong, P.Eng', title: 'Technical Director' },
+  ],
+  reportFooterText: 'Certified Geotechnical Laboratory Report - Quality Assurance Protocol',
+  defaultLanguage: 'fr',
+  defaultStandard: 'NF',
+};
+
 export async function getSettings(): Promise<AppSettings> {
   const row = await db.settings.get('app_settings');
   if (row) {
@@ -66,4 +103,16 @@ export async function getSettings(): Promise<AppSettings> {
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
   await db.settings.put({ key: 'app_settings', value: settings });
+}
+
+export async function getOrganisationProfile(): Promise<OrganisationProfile> {
+  const row = await db.settings.get('geolab_organisation_profile');
+  if (row) {
+    return { ...DEFAULT_ORGANISATION_PROFILE, ...row.value };
+  }
+  return DEFAULT_ORGANISATION_PROFILE;
+}
+
+export async function saveOrganisationProfile(profile: OrganisationProfile): Promise<void> {
+  await db.settings.put({ key: 'geolab_organisation_profile', value: profile });
 }
