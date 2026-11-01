@@ -15,10 +15,6 @@ import type {
   DroneOrthomosaicData,
   BeltVisionConfig,
   BeltStats,
-  IREDESHole,
-  VariogramParams,
-  KrigingGridNode,
-  BoreholeSample,
   HoleTimingInfo,
 } from '../types/advanced';
 import { calculateRockFactorA, computeKuzRam, computeXPFrag } from './kuzram';
@@ -26,8 +22,6 @@ import { fitRosinRammler, fitSwebrec, computeFragmentationMetrics } from './stat
 import { computeSieveDistribution } from './validation';
 import { calculateUSBMPPV, generatePatternTiming } from './timing/initiationSimulator';
 import { generateDemoDroneSurvey } from './drone3d/droneSizing';
-import { generateDrillTelemetryFromBlast } from './telemetry/iredesGenerator';
-import { DEFAULT_VARIOGRAM, computeKrigingGrid, generateDemoBoreholes } from './geostatistics/krigingEngine';
 import { calculateBondSpecificEnergy, calculateMorrellSpecificEnergy } from './comminution/bondMorrellEngine';
 
 export interface BlastGeometryState {
@@ -238,39 +232,6 @@ export interface BlastTimingState {
   holes?: HoleTimingInfo[];
 }
 
-export interface BlastDrillingState {
-  hasDrillTelemetry: boolean;
-  isDemoData: boolean;
-  collarToleranceMm: number;
-  totalHoles: number;
-  compliantHolesCount: number;
-  complianceRatePercent: number;
-  maxCollarErrorMm: number;
-  avgPenetrationRateMPerMin: number;
-  rigModel: string;
-  holes: IREDESHole[];
-}
-
-export interface BlastKrigingState {
-  softCutoffMPa: number;
-  hardCutoffMPa: number;
-  softDomainPercent: number;
-  mediumDomainPercent: number;
-  hardDomainPercent: number;
-  dominantDomainEn: string;
-  dominantDomainFr: string;
-  gridNodes?: KrigingGridNode[];
-  boreholes?: BoreholeSample[];
-  gridBounds?: { minX: number; maxX: number; minY: number; maxY: number };
-  gridCols?: number;
-  gridRows?: number;
-  variogram?: VariogramParams;
-  selectedAttribute?: string;
-  meanEstimated?: number;
-  minEstimated?: number;
-  maxEstimated?: number;
-}
-
 export interface BlastDroneState {
   hasDroneData: boolean;
   isDemoData: boolean;
@@ -305,8 +266,6 @@ export interface BlastState {
   economics: BlastEconomicsState;
   belt: BlastBeltState;
   timing: BlastTimingState;
-  drilling: BlastDrillingState;
-  kriging: BlastKrigingState;
   drone: BlastDroneState;
   validationWarningsEn: string[];
   validationWarningsFr: string[];
@@ -1055,101 +1014,7 @@ export function getBlastState(
     holes: timingHoles,
   };
 
-  // 11. DRILL TELEMETRY P2P
-  const drillCollarTol = overrides?.collarToleranceMm || 60;
-  const drillHoles = generateDrillTelemetryFromBlast(blast);
-  const compliantCount = drillHoles.filter((h) => (h.collarDeviationMm || 0) <= drillCollarTol).length;
-  const complianceRate = drillHoles.length > 0 ? Math.round((compliantCount / drillHoles.length) * 100) : 100;
-  const maxErr = drillHoles.length > 0 ? Math.max(...drillHoles.map((h) => h.collarDeviationMm || 0)) : 0;
-  const meanRop = drillHoles.length > 0
-    ? Number((drillHoles.reduce((acc, h) => acc + (h.penetrationRateMPerMin || 1.35), 0) / drillHoles.length).toFixed(2))
-    : 1.35;
-
-  const hasImportedDrillHoles = Boolean(blast.drillHoles && blast.drillHoles.length > 0);
-
-  const drilling: BlastDrillingState = {
-    hasDrillTelemetry: true,
-    isDemoData: !hasImportedDrillHoles,
-    collarToleranceMm: drillCollarTol,
-    totalHoles: drillHoles.length,
-    compliantHolesCount: compliantCount,
-    complianceRatePercent: complianceRate,
-    maxCollarErrorMm: maxErr,
-    avgPenetrationRateMPerMin: meanRop,
-    rigModel: 'Epiroc SmartROC T45',
-    holes: drillHoles,
-  };
-
-  // 12. KRIGING GEOSTATISTICS
-  const softCutoff = overrides?.softCutoffMPa || 75;
-  const hardCutoff = overrides?.hardCutoffMPa || 125;
-  const actualBoreholes: BoreholeSample[] = blast.drillHoles && blast.drillHoles.length >= 3
-    ? blast.drillHoles.map((h, idx) => ({
-        id: h.holeId || `BH-${idx + 1}`,
-        easting: (h as any).collarX !== undefined ? (h as any).collarX : (h.eastingX !== undefined ? h.eastingX : (idx % 6) * (h.spacingM || 3.5)),
-        northing: (h as any).collarY !== undefined ? (h as any).collarY : (h.northingY !== undefined ? h.northingY : Math.floor(idx / 6) * (h.burdenM || 3.0)),
-        elevation: (h as any).collarZ !== undefined ? (h as any).collarZ : (h.elevationZ !== undefined ? h.elevationZ : 840),
-        ucsMPa: h.ucsMPa || blast.rockMass?.ucsMPa || 120,
-        rqdPercent: h.rqdPercent || 78,
-        jointSpacingM: blast.rockMass?.meanJointSpacing || 0.55,
-        densityTPerM3: h.densityTPerM3 || blast.rockMass?.density || 2.68,
-        goldGradeGPT: 1.25,
-      }))
-    : generateDemoBoreholes();
-
-  const xs = actualBoreholes.map((b) => b.easting);
-  const ys = actualBoreholes.map((b) => b.northing);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs) + (Math.max(...xs) === minX ? 10 : 0);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys) + (Math.max(...ys) === minY ? 10 : 0);
-  const padX = Math.max(3.5, (maxX - minX) * 0.15);
-  const padY = Math.max(3.5, (maxY - minY) * 0.15);
-
-  const krigGrid = computeKrigingGrid(
-    actualBoreholes,
-    'ucsMPa',
-    20,
-    14,
-    minX - padX,
-    maxX + padX,
-    minY - padY,
-    maxY + padY,
-    DEFAULT_VARIOGRAM
-  );
-  const gridVals = krigGrid.map((n) => n.estimatedValue);
-  const minEstimated = gridVals.length > 0 ? Math.round(Math.min(...gridVals)) : 80;
-  const maxEstimated = gridVals.length > 0 ? Math.round(Math.max(...gridVals)) : 150;
-  const meanEstimated = gridVals.length > 0 ? Number((gridVals.reduce((a, b) => a + b, 0) / gridVals.length).toFixed(1)) : 115;
-  const sCount = gridVals.filter((v) => v < softCutoff).length;
-  const hCount = gridVals.filter((v) => v > hardCutoff).length;
-  const mCount = gridVals.length - sCount - hCount;
-  const totalGrid = Math.max(1, gridVals.length);
-  const softPct = Math.round((sCount / totalGrid) * 100);
-  const hardPct = Math.round((hCount / totalGrid) * 100);
-  const mediumPct = 100 - softPct - hardPct;
-
-  const kriging: BlastKrigingState = {
-    softCutoffMPa: softCutoff,
-    hardCutoffMPa: hardCutoff,
-    softDomainPercent: softPct,
-    mediumDomainPercent: mediumPct,
-    hardDomainPercent: hardPct,
-    dominantDomainEn: softPct >= mediumPct && softPct >= hardPct ? 'Soft Domain' : hardPct >= mediumPct ? 'Hard Domain' : 'Intermediate Domain',
-    dominantDomainFr: softPct >= mediumPct && softPct >= hardPct ? 'Domaine Tendre' : hardPct >= mediumPct ? 'Domaine Dur' : 'Domaine Intermédiaire',
-    gridNodes: krigGrid,
-    boreholes: actualBoreholes,
-    gridBounds: { minX: minX - padX, maxX: maxX + padX, minY: minY - padY, maxY: maxY + padY },
-    gridCols: 20,
-    gridRows: 14,
-    variogram: DEFAULT_VARIOGRAM,
-    selectedAttribute: 'ucsMPa',
-    meanEstimated,
-    minEstimated,
-    maxEstimated,
-  };
-
-  // 13. DRONE 3D SURVEY
+  // 11. DRONE 3D SURVEY
   const hasRealDrone = Boolean(blast.droneSurvey && blast.droneSurvey.sectors && blast.droneSurvey.sectors.length > 0);
   const droneSurvey = blast.droneSurvey || generateDemoDroneSurvey(blast.blastId);
   const droneSectors = blast.droneSurvey?.sectors || droneSurvey.sectors;
@@ -1194,8 +1059,6 @@ export function getBlastState(
     economics,
     belt,
     timing,
-    drilling,
-    kriging,
     drone,
     validationWarningsEn,
     validationWarningsFr,

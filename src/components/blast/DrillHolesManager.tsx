@@ -309,8 +309,8 @@ export const DrillHolesManager: React.FC<DrillHolesManagerProps> = ({
               </div>
               <p className="text-xs text-slate-500">
                 {isFrench
-                  ? 'Importez votre fichier Excel (.xlsx) ou CSV de foration. Les données de chaque trou (coordonnées, dureté, charge, eau) alimentent directement le Krigeage, le Séquençage 3D et le Jumeau Broyage.'
-                  : 'Upload your drill pattern Excel (.xlsx) or CSV file. Per-hole coordinates, rock hardness, water, and charges automatically sync with Kriging, 3D Timing, and Comminution.'}
+                  ? 'Importez votre fichier Excel (.xlsx) ou CSV de foration. Les données de chaque trou (coordonnées, dureté, charge, eau) alimentent directement le Séquençage 3D et le Jumeau Broyage.'
+                  : 'Upload your drill pattern Excel (.xlsx) or CSV file. Per-hole coordinates, rock hardness, water, and charges automatically sync with 3D Timing and Comminution.'}
               </p>
             </div>
           </div>
@@ -740,8 +740,8 @@ export const DrillHolesManager: React.FC<DrillHolesManagerProps> = ({
           <Info className="w-4 h-4 text-blue-600 shrink-0" />
           <span>
             {isFrench
-              ? `Toutes les modifications apportées à ces ${holes.length} trous sont automatiquement propagées à tous les onglets (Krigeage de Blocs, Séquençage 3D, Plan de Fosse, Jumeau Broyage et Rapports).`
-              : `All modifications to these ${holes.length} drill holes are automatically propagated to all app tabs (Block Model Kriging, 3D Timing, Bench Map, Comminution Twin, and Vault Reports).`}
+              ? `Toutes les modifications apportées à ces ${holes.length} trous sont automatiquement propagées à tous les onglets (Séquençage 3D, Plan de Fosse, Jumeau Broyage et Rapports).`
+              : `All modifications to these ${holes.length} drill holes are automatically propagated to all app tabs (3D Timing, Bench Map, Comminution Twin, and Vault Reports).`}
           </span>
         </div>
       </div>

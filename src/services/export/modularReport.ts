@@ -18,8 +18,6 @@ import { evaluateMineToMillEconomics, DEFAULT_ECONOMIC_PARAMS } from '../economi
 import { computeKuzRam, calculateRockFactorA, DEFAULT_ROCK_TABLES } from '../kuzram';
 import { generateDemoDroneSurvey } from '../drone3d/droneSizing';
 import { calculateUSBMPPV, generateFaceProfile } from '../timing/initiationSimulator';
-import { generateDrillTelemetryFromBlast } from '../telemetry/iredesGenerator';
-import { computeKrigingGrid, generateDemoBoreholes, DEFAULT_VARIOGRAM } from '../geostatistics/krigingEngine';
 import { computeSieveDistribution } from '../validation';
 import {
   renderLogarithmicPassingChart,
@@ -27,8 +25,6 @@ import {
   renderDrone3DMuckpileGraphic,
   renderConveyorBeltGraphic,
   renderBlastTimingGraphic,
-  renderKrigingModelGraphic,
-  renderDrillCollarBullseyeGraphic,
   renderBenchMapGraphic,
   renderMineToMillGraphic,
   renderComminutionCircuitGraphic,
@@ -270,7 +266,6 @@ export async function generateModularVaultPdfReport(
   const rockA = blastState.rock.rockFactorA;
   const kuzRam = blastState.kuzRam;
   const droneSurvey = blast.droneSurvey || generateDemoDroneSurvey(blast.blastId);
-  const drillHoles = blastState.drilling.holes;
   const econResult = evaluateMineToMillEconomics(blast, blastState.optical.p80Mm, blast.millBatch, DEFAULT_ECONOMIC_PARAMS);
 
   // Render each selected section on dedicated pages
@@ -1155,148 +1150,7 @@ export async function generateModularVaultPdfReport(
       );
     }
 
-    // SECTION 6: BLOCK MODEL & KRIGING
-    else if (key === 'kriging') {
-      const softCut = p.softCutoffMPa ?? p.softCutoff ?? blastState.kriging.softCutoffMPa;
-      const hardCut = p.hardCutoffMPa ?? p.hardCutoff ?? blastState.kriging.hardCutoffMPa;
-      const nodes = p.gridNodes ?? blastState.kriging.gridNodes;
-      const bholes = p.boreholes ?? blastState.kriging.boreholes;
-      const bounds = p.gridBounds ?? blastState.kriging.gridBounds;
-      const cols = p.gridCols ?? blastState.kriging.gridCols ?? 20;
-      const rows = p.gridRows ?? blastState.kriging.gridRows ?? 14;
-      const selectedAttr = p.selectedAttribute ?? blastState.kriging.selectedAttribute ?? 'ucs';
-      const varRange = p.rangeM ?? p.variogram?.rangeM ?? p.variogram?.range ?? blastState.kriging.variogram?.rangeM ?? 45.0;
-      const varNugget = p.nugget ?? p.variogram?.nugget ?? blastState.kriging.variogram?.nugget ?? 50.0;
-      const varSill = p.sill ?? p.variogram?.sill ?? blastState.kriging.variogram?.sill ?? 280.0;
-      const varModel = (p.model ?? p.variogramModel ?? p.variogram?.model ?? blastState.kriging.variogram?.model ?? 'spherical').toUpperCase();
-
-      doc.setFillColor(245, 243, 255);
-      doc.rect(14, y, 182, 12, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(88, 28, 135);
-      doc.text(
-        isFr
-          ? `GÉOSTATISTIQUE : Variogramme : ${varModel} | Portée (a) : ${varRange.toFixed(1)} m | Pépite (C0) : ${varNugget.toFixed(1)} | Palier (C) : ${varSill.toFixed(1)}`
-          : `GEOSTATISTICS: Variogram: ${varModel} | Range (a): ${varRange.toFixed(1)} m | Nugget (C0): ${varNugget.toFixed(1)} | Sill (C): ${varSill.toFixed(1)}`,
-        18,
-        y + 5
-      );
-      doc.text(
-        isFr
-          ? `ESTIMATION BLUE : Krigeage Ordinaire 2D (Seuils : Tendre < ${softCut} MPa | Dur > ${hardCut} MPa) | Dosage : 0.42 à 0.74 kg/m³`
-          : `BLUE ESTIMATION: 2D Ordinary Kriging (Cutoffs: Soft < ${softCut} MPa | Hard > ${hardCut} MPa) | Powder Factor: 0.42 to 0.74 kg/m³`,
-        18,
-        y + 9.5
-      );
-      y += 16;
-
-      // Embed Geostatistical Ordinary Kriging Block Model Graphic (3-panel: Heatmap, Kriging Variance, Blast Domains)
-      const krigingGraphic = renderKrigingModelGraphic({
-        softCutoff: softCut,
-        hardCutoff: hardCut,
-        isDemo: blastState.drilling.isDemoData,
-        gridNodes: nodes,
-        boreholes: bholes,
-        gridBounds: bounds,
-        gridCols: cols,
-        gridRows: rows,
-        variogram: {
-          model: (varModel.toLowerCase() === 'exponential' || varModel.toLowerCase() === 'gaussian') ? varModel.toLowerCase() as any : 'spherical',
-          nugget: varNugget,
-          sill: varSill,
-          rangeM: varRange,
-        },
-        selectedAttribute: selectedAttr,
-      }, isFr ? 'fr' : 'en');
-      addImageWithPageCheck(krigingGraphic, 182, 93);
-
-      const softPct = p.softDomainPercent ?? p.softPct ?? blastState.kriging.softDomainPercent;
-      const medPct = p.mediumDomainPercent ?? p.interPct ?? blastState.kriging.mediumDomainPercent;
-      const hardPct = p.hardDomainPercent ?? p.hardPct ?? blastState.kriging.hardDomainPercent;
-
-      const krigRows = [
-        [isFr ? 'Domaine Tendre (Saprolite / Fissuré)' : 'Soft Domain (Saprolite / Weathered)', `< ${softCut} MPa`, '0.42 kg/m³', `${softPct}%`, isFr ? 'ANFO standard 0.40 - 0.45 kg/m³' : 'Standard ANFO'],
-        [isFr ? 'Domaine Moyen (Andésite modérée)' : 'Medium Domain (Moderate Andesite)', `${softCut} - ${hardCut} MPa`, '0.58 kg/m³', `${medPct}%`, isFr ? 'Émulsion 30/70 avec sur-énergie' : 'Heavy ANFO 30/70'],
-        [isFr ? 'Domaine Dur (Granodiorite massive)' : 'Hard Massive (Massive Granodiorite)', `> ${hardCut} MPa`, '0.74 kg/m³', `${hardPct}%`, isFr ? 'Émulsion pure + mailles resserrées' : 'Full Emulsion + tight pattern'],
-      ];
-
-      y = drawTable(
-        isFr
-          ? ['Domaine Géologique Interpolé', 'Résistance UCS', 'Dosage Recommandé', 'Volume Massif (%)', 'Stratégie de Minage']
-          : ['Interpolated Geological Domain', 'UCS Strength', 'Target Powder Factor', 'Volume Share (%)', 'Blasting Strategy'],
-        krigRows,
-        [55, 30, 32, 25, 40],
-        y,
-        isFr ? 'ZONAGE DU DOSAGE PAR KRIGEAGE DES BLOCS DU GRADIN' : 'POWDER FACTOR ZONATION FROM KRIGED BLOCKS',
-        headerTitle,
-        headerSub
-      );
-    }
-
-    // SECTION 7: DRILL TELEMETRY & IREDES
-    else if (key === 'telemetry') {
-      const tol = p.collarToleranceMm ?? blastState.drilling.collarToleranceMm;
-      const comp = p.complianceRatePercent ?? blastState.drilling.complianceRatePercent;
-      const maxErr = p.maxCollarErrorMm ?? blastState.drilling.maxCollarErrorMm;
-      const rop = p.avgPenetrationRateMPerMin ?? blastState.drilling.avgPenetrationRateMPerMin;
-      const holes = p.holes ?? blastState.drilling.holes;
-
-      doc.setFillColor(240, 249, 255);
-      doc.rect(14, y, 182, 12, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(3, 105, 161);
-      doc.text(
-        isFr
-          ? `TÉLÉMÉTRIE MWD [${blastState.drilling.isDemoData ? 'SIMULATION IREDES' : 'RELEVÉ FORATION RÉEL'}] : Tolérance : ${tol} mm | Conformité : ${comp}% | Écart Max : ${maxErr} mm`
-          : `MWD TELEMETRY [${blastState.drilling.isDemoData ? 'IREDES SIMULATION' : 'AS-BUILT DRILL PATTERN'}]: Collar Tolerance: ${tol} mm | Compliance: ${comp}% | Max Error: ${maxErr} mm`,
-        18,
-        y + 5
-      );
-      doc.text(
-        isFr
-          ? `PERFORMANCES FOREUSE : Vitesse ROP : ${rop.toFixed(2)} m/min | Foreuse : ${blastState.drilling.rigModel} | Protocole IREDES XML Validé`
-          : `RIG DRILLING SPEED: Average ROP: ${rop.toFixed(2)} m/min | Rig: ${blastState.drilling.rigModel} | Standard IREDES XML Validated`,
-        18,
-        y + 9.5
-      );
-      y += 16;
-
-      // Embed MWD Drill Collar Deviation Bullseye Target Graphic
-      const bullseyeGraphic = renderDrillCollarBullseyeGraphic(holes, {
-        toleranceMm: tol,
-        complianceRate: comp,
-        totalHoles: p.totalHoles ?? blastState.drilling.totalHoles,
-        rigModel: blastState.drilling.rigModel,
-        averageRopMPerMin: rop,
-        isDemo: blastState.drilling.isDemoData,
-      }, isFr ? 'fr' : 'en');
-      addImageWithPageCheck(bullseyeGraphic, 182, 85);
-
-      const drillRows = (holes as any[]).slice(0, 7).map((h: any) => [
-        h.holeId,
-        `${h.plannedDepthM.toFixed(1)} m`,
-        `${(h.actualDepthM || h.plannedDepthM).toFixed(1)} m`,
-        `${h.collarDeviationMm || 12} mm`,
-        `${(h.penetrationRateMPerMin || rop).toFixed(2)} m/min`,
-        (h.collarDeviationMm || 0) <= tol ? (isFr ? 'CONFORME' : 'PASS') : (isFr ? 'ÉCART' : 'WARN'),
-      ]);
-
-      y = drawTable(
-        isFr
-          ? ['ID Trou', 'Prévu (m)', 'Foré Réel (m)', 'Écart Collet (mm)', 'Vitesse (ROP)', 'Statut QA/QC']
-          : ['Hole ID', 'Design (m)', 'Actual Drilled', 'Collar Error', 'Penetration ROP', 'QA/QC Status'],
-        drillRows,
-        [28, 28, 30, 34, 32, 30],
-        y,
-        isFr ? 'ÉCHANTILLON DU RELEVÉ DE FORATION IREDES RÉEL' : 'SAMPLE IREDES AS-BUILT DRILLING TELEMETRY',
-        headerTitle,
-        headerSub
-      );
-    }
-
-    // SECTION 8: BENCH MAP
+    // SECTION 6: BENCH MAP
     else if (key === 'benchmap') {
       const bench = p.benchElevationRL ?? blastState.geometry.benchElevationRL;
       const flyrock = p.flyrockRadiusM ?? 300;
@@ -1716,12 +1570,6 @@ export async function generateModularVaultPdfReport(
       isFr ? 'Référence Théorique' : 'Theoretical Baseline',
     ],
     [
-      isFr ? 'Télémesure Foration MWD' : 'MWD Drilling Telemetry',
-      blastState.drilling.isDemoData ? (isFr ? 'Simulation IREDES' : 'IREDES Simulation') : (isFr ? 'Relevé Foration Réel (Excel/MWD)' : 'Real As-Built Log (Excel/MWD)'),
-      isFr ? `${blastState.drilling.totalHoles} trous forés, conformité ${blastState.drilling.complianceRatePercent}%` : `${blastState.drilling.totalHoles} drilled holes, compliance ${blastState.drilling.complianceRatePercent}%`,
-      blastState.drilling.isDemoData ? (isFr ? 'Indicatif / Simulation' : 'Simulation') : (isFr ? 'Certifié IREDES' : 'Certified As-Built'),
-    ],
-    [
       isFr ? 'Vision Convoyeur' : 'Conveyor Belt Vision',
       blastState.belt.isDemoData ? (isFr ? 'Flux Simulé' : 'Simulated Stream') : (isFr ? 'Caméra IP67 Direct' : 'Live IP67 Stream'),
       isFr ? `Vitesse ${blastState.belt.beltSpeedMPerS} m/s, seuil ${blastState.belt.crusherGapeThresholdMm} mm` : `Speed ${blastState.belt.beltSpeedMPerS} m/s, gape ${blastState.belt.crusherGapeThresholdMm} mm`,
@@ -1813,8 +1661,6 @@ export async function generateSingleSectionPdfReport(
     beltvision: null,
     timing: null,
     comminution: null,
-    kriging: null,
-    telemetry: null,
     benchmap: null,
     validation: null,
     minetomill: null,

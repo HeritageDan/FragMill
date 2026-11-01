@@ -30,8 +30,6 @@ const Drone3DSizingView = lazy(() => import('./components/drone/Drone3DSizingVie
 const BeltEdgeVisionView = lazy(() => import('./components/belt/BeltEdgeVisionView').then((m) => ({ default: m.BeltEdgeVisionView })));
 const BlastTimingSimulatorView = lazy(() => import('./components/timing/BlastTimingSimulatorView').then((m) => ({ default: m.BlastTimingSimulatorView })));
 const ComminutionDigitalTwinView = lazy(() => import('./components/comminution/ComminutionDigitalTwinView').then((m) => ({ default: m.ComminutionDigitalTwinView })));
-const BlockModelKrigingView = lazy(() => import('./components/geostatistics/BlockModelKrigingView').then((m) => ({ default: m.BlockModelKrigingView })));
-const DrillTelemetryP2PView = lazy(() => import('./components/telemetry/DrillTelemetryP2PView').then((m) => ({ default: m.DrillTelemetryP2PView })));
 const ReportVaultModal = lazy(() => import('./components/report/ReportVaultModal').then((m) => ({ default: m.ReportVaultModal })));
 
 const ViewLoadingFallback = () => (
@@ -456,26 +454,6 @@ function AppContent() {
 
           {activeTab === 'comminution' && activeBlast && (
             <ComminutionDigitalTwinView
-              key={activeBlast.id}
-              blast={activeBlast}
-              project={activeProject || undefined}
-              site={activeSite || undefined}
-              lang={settings.language}
-            />
-          )}
-
-          {activeTab === 'kriging' && (
-            <BlockModelKrigingView
-              key={activeBlast.id}
-              blast={activeBlast}
-              project={activeProject || undefined}
-              site={activeSite || undefined}
-              lang={settings.language}
-            />
-          )}
-
-          {activeTab === 'telemetry' && activeBlast && (
-            <DrillTelemetryP2PView
               key={activeBlast.id}
               blast={activeBlast}
               project={activeProject || undefined}

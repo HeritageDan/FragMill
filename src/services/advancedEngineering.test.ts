@@ -27,22 +27,6 @@ import {
   simulatePrimaryCrusher,
 } from './comminution/bondMorrellEngine';
 import {
-  sphericalVariogram,
-  exponentialVariogram,
-  gaussianVariogram,
-  interpolateIDW,
-  computeKrigingGrid,
-  solveOrdinaryKriging,
-  DEFAULT_VARIOGRAM,
-  generateDemoBoreholes,
-} from './geostatistics/krigingEngine';
-import {
-  generateIREDESXml,
-  generateDrillPatternCsv,
-  generateDrillTelemetryFromBlast,
-  calculateTealeSpecificEnergy,
-} from './telemetry/iredesGenerator';
-import {
   computeKuzRam,
   computeXPFrag,
 } from './kuzram';
@@ -169,62 +153,6 @@ describe('Advanced Mining Suite Tests', () => {
     });
   });
 
-  // 5. Geostatistical Kriging
-  describe('Geostatistical Kriging & Block Modeling', () => {
-    it('evaluates spherical variogram model correctly', () => {
-      const zero = sphericalVariogram(0, DEFAULT_VARIOGRAM);
-      expect(zero).toBe(0);
-
-      const mid = sphericalVariogram(DEFAULT_VARIOGRAM.rangeM / 2, DEFAULT_VARIOGRAM);
-      expect(mid).toBeGreaterThan(DEFAULT_VARIOGRAM.nugget);
-
-      const beyond = sphericalVariogram(DEFAULT_VARIOGRAM.rangeM * 2, DEFAULT_VARIOGRAM);
-      expect(beyond).toBe(DEFAULT_VARIOGRAM.nugget + DEFAULT_VARIOGRAM.sill);
-    });
-
-    it('computes 2D spatial kriging grid with blast domain clustering', () => {
-      const boreholes = generateDemoBoreholes();
-      const grid = computeKrigingGrid(boreholes, 'ucsMPa', 6, 4, 0, 60, 0, 40);
-      expect(grid.length).toBe(24);
-      expect(grid[0].estimatedValue).toBeGreaterThan(0);
-      expect(['Soft Fractured', 'Intermediate', 'Hard Massive']).toContain(grid[0].domain);
-    });
-  });
-
-  // 6. Drill Telemetry & IREDES
-  describe('Drill Telemetry & IREDES XML', () => {
-    const dummyBlast: any = {
-      blastId: 'BL-2026-001',
-      siteId: 'site-betare-oya',
-      parameters: {
-        benchHeight: 6.0,
-        holeDiameter: 89,
-        subdrill: 0.8,
-        numberOfHoles: 10,
-        burden: 2.4,
-        spacing: 2.8,
-        holeDepth: 6.8,
-      },
-    };
-
-    it('generates valid IREDES XML document', () => {
-      const holes = generateDrillTelemetryFromBlast(dummyBlast);
-      const xml = generateIREDESXml(dummyBlast, holes);
-      expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-      expect(xml).toContain('<iredes:drill_plan');
-      expect(xml).toContain('plan_name="BL-2026-001"');
-      expect(xml).toContain('<iredes:hole id="DH-001">');
-      expect(xml).toContain('</iredes:drill_plan>');
-    });
-
-    it('generates GPS drill pattern CSV', () => {
-      const holes = generateDrillTelemetryFromBlast(dummyBlast);
-      const csv = generateDrillPatternCsv(holes);
-      expect(csv).toContain('Hole_ID,Easting_X,Northing_Y,Collar_Z');
-      expect(csv).toContain('DH-001');
-    });
-  });
-
   // 8. Bilingual Report Exports (English & French)
   describe('Bilingual PDF & Excel Reports', () => {
     const dummyBlastForPdf: any = {
@@ -333,13 +261,13 @@ describe('Advanced Mining Suite Tests', () => {
       const site = { id: 's1', projectId: 'p1', name: 'Gradin 1240 RL', locationText: '', createdAt: 0, updatedAt: 0 };
 
       const singleFr = await generateSingleSectionPdfReport(
-        'kriging',
+        'timing',
         {
-          key: 'kriging',
+          key: 'timing',
           stagedAt: Date.now(),
-          titleFr: 'Krigeage',
-          titleEn: 'Kriging',
-          payload: { rangeM: 45, nugget: 50, sill: 280, model: 'spherical' },
+          titleFr: 'Chronogramme',
+          titleEn: 'Timing',
+          payload: { maxChargePerDelayKg: 85, predictedPPVMmPerS: 4.2 },
         },
         project,
         site,
@@ -350,13 +278,13 @@ describe('Advanced Mining Suite Tests', () => {
       expect(singleFr.size).toBeGreaterThan(1500);
 
       const singleEn = await generateSingleSectionPdfReport(
-        'telemetry',
+        'comminution',
         {
-          key: 'telemetry',
+          key: 'comminution',
           stagedAt: Date.now(),
-          titleFr: 'Télémétrie',
-          titleEn: 'Telemetry',
-          payload: { toleranceMm: 60, targetRop: 1.2 },
+          titleFr: 'Broyage',
+          titleEn: 'Comminution',
+          payload: { targetP80Microns: 75, bondWorkIndexKWhPerT: 14.5 },
         },
         project,
         site,
@@ -367,7 +295,7 @@ describe('Advanced Mining Suite Tests', () => {
       expect(singleEn.size).toBeGreaterThan(1500);
     });
 
-    it('generates full multi-section modular vault report with all 11 tabs', async () => {
+    it('generates full multi-section modular vault report', async () => {
       const project = { id: 'p1', name: 'Mine de Tasiast', description: '', createdAt: 0, updatedAt: 0 };
       const site = { id: 's1', projectId: 'p1', name: 'Fosse Principale', locationText: '', createdAt: 0, updatedAt: 0 };
 
@@ -377,8 +305,6 @@ describe('Advanced Mining Suite Tests', () => {
         beltvision: { key: 'beltvision' as const, stagedAt: Date.now(), titleFr: 'Vision Convoyeur', titleEn: 'Belt Vision', payload: {} },
         timing: { key: 'timing' as const, stagedAt: Date.now(), titleFr: 'Chronogramme', titleEn: 'Timing', payload: {} },
         comminution: { key: 'comminution' as const, stagedAt: Date.now(), titleFr: 'Broyage', titleEn: 'Comminution', payload: {} },
-        kriging: { key: 'kriging' as const, stagedAt: Date.now(), titleFr: 'Krigeage', titleEn: 'Kriging', payload: {} },
-        telemetry: { key: 'telemetry' as const, stagedAt: Date.now(), titleFr: 'Télémétrie', titleEn: 'Telemetry', payload: {} },
         benchmap: { key: 'benchmap' as const, stagedAt: Date.now(), titleFr: 'Plan Fosse', titleEn: 'Bench Map', payload: {} },
         validation: { key: 'validation' as const, stagedAt: Date.now(), titleFr: 'Vérité Terrain', titleEn: 'Validation', payload: {} },
         minetomill: { key: 'minetomill' as const, stagedAt: Date.now(), titleFr: 'Mine-au-Moulin', titleEn: 'Mine to Mill', payload: {} },
@@ -401,8 +327,6 @@ describe('Advanced Mining Suite Tests', () => {
         beltvision: null,
         timing: null,
         comminution: null,
-        kriging: null,
-        telemetry: null,
         benchmap: { key: 'benchmap' as const, stagedAt: Date.now(), titleFr: 'Plan Fosse', titleEn: 'Bench Map', payload: {} },
         validation: null,
         minetomill: null,
@@ -552,23 +476,6 @@ describe('Advanced Mining Suite Tests', () => {
       expect(crusher.capacityRatingTPH).toBeGreaterThan(100);
     });
 
-    // E. True Matrix Ordinary Kriging (BLUE system)
-    it('solves Ordinary Kriging linear system and computes theoretical variogram models', () => {
-      const expVar = exponentialVariogram(20, DEFAULT_VARIOGRAM);
-      expect(expVar).toBeGreaterThan(DEFAULT_VARIOGRAM.nugget);
-
-      const gaussVar = gaussianVariogram(20, DEFAULT_VARIOGRAM);
-      expect(gaussVar).toBeGreaterThan(DEFAULT_VARIOGRAM.nugget);
-
-      const boreholes = generateDemoBoreholes();
-      const krig = solveOrdinaryKriging(25, 15, boreholes, 'ucsMPa', DEFAULT_VARIOGRAM);
-      expect(krig.estimate).toBeGreaterThan(50);
-      expect(krig.variance).toBeGreaterThanOrEqual(0);
-      expect(krig.weights.length).toBe(boreholes.length);
-      const sumWeights = krig.weights.reduce((a, b) => a + b, 0);
-      expect(sumWeights).toBeCloseTo(1.0, 2);
-    });
-
     // F. CEMA Conveyor Volumetric Capacity & Choke Impact Timer
     it('calculates CEMA 35-degree trough cross-section and dynamic time-to-choke', () => {
       const cema = calculateCEMACapacity(1.2, 2.2, 35, 20, 1.85);
@@ -579,17 +486,6 @@ describe('Advanced Mining Suite Tests', () => {
       expect(frame.stats.timeToChokeSeconds).toBeDefined();
       expect(frame.stats.timeToChokeSeconds).toBeGreaterThan(0);
       expect(frame.stats.cemaTroughAngleDeg).toBe(35);
-    });
-
-    // G. Teale Specific Energy of Drilling & MWD Telemetry
-    it('calculates Teale MWD specific energy and classifies rock drillability hardness', () => {
-      const soft = calculateTealeSpecificEnergy(89, 1.8, 25, 400, 140);
-      expect(soft.specificEnergyMpa).toBeLessThan(250);
-      expect(['very_soft', 'soft']).toContain(soft.hardnessClass);
-
-      const hard = calculateTealeSpecificEnergy(89, 0.25, 65, 1200, 95);
-      expect(hard.specificEnergyMpa).toBeGreaterThan(400);
-      expect(['hard', 'extreme']).toContain(hard.hardnessClass);
     });
 
     // H. Multi-Image Blast Pooling & Spatial Stereology Composite

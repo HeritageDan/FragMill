@@ -26,8 +26,6 @@ export const translations = {
     beltvision: 'Belt Edge Vision',
     timing: '3D Timing & Face',
     comminution: 'Comminution Twin',
-    kriging: 'Block Model & Kriging',
-    telemetry: 'Drill Telemetry & P2P',
     settings: 'Settings',
     help: 'Guide & Help',
 
@@ -400,8 +398,6 @@ export const translations = {
     beltvision: 'Vision Convoyeur',
     timing: 'Séquence 3D & Front',
     comminution: 'Jumeau Broyage (Bond)',
-    kriging: 'Modèle Blocs & Krigeage',
-    telemetry: 'Foration IREDES & P2P',
     settings: 'Paramètres',
     help: 'Guide & Aide',
 

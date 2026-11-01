@@ -18,8 +18,6 @@ import {
   Plane,
   Video,
   Flame,
-  Cpu,
-  Layers,
   FileText,
 } from 'lucide-react';
 import { useReportVault } from '../../context/ReportVaultContext';
@@ -31,8 +29,6 @@ export type NavigationTab =
   | 'beltvision'
   | 'timing'
   | 'comminution'
-  | 'kriging'
-  | 'telemetry'
   | 'benchmap'
   | 'validation'
   | 'minetomill'
@@ -300,24 +296,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             >
               <Factory className="w-4 h-4" />
               {isFrench ? 'Jumeau Broyage (Bond)' : 'Comminution Twin'}
-            </button>
-            <button
-              onClick={() => onSelectTab('kriging')}
-              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
-                activeTab === 'kriging' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-              {isFrench ? 'Modèle Blocs & Krigeage' : 'Block Model & Kriging'}
-            </button>
-            <button
-              onClick={() => onSelectTab('telemetry')}
-              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
-                activeTab === 'telemetry' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Cpu className="w-4 h-4" />
-              {isFrench ? 'Foration IREDES & P2P' : 'Drill Telemetry & P2P'}
             </button>
             <button
               onClick={() => onSelectTab('benchmap')}

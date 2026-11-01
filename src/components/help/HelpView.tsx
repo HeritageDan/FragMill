@@ -22,7 +22,6 @@ import {
   CheckCircle2,
   Plane,
   Video,
-  Wifi,
   MapPin,
   TrendingUp,
   Volume2,
@@ -347,7 +346,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 {isFr ? 'Niveau Industriel Supérieur' : 'Industrial Tier-1'}
               </span>
               <span className="text-xs text-blue-200 font-semibold">
-                {isFr ? 'Les 6 Piliers d’Ingénierie Avancée FragMill' : 'The 6 Core Pillars of Advanced Mining Engineering'}
+                {isFr ? 'Les 4 Piliers d’Ingénierie Avancée FragMill' : 'The 4 Core Pillars of Advanced Mining Engineering'}
               </span>
             </div>
             <h3 className="text-lg font-black text-white">
@@ -357,8 +356,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
             </h3>
             <p className="text-xs text-slate-300 leading-relaxed">
               {isFr
-                ? 'Ces 6 modules innovants hissent FragMill au standard des géants miniers tout en restant utilisables sur une simple tablette autonome dans les exploitations artisanales et semi-mécanisées.'
-                : 'These 6 innovative modules bring cutting-edge mine engineering to your pit tablet, operating 100% offline without cloud subscriptions or expensive external hardware.'}
+                ? 'Ces 4 modules innovants hissent FragMill au standard des géants miniers tout en restant utilisables sur une simple tablette autonome dans les exploitations artisanales et semi-mécanisées.'
+                : 'These 4 innovative modules bring cutting-edge mine engineering to your pit tablet, operating 100% offline without cloud subscriptions or expensive external hardware.'}
             </p>
           </div>
 
@@ -550,102 +549,6 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 {isFr
                   ? 'Dépenser 0,25 $ de plus en ANFO par tonne dans la fosse a permis de réduire l’énergie du broyeur de 3,2 kWh/t et d’augmenter le débit de traitement de 55 à 82 t/h. Bilan net : 160 000 $ d’économies annuelles et une récupération d’or passant de 72% à 84% !'
                   : 'Spending an extra $0.25/t on pit ANFO lowered mill energy by 3.2 kWh/t and surged throughput from 55 to 82 t/h, netting $160,000 in yearly savings while raising gold recovery from 72% to 84%!'}
-              </div>
-            </div>
-          </div>
-
-          {/* Pillar 5: Geostatistical Kriging */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-black">
-                <Layers className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">
-                  {isFr ? '5. Krigeage Géostatistique & Modèle de Blocs' : '5. Geostatistical Spatial Kriging & Geological Block Model'}
-                </h4>
-                <span className="text-[11px] text-indigo-600 font-semibold">
-                  {isFr ? 'Interpolation par variogramme sphérique et dosage d’explosif par domaine' : 'Spatial variogram interpolation & automated blast domain charge zonation'}
-                </span>
-              </div>
-            </div>
-
-            <div className="text-xs text-slate-600 space-y-2 leading-relaxed">
-              <p>
-                {isFr ? (
-                  <>
-                    <strong>Le problème sur le terrain :</strong> Le massif rocheux n’est jamais homogène : une partie du gradin peut être une roche tendre et altérée (saprolite), tandis qu’une autre partie est un filon de quartz dur comme du fer (UCS &gt; 140 MPa). Si le boutefeu charge tous les trous avec la même quantité d’explosif, la zone dure produira d’énormes blocs immangeables pour le concasseur, et la zone tendre sera pulvérisée en poussière stérile.
-                  </>
-                ) : (
-                  <>
-                    <strong>The Field Challenge:</strong> Rock benches are heterogeneous: one side may be soft weathered saprolite, while the other is massive quartz-veined granodiorite. Uniform blast loading either creates giant boulders in hard zones or over-pulverizes soft ore into dust.
-                  </>
-                )}
-              </p>
-              <p>
-                {isFr ? (
-                  <>
-                    <strong>La solution FragMill :</strong> À partir des données de forages exploratoires (résistance mécanique UCS, indice de qualité RQD, espacement des diaclases et teneur en or), FragMill applique un <strong>krigeage ordinaire avec variogramme sphérique</strong>. Il génère une carte thermique spatiale et divise automatiquement le tir en 3 domaines de dosage : Tendre (0.45 kg/m³), Standard (0.65 kg/m³) et Dur (0.85 kg/m³).
-                  </>
-                ) : (
-                  <>
-                    <strong>FragMill Solution:</strong> Utilizing exploration core assays (UCS strength, RQD fracture density, joint frequency, and gold grade), FragMill computes <strong>Ordinary Kriging with a spherical variogram</strong> to map pit hardness and automatically group holes into 3 tailored charging domains (0.45, 0.65, and 0.85 kg/m³).
-                  </>
-                )}
-              </p>
-              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-indigo-900">
-                <strong>{isFr ? 'Exemple réel :' : 'Real Example:'}</strong>{' '}
-                {isFr
-                  ? 'Sur un gradin de 60m x 40m, le krigeage a identifié une zone fracturée à l’ouest (UCS 62 MPa) et un filon massif à l’est (UCS 138 MPa). Le boutefeu a chargé 18 kg d’ANFO à l’ouest et 28 kg à l’est : résultat, une granulométrie homogène sur tout le tas sans aucun bloc hors-gabarit et 1.2 tonne d’ANFO économisée.'
-                  : 'Across a 60m x 40m bench, kriging revealed UCS 62 MPa in the west and 138 MPa in the east. Charging 18 kg/hole in the west and 28 kg/hole in the east achieved perfectly uniform fragmentation while saving 1.2 tonnes of explosive.'}
-              </div>
-            </div>
-          </div>
-
-          {/* Pillar 6: Drill Telemetry & Off-Grid P2P */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center font-black">
-                <Wifi className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">
-                  {isFr ? '6. Télémétrie Foration (IREDES XML) & Synchronisation P2P Hors-Ligne' : '6. Drill Telemetry (IREDES XML) & Off-Grid P2P Mesh Sync'}
-                </h4>
-                <span className="text-[11px] text-sky-600 font-semibold">
-                  {isFr ? 'Export officiel pour foreuses Epiroc/Sandvik et réseau maillé sans internet' : 'Autonomous drill rig exchange & peer-to-peer Wi-Fi sync in remote pits'}
-                </span>
-              </div>
-            </div>
-
-            <div className="text-xs text-slate-600 space-y-2 leading-relaxed">
-              <p>
-                {isFr ? (
-                  <>
-                    <strong>Le problème sur le terrain :</strong> Dans les zones isolées d’Afrique centrale ou du désert australien, il n’y a aucune couverture réseau 4G/5G ni internet. Comment transmettre le plan de foration aux foreuses modernes et synchroniser les résultats de tirs entre la fosse et le bureau de l’usine sans risquer de perdre des clés USB dans la poussière ? De plus, si les trous sont forés avec 30 cm d’écart par rapport au plan, tout le tir est faussé.
-                  </>
-                ) : (
-                  <>
-                    <strong>The Field Challenge:</strong> In remote bush or desert pits with zero cellular reception, transmitting blast patterns to drill rigs and syncing laboratory results back to site offices is difficult and prone to errors. Furthermore, drill collar deviations &gt; 60 mm distort energy distribution.
-                  </>
-                )}
-              </p>
-              <p>
-                {isFr ? (
-                  <>
-                    <strong>La solution FragMill :</strong> FragMill intègre le standard international <strong>IREDES XML</strong> (utilisé par Epiroc, Sandvik, Caterpillar) ainsi que l’export de coordonnées GPS en CSV pour les cannes GNSS Trimble/Leica. Il compare en direct les trous forés par rapport aux trous théoriques (vitesse d’avancement, écart au collet). Enfin, son moteur <strong>P2P Mesh</strong> synchronise les tablettes de fosse et les PC de l’usine directement via le réseau Wi-Fi local de la mine sans avoir besoin d’internet.
-                  </>
-                ) : (
-                  <>
-                    <strong>FragMill Solution:</strong> Generates official <strong>IREDES XML drill plans</strong> compatible with Epiroc and Sandvik rigs, plus GNSS GPS CSV coordinate tables. The QA/QC module audits collar deviations and penetration rates. Its <strong>P2P Mesh synchronization</strong> shares data directly over local pit Wi-Fi between tablets and office servers without cloud dependency.
-                  </>
-                )}
-              </p>
-              <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-900">
-                <strong>{isFr ? 'Exemple réel :' : 'Real Example:'}</strong>{' '}
-                {isFr
-                  ? 'Le géologue conçoit le plan de 35 trous sur sa tablette dans son bureau de chantier ; le fichier IREDES est chargé directement dans la foreuse hydraulique. Après foration, la tablette se synchronise en 1,2 seconde avec le PC du moulin via le Wi-Fi de fosse, signalant 2 trous forés trop courts (écart > 80 mm) qui sont immédiatement corrigés avant le chargement d’explosif.'
-                  : 'A 35-hole pattern was uploaded via IREDES XML to a hydraulic drill rig. Post-drilling, the tablet synchronized in 1.2 seconds over pit Wi-Fi to the dispatch server, flagging two shallow holes (>80 mm deviation) that were re-drilled before explosive loading.'}
               </div>
             </div>
           </div>

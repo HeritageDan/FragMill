@@ -18,7 +18,6 @@ import { evaluateMineToMillEconomics, DEFAULT_ECONOMIC_PARAMS } from '../economi
 import { computeKuzRam, calculateRockFactorA, DEFAULT_ROCK_TABLES } from '../kuzram';
 import { generateDemoDroneSurvey, apply3DStereologicalCorrection } from '../drone3d/droneSizing';
 import { calculateUSBMPPV, generateFaceProfile } from '../timing/initiationSimulator';
-import { generateDrillTelemetryFromBlast } from '../telemetry/iredesGenerator';
 
 import { getBlastState } from '../blastState';
 
@@ -97,9 +96,6 @@ export async function generateBlastPdfReport(
     }
     if (targetBlast.droneSurvey) {
       defaultSections.push('drone3d');
-    }
-    if (targetBlast.drillHoles && targetBlast.drillHoles.length > 0) {
-      defaultSections.push('telemetry');
     }
     return defaultSections;
   })();
@@ -191,45 +187,6 @@ export async function generateBlastPdfReport(
         achievableThroughputTPH: blastState.comminution.achievableThroughputTPH,
         goldRecoveryPercent: blastState.comminution.goldRecoveryPercent,
         mineralLiberationPercent: blastState.comminution.goldRecoveryPercent,
-      },
-    },
-    kriging: {
-      key: 'kriging',
-      stagedAt: Date.now(),
-      titleFr: '6. Modèle de Blocs & Krigeage Géostatistique',
-      titleEn: '6. Block Model & Geostatistical Kriging',
-      payload: {
-        blastId: targetBlast.blastId,
-        softCutoffMPa: blastState.kriging.softCutoffMPa,
-        hardCutoffMPa: blastState.kriging.hardCutoffMPa,
-        softDomainPercent: blastState.kriging.softDomainPercent,
-        mediumDomainPercent: blastState.kriging.mediumDomainPercent,
-        hardDomainPercent: blastState.kriging.hardDomainPercent,
-        gridNodes: blastState.kriging.gridNodes,
-        boreholes: blastState.kriging.boreholes,
-        gridBounds: blastState.kriging.gridBounds,
-        gridCols: blastState.kriging.gridCols,
-        gridRows: blastState.kriging.gridRows,
-        selectedAttribute: blastState.kriging.selectedAttribute,
-        rangeM: blastState.kriging.variogram?.rangeM,
-        nugget: blastState.kriging.variogram?.nugget,
-        sill: blastState.kriging.variogram?.sill,
-        variogramModel: blastState.kriging.variogram?.model,
-      },
-    },
-    telemetry: {
-      key: 'telemetry',
-      stagedAt: Date.now(),
-      titleFr: '7. Télémétrie Foration MWD & Export IREDES',
-      titleEn: '7. MWD Drill Telemetry & IREDES Export',
-      payload: {
-        blastId: targetBlast.blastId,
-        collarToleranceMm: blastState.drilling.collarToleranceMm,
-        complianceRatePercent: blastState.drilling.complianceRatePercent,
-        maxCollarErrorMm: blastState.drilling.maxCollarErrorMm,
-        avgPenetrationRateMPerMin: blastState.drilling.avgPenetrationRateMPerMin,
-        holes: blastState.drilling.holes,
-        totalHoles: blastState.drilling.totalHoles,
       },
     },
     benchmap: {

@@ -60,9 +60,6 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
     if (blast?.droneSurvey) {
       defaults.push('drone3d');
     }
-    if (blast?.drillHoles && blast.drillHoles.length > 0) {
-      defaults.push('telemetry');
-    }
     return defaults;
   });
 

@@ -17,8 +17,6 @@ const INITIAL_STATE: ReportVaultState = {
   beltvision: null,
   timing: null,
   comminution: null,
-  kriging: null,
-  telemetry: null,
   benchmap: null,
   validation: null,
   minetomill: null,
@@ -171,7 +169,7 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
       });
 
       setVaultState(newState);
-      setToastMessage('✓ Toutes les 11 sections ont été ajoutées au rapport.');
+      setToastMessage(`✓ Toutes les ${keys.length} sections ont été ajoutées au rapport.`);
       setTimeout(() => setToastMessage(null), 4000);
     },
     [vaultState]

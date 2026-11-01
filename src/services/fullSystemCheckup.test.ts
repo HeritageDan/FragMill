@@ -25,23 +25,10 @@ import {
   simulateComminutionCircuit,
 } from './comminution/bondMorrellEngine';
 import {
-  computeKrigingGrid,
-  sphericalVariogram,
-  exponentialVariogram,
-  gaussianVariogram,
-  solveOrdinaryKriging,
-  DEFAULT_VARIOGRAM,
-} from './geostatistics/krigingEngine';
-import {
   calculateCEMACapacity,
   generateSimulatedBeltFrame,
   DEFAULT_BELT_CONFIG,
 } from './beltVision/beltAnalyzer';
-import {
-  calculateTealeSpecificEnergy,
-  generateIREDESXml,
-  generateDrillTelemetryFromBlast,
-} from './telemetry/iredesGenerator';
 import { generateModularVaultPdfReport } from './export/modularReport';
 import { BLASTHOLE4_IMAGE_DATA_URL } from '../assets/blasthole4Image';
 
@@ -435,66 +422,9 @@ describe('FragMill Full System Checkup & Verification Suite (Blast Hole BH-05)',
   });
 
   // ==========================================
-  // MODULE 6: Geostatistical Block Model & Ordinary Kriging Checkup
+  // MODULE 7: Conveyor Edge Belt Vision
   // ==========================================
-  describe('Module 6: Geostatistics & Ordinary Kriging on Bench 840 RL', () => {
-    it('6.1: Evaluates theoretical semi-variogram models (Spherical, Exponential, Gaussian)', () => {
-      const sph = sphericalVariogram(20, DEFAULT_VARIOGRAM);
-      const exp = exponentialVariogram(20, DEFAULT_VARIOGRAM);
-      const gau = gaussianVariogram(20, DEFAULT_VARIOGRAM);
-
-      expect(sph).toBeGreaterThan(DEFAULT_VARIOGRAM.nugget);
-      expect(exp).toBeGreaterThan(DEFAULT_VARIOGRAM.nugget);
-      expect(gau).toBeGreaterThan(DEFAULT_VARIOGRAM.nugget);
-    });
-
-    it('6.2: Generates BLUE Kriging grid on Bench 840 RL with zero NaN', () => {
-      const sampleCollars = [
-        { id: 'BH-01', easting: 10, northing: 12, elevation: 840, ucsMPa: 130, rqdPercent: 75, jointSpacingM: 0.5, densityTPerM3: 2.75, goldGradeGPT: 2.1 },
-        { id: 'BH-02', easting: 25, northing: 28, elevation: 840, ucsMPa: 110, rqdPercent: 62, jointSpacingM: 0.42, densityTPerM3: 2.72, goldGradeGPT: 1.8 },
-        { id: 'BH-03', easting: 45, northing: 15, elevation: 840, ucsMPa: 145, rqdPercent: 82, jointSpacingM: 0.65, densityTPerM3: 2.78, goldGradeGPT: 3.2 },
-        { id: 'BH-05', easting: 35, northing: 22, elevation: 840, ucsMPa: 125, rqdPercent: 70, jointSpacingM: 0.48, densityTPerM3: 2.75, goldGradeGPT: 2.4 },
-      ];
-
-      const grid = computeKrigingGrid(
-        sampleCollars,
-        'ucsMPa',
-        14,
-        10,
-        0,
-        60,
-        0,
-        40,
-        DEFAULT_VARIOGRAM
-      );
-
-      expect(grid.length).toBe(140);
-      grid.forEach((node) => {
-        expect(Number.isNaN(node.estimatedValue)).toBe(false);
-        expect(Number.isNaN(node.estimationVariance)).toBe(false);
-        expect(node.estimatedValue).toBeGreaterThan(90);
-        expect(node.estimatedValue).toBeLessThan(160);
-      });
-    });
-
-    it('6.3: Solves Ordinary Kriging linear system and verifies BLUE weights sum to 1.0', () => {
-      const collars = [
-        { id: 'BH-01', easting: 10, northing: 10, elevation: 840, ucsMPa: 130, rqdPercent: 75, jointSpacingM: 0.5, densityTPerM3: 2.75, goldGradeGPT: 2.1 },
-        { id: 'BH-05', easting: 30, northing: 20, elevation: 840, ucsMPa: 125, rqdPercent: 70, jointSpacingM: 0.48, densityTPerM3: 2.75, goldGradeGPT: 2.4 },
-      ];
-
-      const krig = solveOrdinaryKriging(30, 20, collars, 'ucsMPa', DEFAULT_VARIOGRAM);
-      expect(krig.estimate).toBeCloseTo(125, 0);
-      expect(krig.variance).toBeGreaterThanOrEqual(0);
-      const sumWeights = krig.weights.reduce((a, b) => a + b, 0);
-      expect(sumWeights).toBeCloseTo(1.0, 2);
-    });
-  });
-
-  // ==========================================
-  // MODULE 7: Conveyor Edge Belt Vision & MWD Telemetry
-  // ==========================================
-  describe('Module 7: Conveyor Belt Edge Vision & MWD Telemetry Checkup', () => {
+  describe('Module 7: Conveyor Belt Edge Vision Checkup', () => {
     it('7.1: Calculates CEMA 3-Roll Trough Conveyor Capacity correctly', () => {
       const cap35 = calculateCEMACapacity(1.0, 2.2, 35, 20, 1.65);
 
@@ -510,28 +440,13 @@ describe('FragMill Full System Checkup & Verification Suite (Blast Hole BH-05)',
       expect(frame.stats.timeToChokeSeconds).toBeDefined();
       expect(frame.stats.timeToChokeSeconds).toBeGreaterThan(0);
     });
-
-    it('7.3: Calculates Teale MWD Specific Energy and generates IREDES XML', () => {
-      const teale = calculateTealeSpecificEnergy(89, 0.38, 42, 1850, 65);
-
-      expect(teale.specificEnergyMpa).toBeGreaterThan(150);
-      expect(teale.specificEnergyMpa).toBeLessThan(500);
-      expect(['medium', 'hard', 'extreme']).toContain(teale.hardnessClass);
-
-      const holes = generateDrillTelemetryFromBlast(mockBlastBH05 as any);
-      const xml = generateIREDESXml(mockBlastBH05 as any, holes);
-
-      expect(xml).toContain('plan_name="BL-2026-005"');
-      expect(xml).toContain('<iredes:drill_plan');
-      expect(xml).toContain('<iredes:hole id="DH-001">');
-    });
   });
 
   // ==========================================
   // MODULE 8: Multi-Section Modular Vault Report Generation
   // ==========================================
   describe('Module 8: Comprehensive PDF Report Generation Checkup', () => {
-    it('8.1: Generates complete 11-section PDF Report for Hole BH-05', async () => {
+    it('8.1: Generates complete multi-section PDF Report for Hole BH-05', async () => {
       const pdfBlob = await generateModularVaultPdfReport(
         {} as any,
         mockProject,

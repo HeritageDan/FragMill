@@ -156,7 +156,6 @@ describe('FragMill Consistency & Correctness Acceptance Tests (BL-2026-004 Audit
   // 1. Zero dual values across state
   it('Check 1: Single Source of Truth produces zero dual/contradictory values', () => {
     expect(blastState.geometry.numberOfHoles).toBe(50);
-    expect(blastState.drilling.totalHoles).toBe(50);
     expect(blastState.geometry.holeDiameterMm).toBe(79);
     expect(blastState.timing.holeDiameterMm).toBe(79);
     expect(blastState.rock.densityTPerM3).toBe(2.76);
@@ -218,9 +217,6 @@ describe('FragMill Consistency & Correctness Acceptance Tests (BL-2026-004 Audit
 
   // 6. Header values match panel values everywhere
   it('Check 6: Zero discrepancy between summary and detailed metrics', () => {
-    expect(blastState.drilling.complianceRatePercent).toBe(
-      Math.round((blastState.drilling.compliantHolesCount / blastState.drilling.totalHoles) * 100)
-    );
     expect(blastState.comminution.crushingSpecificEnergyKwhPerT).toBe(0.5);
   });
 
