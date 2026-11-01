@@ -105,6 +105,25 @@ export function resolveMigratedTab(
   }
 }
 
+const ReportVaultToast = () => {
+  const { toastMessage, clearToast } = useReportVault();
+  if (!toastMessage) return null;
+  return (
+    <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
+      <div className="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+        <CheckCircle2 className="w-4 h-4" />
+      </div>
+      <span className="text-xs font-bold text-slate-100">{toastMessage}</span>
+      <button
+        onClick={clearToast}
+        className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 ml-1"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+};
+
 function AppContent() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -117,8 +136,6 @@ function AppContent() {
   const [experimentalSubTab, setExperimentalSubTab] = useState<ExperimentalSubTab>('drone3d');
   const [isLoading, setIsLoading] = useState(true);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-
-  const { toastMessage, clearToast } = useReportVault();
 
   const loadDatabase = async () => {
     setIsLoading(true);
@@ -431,8 +448,12 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
-      <AppHeader
+    <ReportVaultProvider
+      activeBlastId={activeBlastId}
+      showExperimentalModules={settings.showExperimentalModules}
+    >
+      <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+        <AppHeader
         currentProject={activeProject}
         blasts={blasts}
         activeBlastId={activeBlastId}
@@ -545,20 +566,7 @@ function AppContent() {
       </main>
 
       {/* Floating Toast Notification for Report Vault Staging */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
-          <div className="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
-            <CheckCircle2 className="w-4 h-4" />
-          </div>
-          <span className="text-xs font-bold text-slate-100">{toastMessage}</span>
-          <button
-            onClick={clearToast}
-            className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 ml-1"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
+      <ReportVaultToast />
 
       {/* Modular Report Vault Modal */}
       {activeBlast && (
@@ -580,15 +588,12 @@ function AppContent() {
         </p>
       </footer>
     </div>
+    </ReportVaultProvider>
   );
 }
 
 export function App() {
-  return (
-    <ReportVaultProvider>
-      <AppContent />
-    </ReportVaultProvider>
-  );
+  return <AppContent />;
 }
 
 export default App;

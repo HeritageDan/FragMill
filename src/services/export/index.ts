@@ -97,6 +97,7 @@ export async function generateBlastPdfReport(
 
   const fullVaultState: ReportVaultState = {
     blast: {
+      blastId: targetBlast.id || targetBlast.blastId,
       key: 'blast',
       stagedAt: Date.now(),
       titleFr: '1. Tir & Images : Massif & Granulométrie',
@@ -106,6 +107,7 @@ export async function generateBlastPdfReport(
       payload: blastPayload,
     },
     drone3d: {
+      blastId: targetBlast.id || targetBlast.blastId,
       key: 'drone3d',
       stagedAt: Date.now(),
       titleFr: '2. Photogrammétrie 3D Drone & Orthomosaïque',
@@ -123,6 +125,7 @@ export async function generateBlastPdfReport(
       },
     },
     beltvision: {
+      blastId: targetBlast.id || targetBlast.blastId,
       key: 'beltvision',
       stagedAt: Date.now(),
       titleFr: '3. Vision Edge en Continu : Convoyeur & Pelles',
@@ -146,6 +149,7 @@ export async function generateBlastPdfReport(
       },
     },
     timing: {
+      blastId: targetBlast.id || targetBlast.blastId,
       key: 'timing',
       stagedAt: Date.now(),
       titleFr: '4. Simulation 3D des Retards & Profil de Face',
@@ -164,6 +168,7 @@ export async function generateBlastPdfReport(
       },
     },
     comminution: {
+      blastId: targetBlast.id || targetBlast.blastId,
       key: 'comminution',
       stagedAt: Date.now(),
       titleFr: '5. Jumeau Numérique Usine & Modélisation Bond',
@@ -185,6 +190,7 @@ export async function generateBlastPdfReport(
       },
     },
     benchmap: {
+      blastId: targetBlast.id || targetBlast.blastId,
       key: 'benchmap',
       stagedAt: Date.now(),
       titleFr: '8. Carte des Gradins & Polygones de Tir',
@@ -201,6 +207,7 @@ export async function generateBlastPdfReport(
       },
     },
     validation: {
+      blastId: targetBlast.id || targetBlast.blastId,
       key: 'validation',
       stagedAt: Date.now(),
       titleFr: '9. Validation Métrologique : Tamis vs Optique',
@@ -220,6 +227,7 @@ export async function generateBlastPdfReport(
       },
     },
     minetomill: {
+      blastId: targetBlast.id || targetBlast.blastId,
       key: 'minetomill',
       stagedAt: Date.now(),
       titleFr: '10. Optimisation Économique & Carbone Mine-to-Mill',
@@ -237,6 +245,7 @@ export async function generateBlastPdfReport(
       },
     },
     kuzram: {
+      blastId: targetBlast.id || targetBlast.blastId,
       key: 'kuzram',
       stagedAt: Date.now(),
       titleFr: '11. Modèle Kuz-Ram & Conseiller d\'Optimisation',

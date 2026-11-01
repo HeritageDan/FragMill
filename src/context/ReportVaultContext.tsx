@@ -1,17 +1,17 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { Language } from '../i18n';
 import type {
   ReportSectionKey,
   ReportSectionEntry,
   ReportVaultState,
 } from '../types/reportVault';
-import { REPORT_SECTIONS_REGISTRY } from '../types/reportVault';
+import { REPORT_SECTIONS_REGISTRY, getAvailableSectionKeys } from '../types/reportVault';
 import type { Blast, Project, Site } from '../types';
 import { generateModularVaultPdfReport, generateSingleSectionPdfReport } from '../services/export';
 
-const STORAGE_KEY = 'fragmill_report_vault_v1';
+export const STORAGE_KEY = 'fragmill_report_vault_v1';
 
-const INITIAL_STATE: ReportVaultState = {
+export const INITIAL_STATE: ReportVaultState = {
   blast: null,
   drone3d: null,
   beltvision: null,
@@ -23,9 +23,46 @@ const INITIAL_STATE: ReportVaultState = {
   kuzram: null,
 };
 
-interface ReportVaultContextType {
+/**
+ * Sanitises report vault state:
+ * - Drops any key not present in REPORT_SECTIONS_REGISTRY.
+ * - Drops any entry that lacks a valid blastId string.
+ */
+export function sanitiseVaultState(raw: any): ReportVaultState {
+  const validKeys = Object.keys(REPORT_SECTIONS_REGISTRY) as ReportSectionKey[];
+  const result: ReportVaultState = { ...INITIAL_STATE };
+
+  if (raw && typeof raw === 'object') {
+    validKeys.forEach((k) => {
+      const entry = raw[k];
+      if (
+        entry &&
+        typeof entry === 'object' &&
+        typeof entry.blastId === 'string' &&
+        entry.blastId.trim().length > 0
+      ) {
+        result[k] = {
+          blastId: entry.blastId,
+          key: k,
+          stagedAt: typeof entry.stagedAt === 'number' ? entry.stagedAt : Date.now(),
+          titleFr: entry.titleFr || REPORT_SECTIONS_REGISTRY[k].titleFr,
+          titleEn: entry.titleEn || REPORT_SECTIONS_REGISTRY[k].titleEn,
+          summaryTextFr: entry.summaryTextFr,
+          summaryTextEn: entry.summaryTextEn,
+          payload: entry.payload || {},
+        };
+      }
+    });
+  }
+
+  return result;
+}
+
+export interface ReportVaultContextType {
   vaultState: ReportVaultState;
   stagedCount: number;
+  totalSections: number;
+  availableKeys: ReportSectionKey[];
   stageSection: (
     key: ReportSectionKey,
     payload: Record<string, any>,
@@ -58,12 +95,38 @@ interface ReportVaultContextType {
 
 const ReportVaultContext = createContext<ReportVaultContextType | undefined>(undefined);
 
-export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export interface ReportVaultProviderProps {
+  children: React.ReactNode;
+  activeBlastId?: string;
+  showExperimentalModules?: boolean;
+}
+
+export const ReportVaultProvider: React.FC<ReportVaultProviderProps> = ({
+  children,
+  activeBlastId: propActiveBlastId,
+  showExperimentalModules = false,
+}) => {
+  // Resolve active blast ID from props or fallback to localStorage
+  const activeBlastId =
+    propActiveBlastId !== undefined
+      ? propActiveBlastId
+      : (typeof window !== 'undefined'
+          ? localStorage.getItem('fragmill_last_active_blast_id') || ''
+          : '');
+
   const [vaultState, setVaultState] = useState<ReportVaultState>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        return { ...INITIAL_STATE, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved);
+        const sanitised = sanitiseVaultState(parsed);
+        // Write sanitised state back to localStorage
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitised));
+        } catch {
+          // ignore
+        }
+        return sanitised;
       }
     } catch {
       // Fallback
@@ -87,6 +150,20 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setToastMessage(null);
   }, []);
 
+  const availableKeys = useMemo(
+    () => getAvailableSectionKeys(showExperimentalModules),
+    [showExperimentalModules]
+  );
+
+  const totalSections = availableKeys.length;
+
+  const stagedCount = useMemo(() => {
+    return availableKeys.filter((key) => {
+      const entry = vaultState[key];
+      return !!entry && (!activeBlastId || entry.blastId === activeBlastId);
+    }).length;
+  }, [availableKeys, vaultState, activeBlastId]);
+
   const stageSection = useCallback(
     (
       key: ReportSectionKey,
@@ -95,7 +172,9 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
       summaryEn?: string
     ) => {
       const meta = REPORT_SECTIONS_REGISTRY[key];
+      const targetBlastId = activeBlastId || (payload?.blastId as string) || '';
       const entry: ReportSectionEntry = {
+        blastId: targetBlastId,
         key,
         stagedAt: Date.now(),
         titleFr: meta?.titleFr || key,
@@ -117,7 +196,7 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setToastMessage(null);
       }, 4000);
     },
-    []
+    [activeBlastId]
   );
 
   const unstageSection = useCallback((key: ReportSectionKey) => {
@@ -128,29 +207,42 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   const clearVault = useCallback(() => {
-    setVaultState(INITIAL_STATE);
-  }, []);
+    setVaultState((prev) => {
+      const updated = { ...prev };
+      (Object.keys(updated) as ReportSectionKey[]).forEach((key) => {
+        if (!activeBlastId || updated[key]?.blastId === activeBlastId) {
+          updated[key] = null;
+        }
+      });
+      return updated;
+    });
+  }, [activeBlastId]);
 
   const isStaged = useCallback(
     (key: ReportSectionKey) => {
-      return !!vaultState[key];
+      if (!availableKeys.includes(key)) return false;
+      const entry = vaultState[key];
+      if (!entry) return false;
+      return !activeBlastId || entry.blastId === activeBlastId;
     },
-    [vaultState]
+    [vaultState, availableKeys, activeBlastId]
   );
 
   const getStagedEntry = useCallback(
     (key: ReportSectionKey) => {
-      return vaultState[key];
+      const entry = vaultState[key];
+      if (!entry) return null;
+      if (activeBlastId && entry.blastId !== activeBlastId) return null;
+      return entry;
     },
-    [vaultState]
+    [vaultState, activeBlastId]
   );
 
-  const stagedCount = Object.values(vaultState).filter(Boolean).length;
-
-  // Auto-populate all sections with current system calculations
+  // Auto-populate all available sections with current system calculations
   const stageAllAvailable = useCallback(
     (_project: Project, _site: Site, blast: Blast) => {
-      const keys = Object.keys(REPORT_SECTIONS_REGISTRY) as ReportSectionKey[];
+      const keys = getAvailableSectionKeys(showExperimentalModules);
+      const targetBlastId = blast?.id || blast?.blastId || activeBlastId;
       const newState: ReportVaultState = { ...vaultState };
       const now = Date.now();
 
@@ -158,13 +250,14 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
         const meta = REPORT_SECTIONS_REGISTRY[key];
         const existing = newState[key];
         newState[key] = {
+          blastId: targetBlastId,
           key,
           stagedAt: existing?.stagedAt || now,
           titleFr: existing?.titleFr || meta.titleFr,
           titleEn: existing?.titleEn || meta.titleEn,
           summaryTextFr: existing?.summaryTextFr,
           summaryTextEn: existing?.summaryTextEn,
-          payload: { blastId: blast.blastId, autoGenerated: !existing, ...(existing?.payload || {}) },
+          payload: { blastId: targetBlastId, autoGenerated: !existing, ...(existing?.payload || {}) },
         };
       });
 
@@ -172,7 +265,7 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setToastMessage(`✓ Toutes les ${keys.length} sections ont été ajoutées au rapport.`);
       setTimeout(() => setToastMessage(null), 4000);
     },
-    [vaultState]
+    [vaultState, activeBlastId, showExperimentalModules]
   );
 
   const downloadCombinedReport = useCallback(
@@ -185,13 +278,33 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
     ) => {
       setIsGeneratingPdf(true);
       try {
+        const targetBlastId = blast.id || blast.blastId || activeBlastId;
+        const available = getAvailableSectionKeys(showExperimentalModules);
+
+        // Restrict selection to available keys only
+        const keysToRun = (selectedKeys || available).filter((k) => available.includes(k));
+
+        // Filter vault state: entries belonging to another blast are omitted
+        const filteredState: ReportVaultState = { ...INITIAL_STATE };
+        available.forEach((k) => {
+          const entry = vaultState[k];
+          if (
+            entry &&
+            (entry.blastId === targetBlastId ||
+              entry.blastId === blast.id ||
+              entry.blastId === blast.blastId)
+          ) {
+            filteredState[k] = entry;
+          }
+        });
+
         const blob = await generateModularVaultPdfReport(
-          vaultState,
+          filteredState,
           project,
           site,
           blast,
           lang,
-          selectedKeys
+          keysToRun
         );
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -206,7 +319,7 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsGeneratingPdf(false);
       }
     },
-    [vaultState]
+    [vaultState, activeBlastId, showExperimentalModules]
   );
 
   const downloadSingleSection = useCallback(
@@ -219,7 +332,16 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
     ) => {
       setIsGeneratingPdf(true);
       try {
-        const entry = vaultState[key];
+        const targetBlastId = blast.id || blast.blastId || activeBlastId;
+        const rawEntry = vaultState[key];
+        const entry =
+          rawEntry &&
+          (rawEntry.blastId === targetBlastId ||
+            rawEntry.blastId === blast.id ||
+            rawEntry.blastId === blast.blastId)
+            ? rawEntry
+            : null;
+
         const blob = await generateSingleSectionPdfReport(
           key,
           entry,
@@ -242,7 +364,7 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setIsGeneratingPdf(false);
       }
     },
-    [vaultState]
+    [vaultState, activeBlastId]
   );
 
   return (
@@ -250,6 +372,8 @@ export const ReportVaultProvider: React.FC<{ children: React.ReactNode }> = ({ c
       value={{
         vaultState,
         stagedCount,
+        totalSections,
+        availableKeys,
         stageSection,
         unstageSection,
         clearVault,

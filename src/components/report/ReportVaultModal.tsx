@@ -37,6 +37,8 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
   const {
     vaultState,
     stagedCount,
+    totalSections,
+    availableKeys,
     unstageSection,
     clearVault,
     stageAllAvailable,
@@ -44,21 +46,26 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
     isGeneratingPdf,
   } = useReportVault();
 
-  const allKeys = Object.keys(REPORT_SECTIONS_REGISTRY) as ReportSectionKey[];
-
-  // Selected sections for download (defaults to staged, or active blast sections if none staged)
+  // Selected sections for download (defaults to staged for this blast, or default sections if none staged)
   const [selectedKeys, setSelectedKeys] = useState<ReportSectionKey[]>(() => {
-    const staged = allKeys.filter((k) => !!vaultState[k]);
+    const staged = availableKeys.filter(
+      (k) =>
+        !!vaultState[k] &&
+        (vaultState[k]?.blastId === blast.id || vaultState[k]?.blastId === blast.blastId)
+    );
     if (staged.length > 0) return staged;
-    const defaults: ReportSectionKey[] = ['blast', 'kuzram'];
+    const defaults: ReportSectionKey[] = (['blast', 'kuzram'] as ReportSectionKey[]).filter(
+      (k): k is ReportSectionKey => availableKeys.includes(k)
+    );
     if (blast?.groundTruth?.sieveData?.length && blast.groundTruth.sieveData.length >= 3) {
-      defaults.push('validation');
+      if (availableKeys.includes('validation')) defaults.push('validation');
     }
     if (blast?.millBatch) {
-      defaults.push('minetomill', 'comminution');
+      if (availableKeys.includes('minetomill')) defaults.push('minetomill');
+      if (availableKeys.includes('comminution')) defaults.push('comminution');
     }
     if (blast?.droneSurvey) {
-      defaults.push('drone3d');
+      if (availableKeys.includes('drone3d')) defaults.push('drone3d');
     }
     return defaults;
   });
@@ -72,7 +79,7 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
   };
 
   const handleSelectAll = () => {
-    setSelectedKeys(allKeys);
+    setSelectedKeys(availableKeys);
   };
 
   const handleDeselectAll = () => {
@@ -81,7 +88,7 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
 
   const handleStageAll = () => {
     stageAllAvailable(project, site, blast);
-    setSelectedKeys(allKeys);
+    setSelectedKeys(availableKeys);
   };
 
   const handleDownload = async () => {
@@ -105,7 +112,7 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
                   {isFr ? 'Générateur de Rapport Personnalisé' : 'Custom Engineering Report Builder'}
                 </h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                  {stagedCount}/{allKeys.length} {isFr ? 'Sections Prêtes' : 'Sections Staged'}
+                  {stagedCount}/{totalSections} {isFr ? 'Sections Prêtes' : 'Sections Staged'}
                 </span>
               </div>
               <p className="text-xs text-slate-300">
@@ -147,7 +154,7 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
               className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold rounded-lg flex items-center gap-1.5"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{isFr ? `Pré-remplir les ${allKeys.length} sections` : `Include All ${allKeys.length} Sections`}</span>
+              <span>{isFr ? `Pré-remplir les ${totalSections} sections` : `Include All ${totalSections} Sections`}</span>
             </button>
             {stagedCount > 0 && (
               <button
@@ -164,11 +171,11 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
 
         {/* Sections List */}
         <div className="p-4 overflow-y-auto space-y-2 flex-1">
-          {allKeys.map((key) => {
+          {availableKeys.map((key) => {
             const meta = REPORT_SECTIONS_REGISTRY[key];
-            const isStagedNow = !!vaultState[key];
-            const isSelected = selectedKeys.includes(key);
             const entry = vaultState[key];
+            const isStagedNow = !!entry && (entry.blastId === blast.id || entry.blastId === blast.blastId);
+            const isSelected = selectedKeys.includes(key);
 
             return (
               <div

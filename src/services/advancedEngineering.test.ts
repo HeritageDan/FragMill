@@ -263,6 +263,7 @@ describe('Advanced Mining Suite Tests', () => {
       const singleFr = await generateSingleSectionPdfReport(
         'timing',
         {
+          blastId: dummyBlastForPdf.blastId,
           key: 'timing',
           stagedAt: Date.now(),
           titleFr: 'Chronogramme',
@@ -280,6 +281,7 @@ describe('Advanced Mining Suite Tests', () => {
       const singleEn = await generateSingleSectionPdfReport(
         'comminution',
         {
+          blastId: dummyBlastForPdf.blastId,
           key: 'comminution',
           stagedAt: Date.now(),
           titleFr: 'Broyage',
@@ -300,15 +302,15 @@ describe('Advanced Mining Suite Tests', () => {
       const site = { id: 's1', projectId: 'p1', name: 'Fosse Principale', locationText: '', createdAt: 0, updatedAt: 0 };
 
       const vaultStateFr = {
-        blast: { key: 'blast' as const, stagedAt: Date.now(), titleFr: 'Tir', titleEn: 'Blast', payload: {} },
-        drone3d: { key: 'drone3d' as const, stagedAt: Date.now(), titleFr: 'Drone 3D', titleEn: 'Drone 3D', payload: {} },
-        beltvision: { key: 'beltvision' as const, stagedAt: Date.now(), titleFr: 'Vision Convoyeur', titleEn: 'Belt Vision', payload: {} },
-        timing: { key: 'timing' as const, stagedAt: Date.now(), titleFr: 'Chronogramme', titleEn: 'Timing', payload: {} },
-        comminution: { key: 'comminution' as const, stagedAt: Date.now(), titleFr: 'Broyage', titleEn: 'Comminution', payload: {} },
-        benchmap: { key: 'benchmap' as const, stagedAt: Date.now(), titleFr: 'Plan Fosse', titleEn: 'Bench Map', payload: {} },
-        validation: { key: 'validation' as const, stagedAt: Date.now(), titleFr: 'Vérité Terrain', titleEn: 'Validation', payload: {} },
-        minetomill: { key: 'minetomill' as const, stagedAt: Date.now(), titleFr: 'Mine-au-Moulin', titleEn: 'Mine to Mill', payload: {} },
-        kuzram: { key: 'kuzram' as const, stagedAt: Date.now(), titleFr: 'Kuz-Ram', titleEn: 'Kuz-Ram', payload: {} },
+        blast: { blastId: dummyBlastForPdf.blastId, key: 'blast' as const, stagedAt: Date.now(), titleFr: 'Tir', titleEn: 'Blast', payload: {} },
+        drone3d: { blastId: dummyBlastForPdf.blastId, key: 'drone3d' as const, stagedAt: Date.now(), titleFr: 'Drone 3D', titleEn: 'Drone 3D', payload: {} },
+        beltvision: { blastId: dummyBlastForPdf.blastId, key: 'beltvision' as const, stagedAt: Date.now(), titleFr: 'Vision Convoyeur', titleEn: 'Belt Vision', payload: {} },
+        timing: { blastId: dummyBlastForPdf.blastId, key: 'timing' as const, stagedAt: Date.now(), titleFr: 'Chronogramme', titleEn: 'Timing', payload: {} },
+        comminution: { blastId: dummyBlastForPdf.blastId, key: 'comminution' as const, stagedAt: Date.now(), titleFr: 'Broyage', titleEn: 'Comminution', payload: {} },
+        benchmap: { blastId: dummyBlastForPdf.blastId, key: 'benchmap' as const, stagedAt: Date.now(), titleFr: 'Plan Fosse', titleEn: 'Bench Map', payload: {} },
+        validation: { blastId: dummyBlastForPdf.blastId, key: 'validation' as const, stagedAt: Date.now(), titleFr: 'Vérité Terrain', titleEn: 'Validation', payload: {} },
+        minetomill: { blastId: dummyBlastForPdf.blastId, key: 'minetomill' as const, stagedAt: Date.now(), titleFr: 'Mine-au-Moulin', titleEn: 'Mine to Mill', payload: {} },
+        kuzram: { blastId: dummyBlastForPdf.blastId, key: 'kuzram' as const, stagedAt: Date.now(), titleFr: 'Kuz-Ram', titleEn: 'Kuz-Ram', payload: {} },
       };
 
       const fullReportFr = await generateModularVaultPdfReport(
@@ -322,12 +324,12 @@ describe('Advanced Mining Suite Tests', () => {
       expect(fullReportFr.size).toBeGreaterThan(10000);
 
       const vaultStateEn = {
-        blast: { key: 'blast' as const, stagedAt: Date.now(), titleFr: 'Tir', titleEn: 'Blast', payload: {} },
+        blast: { blastId: dummyBlastForPdf.blastId, key: 'blast' as const, stagedAt: Date.now(), titleFr: 'Tir', titleEn: 'Blast', payload: {} },
         drone3d: null,
         beltvision: null,
         timing: null,
         comminution: null,
-        benchmap: { key: 'benchmap' as const, stagedAt: Date.now(), titleFr: 'Plan Fosse', titleEn: 'Bench Map', payload: {} },
+        benchmap: { blastId: dummyBlastForPdf.blastId, key: 'benchmap' as const, stagedAt: Date.now(), titleFr: 'Plan Fosse', titleEn: 'Bench Map', payload: {} },
         validation: null,
         minetomill: null,
         kuzram: null,

@@ -135,6 +135,7 @@ export const REPORT_SECTIONS_REGISTRY: Record<ReportSectionKey, ReportSectionMet
 };
 
 export interface ReportSectionEntry {
+  blastId: string;
   key: ReportSectionKey;
   stagedAt: number; // Unix timestamp
   titleFr: string;
@@ -145,3 +146,19 @@ export interface ReportSectionEntry {
 }
 
 export type ReportVaultState = Record<ReportSectionKey, ReportSectionEntry | null>;
+
+/**
+ * Returns available report section keys sorted by section order.
+ * Excludes experimental sections unless showExperimental is true.
+ */
+export function getAvailableSectionKeys(showExperimental: boolean = false): ReportSectionKey[] {
+  return (Object.keys(REPORT_SECTIONS_REGISTRY) as ReportSectionKey[])
+    .filter((key) => {
+      const meta = REPORT_SECTIONS_REGISTRY[key];
+      if (!showExperimental && meta.workspaceTab === 'experimental') {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => REPORT_SECTIONS_REGISTRY[a].order - REPORT_SECTIONS_REGISTRY[b].order);
+}

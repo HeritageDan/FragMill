@@ -58,7 +58,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenReportVault,
 }) => {
   const isFrench = settings.language === 'fr';
-  const { stagedCount } = useReportVault();
+  const { stagedCount, totalSections } = useReportVault();
 
   const toggleLanguage = () => {
     onUpdateSettings({
@@ -190,7 +190,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                 stagedCount > 0 ? 'bg-emerald-500 text-white' : 'bg-white/20 text-white'
               }`}>
-                {stagedCount}/9
+                {stagedCount}/{totalSections}
               </span>
             </button>
           )}
@@ -284,7 +284,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                     stagedCount > 0 ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'
                   }`}
                 >
-                  {stagedCount}/9
+                  {stagedCount}/{totalSections}
                 </span>
               </button>
             )}
