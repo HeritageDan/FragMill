@@ -5,7 +5,7 @@ import {
   Wand2,
   Sliders,
   Scale,
-  Factory,
+  TrendingUp,
   Settings as SettingsIcon,
   HelpCircle,
   Sun,
@@ -13,11 +13,7 @@ import {
   Globe,
   PlusCircle,
   Database,
-  Map,
   Trash2,
-  Plane,
-  Video,
-  Flame,
   FileText,
   FlaskConical,
 } from 'lucide-react';
@@ -26,14 +22,8 @@ import { useReportVault } from '../../context/ReportVaultContext';
 export type NavigationTab =
   | 'wizard'
   | 'blast'
-  | 'drone3d'
-  | 'beltvision'
-  | 'timing'
-  | 'comminution'
-  | 'benchmap'
   | 'validation'
-  | 'minetomill'
-  | 'kuzram'
+  | 'optimise'
   | 'experimental'
   | 'settings'
   | 'help';
@@ -200,7 +190,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                 stagedCount > 0 ? 'bg-emerald-500 text-white' : 'bg-white/20 text-white'
               }`}>
-                {stagedCount}/11
+                {stagedCount}/9
               </span>
             </button>
           )}
@@ -261,47 +251,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               }`}
             >
               <Compass className="w-4 h-4" />
-              {isFrench ? 'Tirs & Images' : 'Blast Records & Sizing'}
-            </button>
-            {settings?.showExperimentalModules && (
-              <button
-                onClick={() => onSelectTab('experimental')}
-                className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
-                  activeTab === 'experimental' || activeTab === 'drone3d' || activeTab === 'beltvision'
-                    ? 'bg-amber-600 text-white font-bold'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <FlaskConical className="w-4 h-4 text-amber-300" />
-                {isFrench ? 'Expérimental' : 'Experimental'}
-              </button>
-            )}
-            <button
-              onClick={() => onSelectTab('timing')}
-              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
-                activeTab === 'timing' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Flame className="w-4 h-4" />
-              {isFrench ? 'Séquence 3D & Front' : '3D Timing & Face'}
-            </button>
-            <button
-              onClick={() => onSelectTab('comminution')}
-              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
-                activeTab === 'comminution' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Factory className="w-4 h-4" />
-              {isFrench ? 'Jumeau Broyage (Bond)' : 'Comminution Twin'}
-            </button>
-            <button
-              onClick={() => onSelectTab('benchmap')}
-              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
-                activeTab === 'benchmap' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Map className="w-4 h-4" />
-              {isFrench ? 'Plan Fosse' : 'Bench Map'}
+              {isFrench ? 'Tir' : 'Blast'}
             </button>
             <button
               onClick={() => onSelectTab('validation')}
@@ -310,26 +260,47 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               }`}
             >
               <Scale className="w-4 h-4" />
-              {isFrench ? 'Vérité Terrain' : 'Ground Truth & Sieve'}
+              {isFrench ? 'Vérité Terrain' : 'Validation'}
             </button>
             <button
-              onClick={() => onSelectTab('minetomill')}
+              onClick={() => onSelectTab('optimise')}
               className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
-                activeTab === 'minetomill' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+                activeTab === 'optimise' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Factory className="w-4 h-4" />
-              {isFrench ? 'Mine-au-Moulin' : 'Mine-to-Mill Lab'}
+              <TrendingUp className="w-4 h-4" />
+              {isFrench ? 'Prédiction & Optimisation' : 'Predict & Optimise'}
             </button>
-            <button
-              onClick={() => onSelectTab('kuzram')}
-              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
-                activeTab === 'kuzram' ? 'bg-blue-600 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Sliders className="w-4 h-4" />
-              {isFrench ? 'Kuz-Ram & Bayésien' : 'Kuz-Ram & Advisor'}
-            </button>
+            {onOpenReportVault && (
+              <button
+                onClick={onOpenReportVault}
+                className="px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap text-slate-400 hover:text-white"
+                title={isFrench ? 'Rapport d’ingénierie consolidé' : 'Consolidated Engineering Report'}
+              >
+                <FileText className="w-4 h-4 text-blue-400" />
+                <span>{isFrench ? 'Rapports' : 'Reports'}</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                    stagedCount > 0 ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {stagedCount}/9
+                </span>
+              </button>
+            )}
+            {settings?.showExperimentalModules && (
+              <button
+                onClick={() => onSelectTab('experimental')}
+                className={`px-3 py-2 rounded-lg flex items-center gap-1.5 transition whitespace-nowrap ${
+                  activeTab === 'experimental'
+                    ? 'bg-amber-600 text-white font-bold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <FlaskConical className="w-4 h-4 text-amber-300" />
+                {isFrench ? 'Expérimental' : 'Experimental'}
+              </button>
+            )}
           </>
         )}
 

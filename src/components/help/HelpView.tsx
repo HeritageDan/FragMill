@@ -240,6 +240,44 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
             </h3>
 
             <div className="space-y-4 text-xs text-slate-600">
+              {/* Workspace Architecture Overview */}
+              <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
+                <div className="flex items-center gap-2 font-bold text-blue-950 text-xs">
+                  <Compass className="w-4 h-4 text-blue-600" />
+                  <span>{isFr ? 'Architecture des Espaces de Travail (Mode Expert)' : 'Expert Mode Workspace Architecture'}</span>
+                </div>
+                <p>
+                  {isFr
+                    ? 'FragMill structure vos opérations en 4 espaces de travail professionnels organisés avec des sous-onglets ergonomiques :'
+                    : 'FragMill streamlines engineering operations across 4 structured workspaces with dedicated sub-tabs:'}
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    <strong>{isFr ? '1. Tir (Blast Workspace) :' : '1. Blast Workspace:'}</strong>{' '}
+                    {isFr
+                      ? 'Regroupe "Tir & Images" (géométrie, profil de charge 3 étages, analyse optique), "Plan de Fosse" (carte spatiale des gradins et réconciliation) et "Initiation & Vibration" (simulation chronogramme USBM et front).'
+                      : 'Includes "Record & Images" (blast design, 3-deck charging, optical sizing), "Pattern Map" (bench layout & reconciliation), and "Initiation & Vibration" (USBM timing simulation & face profile).'}
+                  </li>
+                  <li>
+                    <strong>{isFr ? '2. Vérité Terrain (Validation) :' : '2. Validation Workspace:'}</strong>{' '}
+                    {isFr
+                      ? 'Réconciliation par tamisage mécanique physique, résidus RMSE/MAE et calibrage du biais optique.'
+                      : 'Physical mechanical sieve reconciliation, RMSE/MAE residuals, and optical bias calibration factor.'}
+                  </li>
+                  <li>
+                    <strong>{isFr ? '3. Prédiction & Optimisation (Predict & Optimise) :' : '3. Predict & Optimise Workspace:'}</strong>{' '}
+                    {isFr
+                      ? 'Regroupe "Kuz-Ram & Calibrage" (modèle empirique et conseiller de tir), "Mine-au-Moulin" (bilan économique et carbone), et "Jumeau Broyage" (simulateur de circuit Bond & Morrell).'
+                      : 'Combines "Kuz-Ram & Calibration" (empirical predictor & blast advisor), "Mine-to-Mill" (cost & carbon footprint), and "Circuit Twin" (Bond & Morrell comminution simulator).'}
+                  </li>
+                  <li>
+                    <strong>{isFr ? '4. Expérimental (Experimental) :' : '4. Experimental Workspace:'}</strong>{' '}
+                    {isFr
+                      ? 'Accessible lorsque activé dans les Paramètres : regroupe la photogrammétrie "Drone 3D & Ortho" et la "Vision Convoyeur" continue.'
+                      : 'Accessible when enabled in Settings: bundles "Drone 3D Sizing" and continuous "Belt Edge Vision".'}
+                  </li>
+                </ul>
+              </div>
               {/* Feature 1: Mode Switcher */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
                 <div className="flex items-center gap-2 font-bold text-slate-900 text-xs">

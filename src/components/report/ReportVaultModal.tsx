@@ -105,7 +105,7 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
                   {isFr ? 'Générateur de Rapport Personnalisé' : 'Custom Engineering Report Builder'}
                 </h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                  {stagedCount}/11 {isFr ? 'Sections Prêtes' : 'Sections Staged'}
+                  {stagedCount}/{allKeys.length} {isFr ? 'Sections Prêtes' : 'Sections Staged'}
                 </span>
               </div>
               <p className="text-xs text-slate-300">
@@ -147,7 +147,7 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
               className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-bold rounded-lg flex items-center gap-1.5"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{isFr ? 'Pré-remplir les 11 sections' : 'Include All 11 Sections'}</span>
+              <span>{isFr ? `Pré-remplir les ${allKeys.length} sections` : `Include All ${allKeys.length} Sections`}</span>
             </button>
             {stagedCount > 0 && (
               <button

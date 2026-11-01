@@ -11,13 +11,8 @@ import type {
 } from '../../types';
 import type { Language } from '../../i18n';
 import type { ReportVaultState, ReportSectionKey } from '../../types/reportVault';
-import { generateModularVaultPdfReport, generateSingleSectionPdfReport } from './modularReport';
+import { generateModularVaultPdfReport } from './modularReport';
 import { db, getSettings } from '../../db';
-import { simulateComminutionCircuit, generateEconomicTradeoffCurve } from '../comminution/bondMorrellEngine';
-import { evaluateMineToMillEconomics, DEFAULT_ECONOMIC_PARAMS } from '../economics';
-import { computeKuzRam, calculateRockFactorA, DEFAULT_ROCK_TABLES } from '../kuzram';
-import { generateDemoDroneSurvey, apply3DStereologicalCorrection } from '../drone3d/droneSizing';
-import { calculateUSBMPPV, generateFaceProfile } from '../timing/initiationSimulator';
 
 import { getBlastState } from '../blastState';
 

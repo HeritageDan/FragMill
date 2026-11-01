@@ -14,49 +14,30 @@ Developed specifically for research and field operations in Cameroon and Central
 
 ## Key Features Across All 6 Build Stages
 
-### 1. Stage 1: Projects, Blast Records, Image Capture & Classical Engine A
-- **Hierarchical Data Architecture**: Projects &rarr; Sites &rarr; Blasts &rarr; Photographs &rarr; Calibrations &rarr; Sizing Runs &rarr; Ground Truth &rarr; Mill Batches.
-- **Blast Record Form**: Captures burden, spacing, bench height, hole diameter, subdrill, explosive type, RWS, charge weight, initiation delays, and rock mass structural parameters (density, joint spacing, joint orientation, GSI/RMR, UCS).
-- **Auto-Derived Blast Sizing**: Live calculation of blasted volume ($m^3$), blasted tonnage ($t$), powder factor ($kg/m^3$), $S/B$ and $T/B$ ratios, and specific drilling ($m/m^3$).
-- **Image Quality Diagnostics**: Automated variance of Laplacian sharpness test, histogram clipping exposure checks, luminance contrast checks, and field capture advice.
-- **Scale Calibration**: Two-point reference bar calibration, perspective quadrilateral homography, and automatic marker detection.
-- **Classical Segmentation (Engine A)**: High-performance pure TypeScript TypedArray and HTML5 Canvas pipeline featuring Grayscale conversion, CLAHE (Contrast-Limited Adaptive Histogram Equalization), Gaussian smoothing, adaptive thresholding, Distance Transform, and Watershed fragment separation.
-- **Fragment Caliper Sizing**: Minimum Feret diameter (closest to sieve square apertures), Maximum Feret, Equivalent Circular Diameter (ECD), aspect ratio, solidity, and shape-factor volume ($V = \frac{\pi}{6} d^3$).
-- **Statistical Corrections**: Swebrec and Rosin-Rammler continuous nonlinear coordinate-descent regression on log-scale cumulative passing, physics-grounded Swebrec unresolved fines extrapolation, and zero-allocation bootstrap confidence intervals (1,000 resamples).
-- **Field Mode Wizard**: 5-step touch-friendly wizard for non-specialists on mobile devices.
+## Modern Application Architecture & Navigation
 
-### 2. Stage 2: Morphological Presets & Manual Editing Suite
-- **Engine B (Fine-Grain Watershed Preset)**: High-contrast CLAHE (clip limit 2.4) and stricter distance-transform thresholding (0.40) to resolve fine crevices and tight fragment boundaries, followed by IoU Non-Maximum Suppression (NMS) on candidate boxes.
-- **Engine C (Multi-Scale Composite Preset)**: Blends large fragment seeds from a low-threshold watershed with fine-fraction fragments from a high-sensitivity pass.
-- **Manual Editing Suite**: Add rock polygons, delete misidentified fragments, merge adjacent fragments, split boulders with a drawn line, and brush unresolved fines with full undo/redo history (saved non-destructively as new run versions).
+FragMill organizes mining engineering workflows into clean, role-based workspaces:
 
-### 3. Stage 3: Ground Truth Entry & Model Validation
-- **Ground Truth Entry**: Manual rock caliper measurements and screen/sieve data entry with direct paste support from Excel/spreadsheets.
-- **Validation Dashboard**: Real-time evaluation of $P_{20}, P_{50}, P_{80}$ percentage error and bias, Mean Absolute Percentage Error (MAPE), and threshold alerts (>15% discrepancy).
-- **Parity & Bland-Altman Plots**: Comparative difference plots testing image sizing against mechanical screening samples.
+### 1. Field Mode
+- **5-Step Touch-Friendly Wizard**: Designed for rugged in-pit tablets. Guides the operator from blast geometry entry to photo quality evaluation, 2-tap scale calibration, local WASM segmentation, and instant $P_{20}, P_{50}, P_{80}$ curve generation.
 
-### 4. Stage 4: Mine-to-Mill Comminution, Kuz-Ram & Bayesian Calibration
-- **MillBatch Module**: Tracking batch tonnage, truck counts, crushing energy ($kWh$), milling energy ($kWh$), plant throughput ($t/h$), head grade ($g/t$), and tails grade ($g/t$).
-- **Gold Recovery Calculations**:
-  - *Simple Formula*: $R = \frac{f - t}{f} \times 100\%$
-  - *Two-Product Formula*: $R = \frac{c(f - t)}{f(c - t)} \times 100\%$
-- **Comminution Regression**: Scatter plots linking $P_{80}$ and oversize boulder fraction to specific comminution energy ($kWh/t$), throughput ($t/h$), and gold recovery with 95% confidence bands.
-- **Cunningham (1983, 1987, 2005) Kuz-Ram Model**: Theoretical $X_{50}$ and uniformity index $n$ based on editable rock mass factor lookup tables ($RMD, JF, JFO, RDI, HF$), properly applying Cunningham's empirical units ($B$ in meters, $D$ in millimeters).
-- **Bayesian MCMC Calibration**: Metropolis-Hastings Markov Chain Monte Carlo sampling with chunked asynchronous execution to calibrate site rock factor $A$ across monitored blasts without blocking the UI thread, producing predictive distributions with 95% credible intervals.
-- **Blast Advisor**: Search optimization over burden, spacing, stemming, and powder factor to hit target crusher feed $P_{80}$ with a Tornado sensitivity chart and mandatory mining safety notice.
-
-### 5. Stage 5: Reports, Multi-Format Exports, Dataset & Offline Polish
-- **Comprehensive PDF Blast Report**: Multi-page report via `jsPDF` with blast metadata, rock mass properties, annotated segmentation overlay, cumulative curve, Swebrec parameters, comminution KPIs, and engineering disclaimers.
-- **Printable A4 Calibration Target**: Generates a PDF scale sheet with 100 mm verification ruler, high-contrast 200 mm scale bar, and ArUco markers.
-- **CSV & XLSX Exports**: Fragment-level geometric parameters, blast summaries, and cumulative passing curves via `PapaParse` and `SheetJS`.
-- **COCO Dataset Export**: JSON format for training fine-tuned instance segmentation models (with GPS EXIF stripped for privacy).
-- **Project Backup & Restore**: Complete database export and import as a standalone JSON file.
-- **Full Bilingual Support**: 100% complete English and French UI translations.
-- **Display Themes**: Engineering Navy, Dark Mode, and High-Contrast Outdoor Sunlight Mode.
-
-### 6. Stage 6: Optional Cloud AI, Hardening & Self-Test
-- **Optional Gemini API Assistant**: Behind an explicit consent toggle; performs scene obstacle checking, ROI/scale suggestions, and bilingual engineering commentary using strictly app-supplied numbers.
-- **Synthetic Calibration Self-Test**: Validates precision against synthetic discs and gauge blocks within a strict **3% tolerance limit**.
+### 2. Expert Mode
+- **Blast Workspace (`blast`)**:
+  - *Record & Images*: Blast geometry, 3-deck charging profiles, rock mass structural characterization, and optical particle size distribution (PSD).
+  - *Pattern Map*: Open-pit SVG bench mapping, drilling pattern geometry, blasted volumes, and multi-blast historical trend reconciliation.
+  - *Initiation & Vibration*: 3D blast hole initiation timing simulations, maximum instantaneous charge (MIC), face inclinometer profiling, and USBM ground vibration compliance.
+- **Validation Workspace (`validation`)**:
+  - Mechanical sieve screening batch reconciliation, Excel paste import, residual RMSE/MAE computation, and optical bias calibration.
+- **Predict & Optimise Workspace (`optimise`)**:
+  - *Kuz-Ram & Calibration*: Empirical Cunningham blast predictor, Blast Advisor parameter optimization, and Bayesian MCMC rock factor tuning.
+  - *Mine-to-Mill*: Integrated drilling, blasting, crushing, and milling economics ($/t) coupled with Scope 1 & 2 carbon footprint analysis.
+  - *Circuit Twin*: Comminution digital twin implementing Bond Work Index ($W_i$) and Morrell ($A \times b$) specific energy modeling.
+- **Report Vault (`reports`)**:
+  - Modular report builder bundling up to 9 specialized technical sections into a single consolidated, publication-ready PDF report.
+- **Experimental Modules (`experimental`)**:
+  - Available via an opt-in toggle under Settings: features UAV Drone 3D photogrammetry and real-time Conveyor Belt Edge Vision.
+- **Settings & Guides**:
+  - Bilingual localization (100% English and French), high-contrast outdoor sunlight themes, and comprehensive in-app guidance.
 
 ---
 

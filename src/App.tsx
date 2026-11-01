@@ -14,23 +14,20 @@ import type {
 } from './types';
 import { AppHeader, type NavigationTab } from './components/layout/AppHeader';
 import { FieldWizard } from './components/wizard/FieldWizard';
-import { BlastDetailView } from './components/blast/BlastDetailView';
 import { ActiveBlastBanner } from './components/layout/ActiveBlastBanner';
 import { ReportVaultProvider, useReportVault } from './context/ReportVaultContext';
 import { RefreshCw, CheckCircle2, X } from 'lucide-react';
+import type { BlastSubTab } from './components/blast/BlastWorkspaceView';
+import type { OptimiseSubTab } from './components/optimise/PredictOptimiseWorkspaceView';
+import type { ExperimentalSubTab } from './components/experimental/ExperimentalWorkspaceView';
 
-// Lazy-loaded secondary views for code-splitting and rapid initial bundle loading
-const BenchMapView = lazy(() => import('./components/spatial/BenchMapView').then((m) => ({ default: m.BenchMapView })));
+// Lazy-loaded workspace and modal views for rapid initial bundle loading
+const BlastWorkspaceView = lazy(() => import('./components/blast/BlastWorkspaceView').then((m) => ({ default: m.BlastWorkspaceView })));
+const PredictOptimiseWorkspaceView = lazy(() => import('./components/optimise/PredictOptimiseWorkspaceView').then((m) => ({ default: m.PredictOptimiseWorkspaceView })));
 const ValidationDashboard = lazy(() => import('./components/validation/ValidationDashboard').then((m) => ({ default: m.ValidationDashboard })));
-const MineToMillView = lazy(() => import('./components/minetomill/MineToMillView').then((m) => ({ default: m.MineToMillView })));
-const KuzRamView = lazy(() => import('./components/kuzram/KuzRamView').then((m) => ({ default: m.KuzRamView })));
 const SettingsView = lazy(() => import('./components/settings/SettingsView').then((m) => ({ default: m.SettingsView })));
 const HelpView = lazy(() => import('./components/help/HelpView').then((m) => ({ default: m.HelpView })));
-const Drone3DSizingView = lazy(() => import('./components/drone/Drone3DSizingView').then((m) => ({ default: m.Drone3DSizingView })));
-const BeltEdgeVisionView = lazy(() => import('./components/belt/BeltEdgeVisionView').then((m) => ({ default: m.BeltEdgeVisionView })));
 const ExperimentalWorkspaceView = lazy(() => import('./components/experimental/ExperimentalWorkspaceView').then((m) => ({ default: m.ExperimentalWorkspaceView })));
-const BlastTimingSimulatorView = lazy(() => import('./components/timing/BlastTimingSimulatorView').then((m) => ({ default: m.BlastTimingSimulatorView })));
-const ComminutionDigitalTwinView = lazy(() => import('./components/comminution/ComminutionDigitalTwinView').then((m) => ({ default: m.ComminutionDigitalTwinView })));
 const ReportVaultModal = lazy(() => import('./components/report/ReportVaultModal').then((m) => ({ default: m.ReportVaultModal })));
 
 const ViewLoadingFallback = () => (
@@ -57,6 +54,57 @@ const STATIC_FALLBACK_SITE: Site = {
   updatedAt: 1711843200000,
 };
 
+export function resolveMigratedTab(
+  savedTab: string | null,
+  isFieldMode: boolean = false,
+  showExperimental: boolean = false
+): { tab: NavigationTab; subTab?: string } {
+  if (!savedTab) {
+    return { tab: isFieldMode ? 'wizard' : 'blast' };
+  }
+  switch (savedTab) {
+    case 'wizard':
+      return { tab: 'wizard' };
+    case 'blast':
+      return { tab: 'blast', subTab: 'record' };
+    case 'benchmap':
+      return { tab: 'blast', subTab: 'pattern' };
+    case 'timing':
+      return { tab: 'blast', subTab: 'timing' };
+    case 'kriging':
+    case 'telemetry':
+      return { tab: 'blast', subTab: 'record' };
+    case 'validation':
+      return { tab: 'validation' };
+    case 'optimise':
+      return { tab: 'optimise', subTab: 'kuzram' };
+    case 'kuzram':
+      return { tab: 'optimise', subTab: 'kuzram' };
+    case 'minetomill':
+      return { tab: 'optimise', subTab: 'minetomill' };
+    case 'comminution':
+      return { tab: 'optimise', subTab: 'twin' };
+    case 'drone3d':
+      return showExperimental
+        ? { tab: 'experimental', subTab: 'drone3d' }
+        : { tab: 'blast', subTab: 'record' };
+    case 'beltvision':
+      return showExperimental
+        ? { tab: 'experimental', subTab: 'beltvision' }
+        : { tab: 'blast', subTab: 'record' };
+    case 'experimental':
+      return showExperimental
+        ? { tab: 'experimental' }
+        : { tab: 'blast', subTab: 'record' };
+    case 'settings':
+      return { tab: 'settings' };
+    case 'help':
+      return { tab: 'help' };
+    default:
+      return { tab: isFieldMode ? 'wizard' : 'blast' };
+  }
+}
+
 function AppContent() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -64,6 +112,9 @@ function AppContent() {
   const [blasts, setBlasts] = useState<Blast[]>([]);
   const [activeBlastId, setActiveBlastId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<NavigationTab>('wizard');
+  const [blastSubTab, setBlastSubTab] = useState<BlastSubTab>('record');
+  const [optimiseSubTab, setOptimiseSubTab] = useState<OptimiseSubTab>('kuzram');
+  const [experimentalSubTab, setExperimentalSubTab] = useState<ExperimentalSubTab>('drone3d');
   const [isLoading, setIsLoading] = useState(true);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
@@ -110,7 +161,7 @@ function AppContent() {
       setBlasts(hydratedBlasts);
 
       const savedBlastId = localStorage.getItem('fragmill_last_active_blast_id');
-      const savedTab = localStorage.getItem('fragmill_last_active_tab') as NavigationTab | null;
+      const rawSavedTab = localStorage.getItem('fragmill_last_active_tab');
 
       if (savedBlastId && hydratedBlasts.some((b) => b.id === savedBlastId)) {
         setActiveBlastId(savedBlastId);
@@ -118,12 +169,27 @@ function AppContent() {
         setActiveBlastId(hydratedBlasts[0].id);
       }
 
-      if (savedTab) {
-        setActiveTab(savedTab);
-      } else if (savedSettings.mode === 'field') {
-        setActiveTab('wizard');
-      } else {
-        setActiveTab('blast');
+      // Safe navigation migration from legacy or merged tab IDs
+      const migrated = resolveMigratedTab(
+        rawSavedTab,
+        savedSettings.mode === 'field',
+        savedSettings.showExperimentalModules
+      );
+      setActiveTab(migrated.tab);
+      if (migrated.tab === 'blast' && migrated.subTab) {
+        setBlastSubTab(migrated.subTab as BlastSubTab);
+      } else if (migrated.tab === 'optimise' && migrated.subTab) {
+        setOptimiseSubTab(migrated.subTab as OptimiseSubTab);
+      } else if (migrated.tab === 'experimental' && migrated.subTab) {
+        setExperimentalSubTab(migrated.subTab as ExperimentalSubTab);
+      }
+
+      if (rawSavedTab && rawSavedTab !== migrated.tab) {
+        try {
+          localStorage.setItem('fragmill_last_active_tab', migrated.tab);
+        } catch {
+          // ignore
+        }
       }
     } catch (err) {
       console.error('Failed to load database:', err);
@@ -406,65 +472,23 @@ function AppContent() {
           />
         )}
 
-        {activeTab === 'blast' && activeBlast && (
-          <BlastDetailView
-            key={activeBlast.id}
-            blast={activeBlast}
-            project={activeProject || undefined}
-            site={activeSite || undefined}
-            settings={settings}
-            onUpdateBlast={handleUpdateBlast}
-            onDeleteBlast={handleDeleteBlast}
-            onDeleteImage={handleDeleteImage}
-            onSaveRun={handleSaveRun}
-            lang={settings.language}
-          />
-        )}
-
         <Suspense fallback={<ViewLoadingFallback />}>
-          {(activeTab === 'experimental' || activeTab === 'drone3d' || activeTab === 'beltvision') && (
-            <ExperimentalWorkspaceView
-              key={activeBlast?.id || 'exp'}
-              blast={activeBlast || null}
-              project={activeProject || undefined}
-              site={activeSite || undefined}
-              onUpdateBlast={handleUpdateBlast}
-              lang={settings.language}
-              activeSubTab={activeTab === 'beltvision' ? 'beltvision' : 'drone3d'}
-            />
-          )}
-
-          {activeTab === 'timing' && activeBlast && (
-            <BlastTimingSimulatorView
-              key={activeBlast.id}
+          {activeTab === 'blast' && activeBlast && (
+            <BlastWorkspaceView
               blast={activeBlast}
-              project={activeProject || undefined}
-              site={activeSite || undefined}
-              lang={settings.language}
-            />
-          )}
-
-          {activeTab === 'comminution' && activeBlast && (
-            <ComminutionDigitalTwinView
-              key={activeBlast.id}
-              blast={activeBlast}
-              project={activeProject || undefined}
-              site={activeSite || undefined}
-              lang={settings.language}
-            />
-          )}
-
-          {activeTab === 'benchmap' && (
-            <BenchMapView
               blasts={blasts}
               activeBlastId={activeBlastId}
-              onSelectBlast={(id) => {
-                handleSelectBlast(id);
-                handleSelectTab('blast');
-              }}
+              onSelectBlast={handleSelectBlast}
               project={activeProject || undefined}
               site={activeSite || undefined}
+              settings={settings}
+              onUpdateBlast={handleUpdateBlast}
+              onDeleteBlast={handleDeleteBlast}
+              onDeleteImage={handleDeleteImage}
+              onSaveRun={handleSaveRun}
               lang={settings.language}
+              activeSubTab={blastSubTab}
+              onSubTabChange={setBlastSubTab}
             />
           )}
 
@@ -480,26 +504,31 @@ function AppContent() {
             />
           )}
 
-          {activeTab === 'minetomill' && (
-            <MineToMillView
+          {activeTab === 'optimise' && (
+            <PredictOptimiseWorkspaceView
+              blast={activeBlast || null}
               blasts={blasts}
               activeBlastId={activeBlastId}
-              onSelectBlast={(id) => handleSelectBlast(id)}
+              onSelectBlast={handleSelectBlast}
               onUpdateMillBatch={handleUpdateMillBatch}
               project={activeProject || undefined}
               site={activeSite || undefined}
               lang={settings.language}
+              activeSubTab={optimiseSubTab}
+              onSubTabChange={setOptimiseSubTab}
             />
           )}
 
-          {activeTab === 'kuzram' && (
-            <KuzRamView
-              blasts={blasts}
-              activeBlastId={activeBlastId}
-              onSelectBlast={(id) => handleSelectBlast(id)}
+          {activeTab === 'experimental' && (
+            <ExperimentalWorkspaceView
+              key={activeBlast?.id || 'exp'}
+              blast={activeBlast || null}
               project={activeProject || undefined}
               site={activeSite || undefined}
+              onUpdateBlast={handleUpdateBlast}
               lang={settings.language}
+              activeSubTab={experimentalSubTab}
+              onSubTabChange={setExperimentalSubTab}
             />
           )}
 
