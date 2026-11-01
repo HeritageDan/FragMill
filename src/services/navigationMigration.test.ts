@@ -46,3 +46,4 @@ describe('Navigation Migration & Tab Routing (Step 4)', () => {
     expect(resolveMigratedTab('unknown_random_tab', true)).toEqual({ tab: 'wizard' });
   });
 });
+

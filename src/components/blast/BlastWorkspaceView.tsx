@@ -123,3 +123,4 @@ export const BlastWorkspaceView: React.FC<BlastWorkspaceViewProps> = ({
     </div>
   );
 };
+

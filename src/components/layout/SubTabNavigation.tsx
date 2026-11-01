@@ -52,3 +52,4 @@ export function SubTabNavigation<T extends string = string>({
     </div>
   );
 }
+
