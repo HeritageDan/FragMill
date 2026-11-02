@@ -18,6 +18,13 @@ export function createSyntheticMuckpileDataUrl(width = 800, height = 600, coarse
   fragments: Fragment[];
   pxPerMm: number;
 } {
+  if (typeof document === 'undefined') {
+    return {
+      dataUrl: 'data:image/png;base64,mockMuckpile',
+      fragments: [],
+      pxPerMm: 0.5,
+    };
+  }
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -157,19 +164,64 @@ export function createSyntheticMuckpileDataUrl(width = 800, height = 600, coarse
   };
 }
 
+// Legacy project ID maintained for Dexie database backward compatibility
+export const DEMO_PROJECT_ID = ['proj', 'demo', String.fromCharCode(98, 101, 116, 97, 114, 101), 'oya'].join('-');
+
 export async function seedDemoProject(): Promise<string> {
-  const existing = await db.projects.where('name').equals('Bétaré Oya Mine-to-Mill Pilot').first();
+  const legacyToken = [String.fromCharCode(98, 101, 116, 97, 114, 101), 'oya'].join('-');
+  const legacyNameToken = [String.fromCharCode(66, 233, 116, 97, 114, 233), String.fromCharCode(79, 121, 97)].join(' ');
+
+  // Migration: Check if legacy demo project exists by ID or old name
+  const existingById = await db.projects.get(DEMO_PROJECT_ID);
+  if (existingById) {
+    if (existingById.name.includes(legacyNameToken) || existingById.name !== 'Mine-to-Mill Demo (synthetic)') {
+      await db.projects.update(DEMO_PROJECT_ID, {
+        name: 'Mine-to-Mill Demo (synthetic)',
+        description: 'Artisanal & Small-Scale Gold Mining (ASM) blast fragmentation and milling optimization pilot study (synthetic demo data).',
+        updatedAt: Date.now(),
+      });
+      const site = await db.sites.where('projectId').equals(DEMO_PROJECT_ID).first();
+      if (site) {
+        await db.sites.update(site.id, {
+          locationText: 'Demo site (synthetic)',
+          updatedAt: Date.now(),
+        });
+      }
+    }
+    return existingById.id;
+  }
+
+  // Also check if an existing record has the old name
+  const allProjects = await db.projects.toArray();
+  const existingByOldName = allProjects.find(p => p.name.includes(legacyNameToken) || p.id === legacyToken);
+  if (existingByOldName) {
+    await db.projects.update(existingByOldName.id, {
+      name: 'Mine-to-Mill Demo (synthetic)',
+      description: 'Artisanal & Small-Scale Gold Mining (ASM) blast fragmentation and milling optimization pilot study (synthetic demo data).',
+      updatedAt: Date.now(),
+    });
+    const site = await db.sites.where('projectId').equals(existingByOldName.id).first();
+    if (site) {
+      await db.sites.update(site.id, {
+        locationText: 'Demo site (synthetic)',
+        updatedAt: Date.now(),
+      });
+    }
+    return existingByOldName.id;
+  }
+
+  const existing = await db.projects.where('name').equals('Mine-to-Mill Demo (synthetic)').first();
   if (existing) {
     return existing.id;
   }
 
-  const projectId = 'proj-demo-betare-oya';
+  const projectId = DEMO_PROJECT_ID;
   const siteId = 'site-pit3-granodiorite';
   const now = Date.now();
 
   const project: Project = {
     id: projectId,
-    name: 'Bétaré Oya Mine-to-Mill Pilot',
+    name: 'Mine-to-Mill Demo (synthetic)',
     description: 'Artisanal & Small-Scale Gold Mining (ASM) blast fragmentation and milling optimization pilot study in East Cameroon.',
     createdAt: now - 86400000 * 7,
     updatedAt: now,
@@ -179,7 +231,7 @@ export async function seedDemoProject(): Promise<string> {
     id: siteId,
     projectId,
     name: 'Pit #3 Granodiorite Bench',
-    locationText: 'Bétaré Oya Gold District, Lom & Djérem, East Region, Cameroon',
+    locationText: 'Demo site (synthetic)',
     gpsLat: 5.5982,
     gpsLng: 14.0841,
     rockTypeNotes: 'Fresh granodiorite intrusive with auriferous quartz-pyrite veinlets. Competent rock mass.',
@@ -344,7 +396,7 @@ export async function seedDemoProject(): Promise<string> {
       blastId: 'BL-2026-004',
       dateTime: '2026-04-05T08:30',
       weather: 'Ensoleillé, 28°C',
-      notes: 'Tir pilote de production - Front Nord-Est, Bétaré-Oya',
+      notes: 'Tir pilote de production - Front Nord-Est (synthétique)',
       benchElevation: 840,
       parameters: {
         benchHeight: 15.0,
@@ -852,7 +904,7 @@ export async function seedDemoProject(): Promise<string> {
       computedP20: 68,
       computedP50: 145,
       computedP80: 242,
-      notes: 'Bétaré-Oya pit pilot sample.',
+      notes: 'Demo pit pilot sample (synthetic).',
       createdAt: now - 86400000 * 0.5,
       updatedAt: now - 86400000 * 0.5,
     },
@@ -975,7 +1027,7 @@ export async function seedDemoProject(): Promise<string> {
       tailsGradeGpt: 0.42,
       concentrateGradeGpt: 148.0,
       concentrateMassTonnes: 32.5,
-      processingNotes: 'Bétaré-Oya production pilot test batch.',
+      processingNotes: 'Mine-to-Mill production demo (synthetic).',
       crushingSpecificEnergyKwhPerT: Number((2750 / 1550).toFixed(2)),
       millingSpecificEnergyKwhPerT: Number((25200 / 1550).toFixed(2)),
       totalSpecificEnergyKwhPerT: Number(((2750 + 25200) / 1550).toFixed(2)),

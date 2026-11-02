@@ -40,7 +40,7 @@ export function apply3DStereologicalCorrection(
 }
 
 /**
- * Generates synthetic drone photogrammetry orthomosaic and sectors for Bétaré Oya gold mine
+ * Generates synthetic drone photogrammetry orthomosaic and sectors for demo gold mine
  */
 export function generateDemoDroneSurvey(blastId: string): DroneOrthomosaicData {
   const sectors: MuckpileSector[] = [

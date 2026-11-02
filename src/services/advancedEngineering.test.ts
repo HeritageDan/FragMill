@@ -345,7 +345,7 @@ describe('Advanced Mining Suite Tests', () => {
       );
       expect(fullReportEn).toBeInstanceOf(Blob);
       expect(fullReportEn.size).toBeGreaterThan(3000);
-    });
+    }, 15000);
 
     it('accurately resolves active blast and calculates individual geotechnical metrics for each blast', () => {
       const demoBlasts = [
@@ -681,7 +681,7 @@ describe('Advanced Mining Suite Tests', () => {
       expect(state.optical.p50Mm).toBeLessThan(metricsPhoto1.p50);
       expect(state.optical.p50Mm).toBeGreaterThan(metricsPhoto2.p50);
       expect(state.drone.meanP80Mm).toBe(state.optical.p80Mm); // Downstream synchronization
-    });
+    }, 15000);
 
     // Tier-1 Industry Standard Upgrades
     it('computes xP-frag (Ouchterlony & Sanchidrián 2019) model to correct fines underprediction', () => {

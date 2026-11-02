@@ -6,16 +6,16 @@ import { generateModularVaultPdfReport } from './export/modularReport';
 import type { Blast, Project, Site, Fragment } from '../types';
 
 const mockProject: Project = {
-  id: 'proj-betare',
-  name: 'Projet Minier Bétaré-Oya',
+  id: 'proj-demo',
+  name: 'Projet Minier Pilote',
   description: 'Exploitation aurifère et optimisation abattage-broyage',
   createdAt: 1771000000000,
   updatedAt: 1771000000000,
 };
 
 const mockSite: Site = {
-  id: 'site-betare-oya',
-  projectId: 'proj-betare',
+  id: 'site-demo',
+  projectId: 'proj-demo',
   name: 'Carrière Pilote Nord-Est',
   locationText: 'Région de l\'Est, Cameroun',
   createdAt: 1771000000000,
@@ -47,12 +47,12 @@ const mockFragments: Fragment[] = Array.from({ length: 245 }, (_, idx) => {
 const mockBlastBL2026004: Blast = {
   id: 'blast-bl-2026-004',
   projectId: 'project-cameroon',
-  siteId: 'site-betare-oya',
+  siteId: 'site-demo',
   blastId: 'BL-2026-004',
   dateTime: '2026-02-14T08:30:00Z',
   weather: 'Ensoleillé, 28°C',
   benchElevation: 840,
-  notes: 'Tir pilote de production - Front Nord-Est, Bétaré-Oya',
+  notes: 'Tir pilote de production - Front Nord-Est, Site Démo',
   createdAt: 1771057800000,
   updatedAt: 1771057800000,
   parameters: {

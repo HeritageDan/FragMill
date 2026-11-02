@@ -32,10 +32,10 @@ import {
 import { generateModularVaultPdfReport } from './export/modularReport';
 import { BLASTHOLE4_IMAGE_DATA_URL } from '../assets/blasthole4Image';
 
-// Mock Project & Site for Bétaré-Oya Gold Mine
+// Mock Project & Site for Demo Gold Mine
 const mockProject: Project = {
-  id: 'proj-betare-oya',
-  name: 'Bétaré-Oya Gold Operation',
+  id: 'proj-demo-mine',
+  name: 'Demo Gold Operation',
   description: 'Industrial Drill, Blast & Comminution Optimization Project',
   createdAt: 1771000000000,
   updatedAt: 1771000000000,
@@ -43,7 +43,7 @@ const mockProject: Project = {
 
 const mockSite: Site = {
   id: 'site-north-pit',
-  projectId: 'proj-betare-oya',
+  projectId: 'proj-demo-mine',
   name: 'North Pit Bench 840 RL',
   locationText: 'Eastern Gold Belt, Cameroon',
   createdAt: 1771000000000,
@@ -79,7 +79,7 @@ const mockFragmentsBH05: Fragment[] = Array.from({ length: 268 }, (_, idx) => {
 // The New Blast Hole (BL-2026-005 / Hole BH-05) Tested System-Wide
 export const mockBlastBH05: Blast = {
   id: 'blast-bl-2026-005',
-  projectId: 'proj-betare-oya',
+  projectId: 'proj-demo-mine',
   siteId: 'site-north-pit',
   blastId: 'BL-2026-005',
   dateTime: '2026-10-27T10:00:00Z',

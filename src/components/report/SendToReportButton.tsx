@@ -88,17 +88,17 @@ export const SendToReportButton: React.FC<SendToReportButtonProps> = ({
       const payload = getPayload();
       stageSection(sectionKey, payload, summaryFr, summaryEn);
       const defaultProj: Project = project || {
-        id: 'proj-1',
-        name: 'Projet Bétaré Oya',
-        description: 'Artisanal Gold Mining',
+        id: blast?.projectId || 'proj-1',
+        name: 'Demo Project',
+        description: 'Mining Operation',
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
       const defaultSite: Site = site || {
-        id: 'site-1',
-        projectId: 'proj-1',
-        name: 'Carrière Bétaré Oya',
-        locationText: 'Cameroun Est',
+        id: blast?.siteId || 'site-1',
+        projectId: blast?.projectId || 'proj-1',
+        name: 'Demo Site',
+        locationText: 'Site Location',
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };

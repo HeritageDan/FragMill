@@ -252,7 +252,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           <button
             onClick={onLoadDemoProject}
             className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center gap-1 text-[11px] font-medium"
-            title="Load Bétaré Oya Demo Data"
+            title={isFrench ? "Charger les données de démonstration" : "Load Demo Data"}
           >
             <Database className="w-3.5 h-3.5 text-blue-400" />
             <span className="hidden md:inline">Demo</span>

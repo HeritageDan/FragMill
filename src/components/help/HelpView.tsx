@@ -181,7 +181,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 {isFr ? 'Cas d’École Réel' : 'Real-Life Case Study'}
               </span>
               <span className="text-xs text-slate-300 font-semibold">
-                {isFr ? 'Mine d’Or Artisanale à Bétaré Oya (Région de l’Est, Cameroun)' : 'Bétaré Oya Artisanal Gold Open Pit (East Region, Cameroon)'}
+                {isFr ? 'Exemple : Fosse d’or artisanale, données de démonstration synthétiques' : 'Example: artisanal gold open pit, synthetic demo data'}
               </span>
             </div>
 
@@ -439,7 +439,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 )}
               </p>
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900">
-                <strong>{isFr ? 'Exemple réel à Bétaré Oya :' : 'Real Example:'}</strong>{' '}
+                <strong>{isFr ? 'Exemple : Fosse d’or artisanale, données de démonstration synthétiques' : 'Example: artisanal gold open pit, synthetic demo data'}</strong>{' '}
                 {isFr
                   ? 'Un vol de drone à 35m d’altitude au-dessus d’un tas de 25 000 m³ révèle que le secteur 3 (pied de talus) contient 18.5% de blocs > 600 mm en raison d’un pied de gradin trop résistant. Le chef de fosse envoie immédiatement une pelle avec BRH dégager le pied avant l’arrivée des camions de transport.'
                   : 'A 35m drone flight over a 25,000 m³ granodiorite muckpile identified 18.5% oversize at the toe due to toe stiffness. Excavator crews pre-dispatched a hydraulic rockbreaker before haul trucks were delayed.'}

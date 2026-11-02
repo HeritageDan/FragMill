@@ -8,7 +8,7 @@
 
 **FragMill** is an open-source, production-grade geotechnical web application designed to measure rock fragment size distributions directly from muck pile photographs, linking fragmentation to blast design parameters, crushing/milling energy consumption, and gold recovery.
 
-Developed specifically for research and field operations in Cameroon and Central Africa (such as the **Bétaré Oya Gold District**), FragMill provides an accessible alternative to commercial desktop tools (e.g., WipFrag, Split-Desktop). It requires **no server backend**, operates **100% offline** in remote mine pits, and runs directly inside any modern web browser on smartphones, tablets, or laptops.
+Developed specifically for research and field operations in artisanal and small-scale mining districts, FragMill provides an accessible alternative to commercial desktop tools (e.g., WipFrag, Split-Desktop). It requires **no server backend**, operates **100% offline** in remote mine pits, and runs directly inside any modern web browser on smartphones, tablets, or laptops.
 
 ---
 
@@ -100,7 +100,7 @@ Generates optimized static web assets inside the `dist/` directory ready for dep
 ## Pre-Loaded Demo Dataset
 
 FragMill initializes with synthetic, calibrated demonstration datasets modeled on artisanal and small-scale gold mining operations in Cameroon:
-- **Project**: *Bétaré Oya Mine-to-Mill Pilot (Synthetic Demo Dataset)* (East Region, Cameroon).
+- **Project**: *Mine-to-Mill Demo (synthetic)* (Demo site).
 - **Site**: *Pit #3 Granodiorite Bench* ($\rho = 2.68\ \text{t/m}^3$, joint spacing $0.50\ \text{m}$).
 - **Blast BL-2026-001**: Coarse fragmentation scenario ($P_{80} = 285\ \text{mm}$, jaw crusher bridging, comminution energy $22.6\ \text{kWh/t}$, gold recovery $82.0\%$).
 - **Blast BL-2026-002**: Optimized blast pattern scenario ($P_{80} = 195\ \text{mm}$, smooth crushing, comminution energy $16.3\ \text{kWh/t}$, peak gold recovery $89.4\%$).

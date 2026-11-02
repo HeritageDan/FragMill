@@ -40,7 +40,7 @@ const ViewLoadingFallback = () => (
 
 const STATIC_FALLBACK_PROJECT: Project = {
   id: 'proj-1',
-  name: 'Projet Bétaré Oya',
+  name: 'Demo Project',
   description: 'Artisanal Gold Mining',
   createdAt: 1711843200000,
   updatedAt: 1711843200000,
@@ -49,8 +49,8 @@ const STATIC_FALLBACK_PROJECT: Project = {
 const STATIC_FALLBACK_SITE: Site = {
   id: 'site-1',
   projectId: 'proj-1',
-  name: 'Carrière Principale Bétaré Oya',
-  locationText: 'Est-Cameroun',
+  name: 'Demo Site',
+  locationText: 'Demo site (synthetic)',
   createdAt: 1711843200000,
   updatedAt: 1711843200000,
 };
