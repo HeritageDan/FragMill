@@ -7,7 +7,7 @@ import type {
   OrganisationProfile,
 } from '../../types/geolab';
 import type { GeoLabTestDefinition } from '../tests/types';
-import type { ProctorInput, ProctorResults } from '../tests/proctor';
+import type { ProctorInput, ProctorResults, ProctorFitMethod } from '../tests/proctor';
 import type { GrainSizeInput, GrainSizeResults } from '../tests/grainSize';
 import type { WaterContentInput, WaterContentResults } from '../tests/waterContent';
 
@@ -222,6 +222,16 @@ function buildProctorSheet(
   const summaryStartRow = lastDataRow + 2;
 
   // Key Results Summary Block
+  const fitMethodLabels: Record<string, { en: string; fr: string }> = {
+    quadratic: { en: 'Polynomial degree 2 (quadratic)', fr: 'Polynôme degré 2 (quadratique)' },
+    cubic: { en: 'Polynomial degree 3 (cubique)', fr: 'Polynôme degré 3 (cubique)' },
+    quartic: { en: 'Polynomial degree 4 (quartic)', fr: 'Polynôme degré 4 (quartique)' },
+    manual: { en: 'Manually entered value', fr: 'Valeur saisie manuellement' },
+  };
+  const fitMethodDisplay = fitMethodLabels[res.fitMethod]
+    ? fitMethodLabels[res.fitMethod][lang]
+    : (res.fitMethod === 'manual' ? (lang === 'fr' ? 'Valeur saisie manuellement' : 'Manually entered value') : res.fitMethod);
+
   rowsXml += `
   <row r="${summaryStartRow}">
     <c r="A${summaryStartRow}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'PARAMÈTRE OPM' : 'OPM PARAMETER'}</t></is></c>
@@ -242,10 +252,15 @@ function buildProctorSheet(
     <c r="A${summaryStartRow + 3}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Densité sèche cible (95% OPM)' : 'Target Dry Density (95% OPM)'}</t></is></c>
     <c r="B${summaryStartRow + 3}" s="11"><f>B${summaryStartRow + 2}*0.95</f><v>${res.targetDryDensityGcm3}</v></c>
     <c r="C${summaryStartRow + 3}" t="inlineStr"><is><t>g/cm³</t></is></c>
+  </row>
+  <row r="${summaryStartRow + 4}">
+    <c r="A${summaryStartRow + 4}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? "Méthode d'ajustement :" : 'Fit Method:'}</t></is></c>
+    <c r="B${summaryStartRow + 4}" t="inlineStr"><is><t>${escapeXml(fitMethodDisplay)}</t></is></c>
+    <c r="C${summaryStartRow + 4}" t="inlineStr"><is><t>${res.fittedCoefficients?.r2 ? `R² = ${res.fittedCoefficients.r2}` : ''}</t></is></c>
   </row>`;
 
   // Observations / Signatures
-  const obsRow = summaryStartRow + 5;
+  const obsRow = summaryStartRow + 6;
   rowsXml += `
   <row r="${obsRow}">
     <c r="A${obsRow}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Observations :' : 'Observations:'}</t></is></c>
@@ -280,17 +295,25 @@ function buildProctorSheet(
 </worksheet>`;
 
   // Build DrawingML Chart (Scatter chart with polynomial compaction curve and saturation curve)
-  const chartXml = buildProctorChartXml(10, lastDataRow, lang);
+  const chartXml = buildProctorChartXml(10, lastDataRow, lang, res.fitMethod, res.fittedCoefficients?.polynomialOrder);
 
   return { sheetXml, chartXml, hasChart: true };
 }
 
-function buildProctorChartXml(startRow: number, endRow: number, lang: 'en' | 'fr'): string {
+function buildProctorChartXml(
+  startRow: number,
+  endRow: number,
+  lang: 'en' | 'fr',
+  fitMethod: ProctorFitMethod = 'quadratic',
+  polyOrder: number = 2
+): string {
   const chartTitle = lang === 'fr' ? 'COURBE PROCTOR ET SATURATION' : 'PROCTOR COMPACTION CURVE';
   const ser1Title = lang === 'fr' ? 'Points Proctor' : 'Proctor Points';
   const ser2Title = lang === 'fr' ? 'Ligne de Saturation (Sr=100%)' : 'Saturation Line (Sr=100%)';
   const xTitle = lang === 'fr' ? 'Teneur en eau w (%)' : 'Moisture content w (%)';
   const yTitle = lang === 'fr' ? 'Densité sèche ρd (g/cm³)' : 'Dry density ρd (g/cm³)';
+
+  const effectiveOrder = polyOrder || (fitMethod === 'quartic' ? 4 : fitMethod === 'cubic' ? 3 : 2);
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -308,7 +331,7 @@ function buildProctorChartXml(startRow: number, endRow: number, lang: 'en' | 'fr
           <c:marker><c:symbol val="circle"/><c:size val="7"/></c:marker>
           <c:trendline>
             <c:trendlineType val="poly"/>
-            <c:order val="2"/>
+            <c:order val="${effectiveOrder}"/>
             <c:dispRSqr val="0"/>
             <c:dispEq val="0"/>
           </c:trendline>

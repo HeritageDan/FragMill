@@ -47,8 +47,10 @@ describe('GeoLab Excel Template & Upload Parser', () => {
     expect(result.success).toBe(true);
     expect(result.errors.length).toBe(0);
     expect(result.rawInput?.points.length).toBe(5);
-    expect(result.computedResults?.opmMoisturePercent).toBeCloseTo(7.3, 1);
-    expect(result.computedResults?.maxDryDensityGcm3).toBeCloseTo(2.225, 3);
+    expect(result.rawInput?.manualOpmMoisturePercent).toBeCloseTo(7.3, 1);
+    expect(result.rawInput?.manualOpmDryDensityGcm3).toBeCloseTo(2.225, 3);
+    expect(result.computedResults?.opmMoisturePercent).toBeCloseTo(7.57, 2);
+    expect(result.computedResults?.maxDryDensityGcm3).toBeCloseTo(2.214, 3);
   });
 
   it('directly parses and validates real lab file Classeur1.xlsx for Grain Size', async () => {

@@ -44,8 +44,8 @@ describe('GeoLab AI Narrative Engine', () => {
     });
 
     expect(textFr).toContain('[Rédigé par IA, à valider par l\'ingénieur responsable]');
-    expect(textFr).toContain('7.3 %');
-    expect(textFr).toContain('2.225 g/cm³');
+    expect(textFr).toContain(`${computedResults.opmMoisturePercent} %`);
+    expect(textFr).toContain(`${computedResults.maxDryDensityGcm3} g/cm³`);
 
     const textEn = await generateGeoLabNarrative({
       analysis,
@@ -54,8 +54,8 @@ describe('GeoLab AI Narrative Engine', () => {
     });
 
     expect(textEn).toContain('[AI-drafted, to be reviewed by the responsible engineer]');
-    expect(textEn).toContain('7.3%');
-    expect(textEn).toContain('2.225 g/cm³');
+    expect(textEn).toContain(`${computedResults.opmMoisturePercent}%`);
+    expect(textEn).toContain(`${computedResults.maxDryDensityGcm3} g/cm³`);
   });
 });
 

@@ -287,24 +287,39 @@ function renderProctorPdfSection(
   // KPI Card
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(prR, prG, prB);
-  doc.roundedRect(startX, startY, leftWidth, 22, 1.5, 1.5, 'FD');
+  doc.roundedRect(startX, startY, leftWidth, 26, 1.5, 1.5, 'FD');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(prR, prG, prB);
   doc.text(lang === 'fr' ? 'RÉSULTATS ESSAI PROCTOR' : 'PROCTOR OPTIMUM RESULTS', startX + 4, startY + 5);
 
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setTextColor(15, 23, 42);
-  doc.text(`w_opm = ${res.opmMoisturePercent} %`, startX + 4, startY + 12);
-  doc.text(`ρd_opm = ${res.maxDryDensityGcm3} g/cm³`, startX + 4, startY + 18);
+  doc.text(`w_opm = ${res.opmMoisturePercent} %`, startX + 4, startY + 11.5);
+  doc.text(`ρd_opm = ${res.maxDryDensityGcm3} g/cm³`, startX + 4, startY + 17);
 
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
-  doc.text(`95% ρd = ${res.targetDryDensityGcm3} g/cm³`, startX + 48, startY + 18);
+  doc.text(`95% ρd = ${res.targetDryDensityGcm3} g/cm³`, startX + 46, startY + 17);
+
+  const fitMethodLabels: Record<string, { en: string; fr: string }> = {
+    quadratic: { en: 'Polynomial deg. 2 (quadratic)', fr: 'Polynôme deg. 2 (quadratique)' },
+    cubic: { en: 'Polynomial deg. 3 (cubic)', fr: 'Polynôme deg. 3 (cubique)' },
+    quartic: { en: 'Polynomial deg. 4 (quartic)', fr: 'Polynôme deg. 4 (quartique)' },
+    manual: { en: 'Manually entered value', fr: 'Valeur saisie manuellement' },
+  };
+  const fitLabel = fitMethodLabels[res.fitMethod]
+    ? fitMethodLabels[res.fitMethod][lang]
+    : (res.fitMethod === 'manual' ? (lang === 'fr' ? 'Valeur saisie manuellement' : 'Manually entered value') : res.fitMethod);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`${lang === 'fr' ? 'Méthode :' : 'Method:'} ${fitLabel}`, startX + 4, startY + 22.5);
 
   // Proctor Points Table
-  let tableY = startY + 26;
+  let tableY = startY + 29;
   doc.setFillColor(prR, prG, prB);
   doc.rect(startX, tableY, leftWidth, 6, 'F');
   doc.setFont('helvetica', 'bold');
@@ -398,14 +413,37 @@ function drawVectorProctorChart(
   // Draw Compaction Curve (Polynomial smooth line)
   doc.setDrawColor(prR, prG, prB);
   doc.setLineWidth(0.8);
-  const sortedPts = pts.slice().sort((a, b) => a.waterContentPercent - b.waterContentPercent);
-  for (let i = 0; i < sortedPts.length - 1; i++) {
-    doc.line(
-      toX(sortedPts[i].waterContentPercent),
-      toY(sortedPts[i].dryDensityGcm3),
-      toX(sortedPts[i + 1].waterContentPercent),
-      toY(sortedPts[i + 1].dryDensityGcm3)
-    );
+  const coeffs = res.fittedCoefficients?.allCoeffs;
+  if (coeffs && coeffs.length >= 3) {
+    const minPtW = Math.min(...pts.map((p) => p.waterContentPercent));
+    const maxPtW = Math.max(...pts.map((p) => p.waterContentPercent));
+    const steps = 30;
+    let prevX = 0;
+    let prevY = 0;
+    for (let s = 0; s <= steps; s++) {
+      const curW = minPtW + (s / steps) * (maxPtW - minPtW);
+      let curRho = 0;
+      for (let d = 0; d < coeffs.length; d++) {
+        curRho += coeffs[d] * Math.pow(curW, d);
+      }
+      const curX = toX(curW);
+      const curY = toY(curRho);
+      if (s > 0) {
+        doc.line(prevX, prevY, curX, curY);
+      }
+      prevX = curX;
+      prevY = curY;
+    }
+  } else {
+    const sortedPts = pts.slice().sort((a, b) => a.waterContentPercent - b.waterContentPercent);
+    for (let i = 0; i < sortedPts.length - 1; i++) {
+      doc.line(
+        toX(sortedPts[i].waterContentPercent),
+        toY(sortedPts[i].dryDensityGcm3),
+        toX(sortedPts[i + 1].waterContentPercent),
+        toY(sortedPts[i + 1].dryDensityGcm3)
+      );
+    }
   }
 
   // Draw Points

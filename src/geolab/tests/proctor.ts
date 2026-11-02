@@ -14,11 +14,14 @@ export interface ProctorPointInput {
   dryDensityGcm3?: number;
 }
 
+export type ProctorFitMethod = 'quadratic' | 'cubic' | 'quartic' | 'manual';
+
 export interface ProctorInput {
   mouldType: 'normal' | 'modified' | 'cbr';
   mouldVolumeCm3: number; // e.g. 948, 944, or 2124
   particleDensityGs: number; // e.g. 2.70, 2.82
   targetCompactionPercent?: number; // e.g. 95%
+  fitMethod?: ProctorFitMethod; // default 'quadratic'
   manualOpmMoisturePercent?: number; // optional manual override
   manualOpmDryDensityGcm3?: number; // optional manual override
   points: ProctorPointInput[];
@@ -35,12 +38,71 @@ export interface ProctorPointResult {
 
 export interface ProctorResults {
   points: ProctorPointResult[];
+  fitMethod: ProctorFitMethod;
   opmMoisturePercent: number; // w_opm %
   maxDryDensityGcm3: number; // ρd_max g/cm3
   targetDryDensityGcm3: number; // 95% of ρd_max
-  fittedCoefficients: { a: number; b: number; c: number; r2: number };
+  fittedCoefficients: {
+    a: number;
+    b: number;
+    c: number;
+    r2: number;
+    polynomialOrder?: number;
+    allCoeffs?: number[];
+  };
   saturationCurve: Array<{ dryDensityGcm3: number; saturationWaterContentPercent: number }>;
   isConform: boolean;
+}
+
+function solveGaussian(A: number[][], B: number[]): number[] | null {
+  const n = B.length;
+  const a = A.map((row) => [...row]);
+  const b = [...B];
+
+  for (let i = 0; i < n; i++) {
+    let maxRow = i;
+    for (let k = i + 1; k < n; k++) {
+      if (Math.abs(a[k][i]) > Math.abs(a[maxRow][i])) maxRow = k;
+    }
+    const tempA = a[i]; a[i] = a[maxRow]; a[maxRow] = tempA;
+    const tempB = b[i]; b[i] = b[maxRow]; b[maxRow] = tempB;
+
+    if (Math.abs(a[i][i]) < 1e-12) return null;
+
+    for (let k = i + 1; k < n; k++) {
+      const factor = a[k][i] / a[i][i];
+      for (let j = i; j < n; j++) a[k][j] -= factor * a[i][j];
+      b[k] -= factor * b[i];
+    }
+  }
+
+  const x = new Array(n).fill(0);
+  for (let i = n - 1; i >= 0; i--) {
+    let sum = b[i];
+    for (let j = i + 1; j < n; j++) sum -= a[i][j] * x[j];
+    x[i] = sum / a[i][i];
+  }
+  return x;
+}
+
+function fitPolynomialCoeffs(points: Array<{ x: number; y: number }>, degree: number): number[] | null {
+  const m = degree + 1;
+  const A = Array.from({ length: m }, () => new Array(m).fill(0));
+  const B = new Array(m).fill(0);
+
+  for (let r = 0; r < m; r++) {
+    for (let c = 0; c < m; c++) {
+      const p = r + c;
+      let sum = 0;
+      for (const pt of points) sum += Math.pow(pt.x, p);
+      A[r][c] = sum;
+    }
+    let sumY = 0;
+    for (const pt of points) sumY += pt.y * Math.pow(pt.x, r);
+    B[r] = sumY;
+  }
+
+  return solveGaussian(A, B);
 }
 
 export const proctorTestDefinition: GeoLabTestDefinition<ProctorInput, ProctorResults> = {
@@ -150,6 +212,19 @@ export const proctorTestDefinition: GeoLabTestDefinition<ProctorInput, ProctorRe
         max: 105,
       },
       {
+        key: 'fitMethod',
+        label: { en: 'Compaction Curve Fit Method', fr: 'Méthode d’ajustement de la courbe' },
+        type: 'select',
+        required: false,
+        defaultValue: 'quadratic',
+        options: [
+          { value: 'quadratic', label: { en: 'Polynomial Degree 2 (Quadratic)', fr: 'Polynôme Degré 2 (Quadratique)' } },
+          { value: 'cubic', label: { en: 'Polynomial Degree 3 (Cubic)', fr: 'Polynôme Degré 3 (Cubique)' } },
+          { value: 'quartic', label: { en: 'Polynomial Degree 4 (Quartic Interpolation)', fr: 'Polynôme Degré 4 (Interpolation Quartique)' } },
+          { value: 'manual', label: { en: 'Manual Entry (Visual Curve Fit)', fr: 'Saisie manuelle (Ajustement visuel)' } },
+        ],
+      },
+      {
         key: 'manualOpmMoisturePercent',
         label: { en: 'Confirmed OPM Moisture (w_opm)', fr: 'Teneur en eau OPM confirmée (w_opm)' },
         type: 'number',
@@ -243,70 +318,100 @@ export const proctorTestDefinition: GeoLabTestDefinition<ProctorInput, ProctorRe
       };
     });
 
-    // Fit quadratic polynomial: rho_d = a * w^2 + b * w + c
-    let sumX4 = 0, sumX3 = 0, sumX2 = 0, sumX = 0, n = computedPoints.length;
-    let sumX2Y = 0, sumXY = 0, sumY = 0;
+    // Polynomial curve fitting and optimum determination
+    const requestedFitMethod = input.fitMethod || 'quadratic';
+    let effectiveFitMethod: ProctorFitMethod = requestedFitMethod;
 
-    for (const pt of computedPoints) {
-      const x = pt.waterContentPercent;
-      const y = pt.dryDensityGcm3;
-      const x2 = x * x;
-      sumX += x;
-      sumX2 += x2;
-      sumX3 += x2 * x;
-      sumX4 += x2 * x2;
-      sumY += y;
-      sumXY += x * y;
-      sumX2Y += x2 * y;
+    const fitPts = computedPoints.map((p) => ({ x: p.waterContentPercent, y: p.dryDensityGcm3 }));
+    const n = fitPts.length;
+
+    let targetDegree = 2;
+    if (requestedFitMethod === 'quartic') {
+      targetDegree = n >= 5 ? 4 : (n >= 4 ? 3 : 2);
+    } else if (requestedFitMethod === 'cubic') {
+      targetDegree = n >= 4 ? 3 : 2;
+    } else {
+      targetDegree = 2;
+    }
+
+    let coeffs = n >= 3 ? fitPolynomialCoeffs(fitPts, targetDegree) : null;
+    if (!coeffs && targetDegree > 2) {
+      targetDegree = 2;
+      coeffs = n >= 3 ? fitPolynomialCoeffs(fitPts, 2) : null;
     }
 
     let a = 0, b = 0, c = 0, r2 = 0;
-    if (n >= 3) {
-      const D =
-        sumX4 * (sumX2 * n - sumX * sumX) -
-        sumX3 * (sumX3 * n - sumX * sumX2) +
-        sumX2 * (sumX3 * sumX - sumX2 * sumX2);
-
-      if (Math.abs(D) > 1e-12) {
-        const Da =
-          sumX2Y * (sumX2 * n - sumX * sumX) -
-          sumX3 * (sumXY * n - sumX * sumY) +
-          sumX2 * (sumXY * sumX - sumX2 * sumY);
-
-        const Db =
-          sumX4 * (sumXY * n - sumX * sumY) -
-          sumX2Y * (sumX3 * n - sumX * sumX2) +
-          sumX2 * (sumX3 * sumY - sumXY * sumX2);
-
-        const Dc =
-          sumX4 * (sumX2 * sumY - sumXY * sumX) -
-          sumX3 * (sumX3 * sumY - sumXY * sumX2) +
-          sumX2Y * (sumX3 * sumX - sumX2 * sumX2);
-
-        a = Da / D;
-        b = Db / D;
-        c = Dc / D;
-
-        // Compute R^2
-        const yMean = sumY / n;
-        let ssTot = 0, ssRes = 0;
-        for (const pt of computedPoints) {
-          const x = pt.waterContentPercent;
-          const y = pt.dryDensityGcm3;
-          const yPred = a * x * x + b * x + c;
-          ssTot += (y - yMean) ** 2;
-          ssRes += (y - yPred) ** 2;
-        }
-        r2 = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 0;
-      }
-    }
-
     let autoWopm = 0;
     let autoRhoMax = 0;
 
-    if (a < 0 && Math.abs(a) > 1e-9) {
-      autoWopm = -b / (2 * a);
-      autoRhoMax = a * autoWopm * autoWopm + b * autoWopm + c;
+    if (coeffs && coeffs.length >= 3) {
+      c = coeffs[0];
+      b = coeffs[1];
+      a = coeffs[coeffs.length - 1];
+
+      if (targetDegree === 2 && coeffs[2] < 0) {
+        autoWopm = -coeffs[1] / (2 * coeffs[2]);
+        autoRhoMax = coeffs[2] * autoWopm * autoWopm + coeffs[1] * autoWopm + coeffs[0];
+      } else {
+        // Coarse grid search on [minW, maxW]
+        const minW = Math.max(0, Math.min(...fitPts.map((p) => p.x)) - 1);
+        const maxW = Math.max(...fitPts.map((p) => p.x)) + 1;
+        let bestW = minW;
+        let bestY = -Infinity;
+
+        for (let w = minW; w <= maxW; w += 0.01) {
+          let y = 0;
+          for (let d = 0; d < coeffs.length; d++) {
+            y += coeffs[d] * Math.pow(w, d);
+          }
+          if (y > bestY) {
+            bestY = y;
+            bestW = w;
+          }
+        }
+
+        // Newton-Raphson refinement for P'(w) = 0
+        let refinedW = bestW;
+        for (let iter = 0; iter < 10; iter++) {
+          let pPrime = 0;
+          let pDoublePrime = 0;
+          for (let d = 1; d < coeffs.length; d++) {
+            pPrime += d * coeffs[d] * Math.pow(refinedW, d - 1);
+            if (d >= 2) {
+              pDoublePrime += d * (d - 1) * coeffs[d] * Math.pow(refinedW, d - 2);
+            }
+          }
+          if (Math.abs(pDoublePrime) < 1e-12) break;
+          const step = pPrime / pDoublePrime;
+          refinedW -= step;
+          if (Math.abs(step) < 1e-6) break;
+        }
+
+        if (refinedW >= minW && refinedW <= maxW) {
+          let y = 0;
+          for (let d = 0; d < coeffs.length; d++) {
+            y += coeffs[d] * Math.pow(refinedW, d);
+          }
+          autoWopm = refinedW;
+          autoRhoMax = y;
+        } else {
+          autoWopm = bestW;
+          autoRhoMax = bestY;
+        }
+      }
+
+      // Compute R^2
+      const yMean = fitPts.reduce((sum, p) => sum + p.y, 0) / n;
+      let ssTot = 0, ssRes = 0;
+      for (const pt of fitPts) {
+        let yPred = 0;
+        for (let d = 0; d < coeffs.length; d++) {
+          yPred += coeffs[d] * Math.pow(pt.x, d);
+        }
+        ssTot += (pt.y - yMean) ** 2;
+        ssRes += (pt.y - yPred) ** 2;
+      }
+      r2 = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 0;
     } else {
       // Fallback: pick the highest measured point
       let maxPt = computedPoints[0];
@@ -319,15 +424,25 @@ export const proctorTestDefinition: GeoLabTestDefinition<ProctorInput, ProctorRe
       autoRhoMax = maxPt ? maxPt.dryDensityGcm3 : 0;
     }
 
-    const opmMoisturePercent =
-      input.manualOpmMoisturePercent !== undefined && input.manualOpmMoisturePercent !== null && input.manualOpmMoisturePercent > 0
-        ? Number(input.manualOpmMoisturePercent)
-        : Number(autoWopm.toFixed(2));
+    let opmMoisturePercent = Number(autoWopm.toFixed(2));
+    let maxDryDensityGcm3 = Number(autoRhoMax.toFixed(3));
 
-    const maxDryDensityGcm3 =
-      input.manualOpmDryDensityGcm3 !== undefined && input.manualOpmDryDensityGcm3 !== null && input.manualOpmDryDensityGcm3 > 0
-        ? Number(input.manualOpmDryDensityGcm3)
-        : Number(autoRhoMax.toFixed(3));
+    if (requestedFitMethod === 'manual') {
+      if (
+        input.manualOpmMoisturePercent !== undefined &&
+        input.manualOpmMoisturePercent !== null &&
+        input.manualOpmMoisturePercent > 0 &&
+        input.manualOpmDryDensityGcm3 !== undefined &&
+        input.manualOpmDryDensityGcm3 !== null &&
+        input.manualOpmDryDensityGcm3 > 0
+      ) {
+        opmMoisturePercent = Number(input.manualOpmMoisturePercent.toFixed(2));
+        maxDryDensityGcm3 = Number(input.manualOpmDryDensityGcm3.toFixed(3));
+        effectiveFitMethod = 'manual';
+      } else {
+        effectiveFitMethod = 'quadratic';
+      }
+    }
 
     const targetRatio = (input.targetCompactionPercent || 95) / 100;
     const targetDryDensityGcm3 = Number((maxDryDensityGcm3 * targetRatio).toFixed(3));
@@ -360,6 +475,7 @@ export const proctorTestDefinition: GeoLabTestDefinition<ProctorInput, ProctorRe
 
     return {
       points: computedPoints,
+      fitMethod: effectiveFitMethod,
       opmMoisturePercent,
       maxDryDensityGcm3,
       targetDryDensityGcm3,
@@ -368,6 +484,8 @@ export const proctorTestDefinition: GeoLabTestDefinition<ProctorInput, ProctorRe
         b: Number(b.toFixed(5)),
         c: Number(c.toFixed(4)),
         r2: Number(r2.toFixed(3)),
+        polynomialOrder: targetDegree,
+        allCoeffs: coeffs ? coeffs.map((k) => Number(k.toFixed(8))) : undefined,
       },
       saturationCurve,
       isConform: maxDryDensityGcm3 >= targetDryDensityGcm3,
@@ -435,6 +553,28 @@ export const proctorTestDefinition: GeoLabTestDefinition<ProctorInput, ProctorRe
         message: {
           en: `Maximum dry density ${results.maxDryDensityGcm3} g/cm³ is outside standard soil ranges (1.4 - 2.45 g/cm³).`,
           fr: `La densité sèche maximale ${results.maxDryDensityGcm3} g/cm³ se situe hors des plages habituelles des sols (1,4 - 2,45 g/cm³).`,
+        },
+      });
+    }
+
+    if (results.fitMethod === 'quartic') {
+      warnings.push({
+        code: 'PROCTOR_QUARTIC_INTERPOLATION',
+        level: 'warning',
+        message: {
+          en: 'A 4th-degree polynomial through 5 points is an exact interpolation, not a regression; it may oscillate between points.',
+          fr: 'Un polynôme de degré 4 passant par 5 points est une interpolation exacte et non une régression ; il peut osciller entre les points.',
+        },
+      });
+    }
+
+    if (input.fitMethod === 'manual' && (input.manualOpmMoisturePercent == null || input.manualOpmDryDensityGcm3 == null)) {
+      warnings.push({
+        code: 'PROCTOR_MANUAL_INCOMPLETE',
+        level: 'warning',
+        message: {
+          en: 'Manual OPM values missing; fell back to quadratic polynomial fit.',
+          fr: 'Valeurs OPM manuelles incomplètes ; bascule vers l’ajustement polynomial quadratique.',
         },
       });
     }
