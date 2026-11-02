@@ -27,3 +27,4 @@ COPY --from=builder /app/package.json ./package.json
 EXPOSE 8080
 
 CMD ["node", "server.js"]
+
