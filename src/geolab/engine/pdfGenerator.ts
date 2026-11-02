@@ -662,3 +662,4 @@ function renderWaterContentPdfSection(
     tableY += 6;
   });
 }
+

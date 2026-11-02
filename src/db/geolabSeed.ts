@@ -183,3 +183,4 @@ export async function ensureGeoLabDataSeeded(): Promise<void> {
   await db.analyses.put(grainSizeAnalysis);
   await db.analyses.put(waterContentAnalysis);
 }
+

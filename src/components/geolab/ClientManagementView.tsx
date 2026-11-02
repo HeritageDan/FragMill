@@ -407,3 +407,4 @@ export const ClientManagementView: React.FC<Props> = ({ language, onNavigateToPr
     </div>
   );
 };
+

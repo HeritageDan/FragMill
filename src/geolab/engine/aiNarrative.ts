@@ -104,3 +104,4 @@ function getDeterministicNarrative(analysis: GeoLabAnalysis, lang: 'en' | 'fr'):
   }
   return `Natural moisture content determination per ${analysis.standard} via oven drying at 105°C yields a mean water content of ${res.meanWaterContentPercent}%. The difference between duplicate specimens is ${res.differenceBetweenSpecimensPercent}%, satisfying the repeatability threshold of ${res.maxTolerancePercent}%. Recommendation: Use this in-situ moisture baseline to calculate moisture adjustment requirements during earthwork compaction.`;
 }
+

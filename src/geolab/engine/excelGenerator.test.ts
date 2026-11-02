@@ -223,3 +223,4 @@ describe('GeoLab Excel Generator with Native DrawingML Charts', () => {
     expect(sheetXml).toContain('AVERAGE(H9:H10)');
   });
 });
+

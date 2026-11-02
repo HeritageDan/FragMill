@@ -400,3 +400,4 @@ export const AnalysisDetailView: React.FC<Props> = ({
     </div>
   );
 };
+

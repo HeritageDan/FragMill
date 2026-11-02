@@ -58,3 +58,4 @@ describe('GeoLab AI Narrative Engine', () => {
     expect(textEn).toContain('2.225 g/cm³');
   });
 });
+

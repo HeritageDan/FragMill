@@ -129,3 +129,4 @@ describe('GeoLab Golden Tests (Classeur1.xlsx reproduction)', () => {
     expect(results.repeatabilityAccepted).toBe(true);
   });
 });
+

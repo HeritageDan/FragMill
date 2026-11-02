@@ -302,3 +302,4 @@ export const waterContentTestDefinition: GeoLabTestDefinition<WaterContentInput,
     dryingTemperatureC: input.dryingTemperatureC || 105,
   }),
 };
+

@@ -70,3 +70,4 @@ describe('GeoLab Excel Template & Upload Parser', () => {
     expect(result.computedResults?.meanWaterContentPercent).toBeCloseTo(10.7, 1);
   });
 });
+

@@ -169,3 +169,4 @@ export interface ReportBlockDefinition {
   chartConfig?: ReportChartConfig;
   conformityItemsKey?: string;
 }
+

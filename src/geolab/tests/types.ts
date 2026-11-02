@@ -66,3 +66,4 @@ export interface GeoLabTestDefinition<TInput = any, TResults = any> {
   reportLayout: ReportBlockDefinition[];
   aiPromptContext: (input: TInput, results: TResults) => Record<string, any>;
 }
+

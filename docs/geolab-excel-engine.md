@@ -49,3 +49,4 @@ Enable GeoLab to generate production-grade, branded `.xlsx` geotechnical laborat
 2. **Lightweight Footprint**: 64 kB vs 24 MB download. Crucial for mining site laptops, field tablets, and slow satellite connections.
 3. **Resilience**: Zero risk of WebAssembly compilation failures or memory limits on mobile/embedded browsers.
 4. **Authenticity**: Generates identical DrawingML structures to those found in the reference laboratory workbook (`Classeur1.xlsx`), including native scatter charts, polynomial compaction curves, and saturation asymptotes.
+

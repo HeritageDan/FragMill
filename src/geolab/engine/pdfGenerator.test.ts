@@ -188,3 +188,4 @@ describe('GeoLab PDF Generator with Vector Charts and Branding', () => {
     expect(blob.size).toBeGreaterThan(1000);
   });
 });
+

@@ -811,3 +811,4 @@ function getAppPropsXml(): string {
   <DocSecurity>0</DocSecurity>
 </Properties>`;
 }
+
