@@ -1,6 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { db, getSettings, saveSettings, DEFAULT_SETTINGS } from './db';
 import { seedDemoProject } from './db/seedData';
+import { seedGeoLabDemoData } from './db/geolabSeed';
 import { generateDefaultDrillHolesFromBlast } from './services/drillHoles/drillHoleService';
 import type {
   Project,
@@ -448,6 +449,7 @@ function AppContent() {
 
   const handleLoadDemoProject = async () => {
     await seedDemoProject();
+    await seedGeoLabDemoData();
     await loadDatabase();
   };
 

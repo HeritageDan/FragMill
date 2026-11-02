@@ -1,34 +1,27 @@
-import { db, DEFAULT_ORGANISATION_PROFILE, getOrganisationProfile, saveOrganisationProfile } from './index';
+import { db } from './index';
 import { proctorTestDefinition } from '../geolab/tests/proctor';
 import { grainSizeTestDefinition } from '../geolab/tests/grainSize';
 import { waterContentTestDefinition } from '../geolab/tests/waterContent';
 import type { GeoLabClient, GeoLabProject, GeoLabSample, GeoLabAnalysis } from '../types/geolab';
 
-export async function ensureGeoLabDataSeeded(): Promise<void> {
-  const profile = await getOrganisationProfile();
-  if (!profile.companyName) {
-    await saveOrganisationProfile(DEFAULT_ORGANISATION_PROFILE);
-  }
-
-  const clientCount = await db.clients.count();
-  if (clientCount > 0) return;
-
+export async function seedGeoLabDemoData(): Promise<void> {
   const clientId = 'client-demo-1';
   const projectId = 'proj-demo-1';
   const sampleId = 'sample-demo-1';
 
   const demoClient: GeoLabClient = {
     id: clientId,
-    companyName: 'Bouygues Travaux Publics',
-    contactPerson: 'Pierre Moreau',
+    companyName: 'Demo Client',
+    contactPerson: 'Pierre Moreau (Demo)',
     jobTitle: 'Chef de Projet Géotechnique',
-    email: 'pmoreau@bouygues-tp.com',
+    email: 'contact@demo-client.com',
     phone: '+33 1 30 60 20 00',
-    address: '1 Avenue Eugène Freyssinet',
-    city: 'Guyancourt',
+    address: '1 Avenue de la Démonstration',
+    city: 'Paris',
     country: 'France',
     taxRegistrationNumber: 'FR 44 380 409 982',
     isArchived: false,
+    isDemo: true,
     createdAt: '2026-10-15T08:00:00.000Z',
     updatedAt: '2026-10-15T08:00:00.000Z',
   };
@@ -36,11 +29,22 @@ export async function ensureGeoLabDataSeeded(): Promise<void> {
   const demoProject: GeoLabProject = {
     id: projectId,
     clientId,
-    projectName: 'Autoroute A10 - Élargissement PK 40+800',
-    siteLocation: 'PK 40+800 Côté Gauche',
-    referenceNumber: 'CTR-2026-A10-09',
+    projectName: 'Demo Project (Autoroute A10 - PK 40+800)',
+    siteLocation: 'PK 40+800 Côté Gauche (DEMO)',
+    referenceNumber: 'DEMO-CTR-2026-A10',
     startDate: '2026-10-15',
     isArchived: false,
+    isDemo: true,
+    programmeTitle: 'Programme Démonstration Travaux Publics',
+    lotSection: 'Lot 1 - Section PK 40+800',
+    contractNumber: 'MARCHE-DEMO-2026',
+    tenderNumber: 'AO-DEMO-001',
+    financingText: 'Financement Démonstration / Demo Funding',
+    parties: [
+      { role: "Maître d'Ouvrage (Client)", name: 'Direction des Routes (Demo)', contact: 'contact@demo.gov' },
+      { role: 'Bureau de Contrôle', name: 'Contrôle Technique BTP (Demo)', contact: 'ct@demo.org' },
+      { role: 'Entreprise Mandataire', name: 'Entreprise Générale BTP (Demo)', contact: 'eg@demo.com' },
+    ],
     createdAt: '2026-10-15T09:00:00.000Z',
     updatedAt: '2026-10-15T09:00:00.000Z',
   };
@@ -48,9 +52,9 @@ export async function ensureGeoLabDataSeeded(): Promise<void> {
   const demoSample: GeoLabSample = {
     id: sampleId,
     projectId,
-    sampleId: 'Puit 1 (Sable sableuse)',
+    sampleId: 'DEMO-P1 (Sable sableuse)',
     depth: '1.50 - 2.50 m',
-    location: 'Sondage P1 - PK 40+800',
+    location: 'Sondage P1 - PK 40+800 (DEMO)',
     samplingDate: '2026-10-20',
     sampler: 'E. Martin',
     materialType: 'Sable sableuse (Sm / A3 / D1)',
@@ -86,7 +90,7 @@ export async function ensureGeoLabDataSeeded(): Promise<void> {
     sampleId,
     testType: 'proctor',
     standard: 'NF P94-093',
-    reportNumber: 'GL-2026-0001',
+    reportNumber: 'DEMO-GL-2026-0001',
     version: 1,
     status: 'approved',
     testedDate: '2026-10-22',
@@ -94,10 +98,21 @@ export async function ensureGeoLabDataSeeded(): Promise<void> {
     rawInput: proctorInput,
     computedResults: proctorResults,
     qualityWarnings: proctorWarnings,
-    observations: 'Essai Proctor conforme aux spécifications géotechniques. La densité sèche maximale atteint 2,225 g/cm³ à 7,3% d\'optimum hydrique.',
+    observations: '[DEMO] Essai Proctor conforme aux spécifications géotechniques (données de démonstration).',
     preparedBy: { name: 'J. Dupont', title: 'Technicien Géotechnique', date: '2026-10-22' },
     checkedBy: { name: 'M. Lambert, EurGeol', title: 'Responsable Assurance Qualité', date: '2026-10-23' },
     approvedBy: { name: 'Dr. H. Kemekong, P.Eng', title: 'Directeur Technique', date: '2026-10-23' },
+    isDemo: true,
+    revisionHistory: [
+      {
+        index: 1,
+        date: '2026-10-22',
+        natureOfChange: 'Émission initiale (Démonstration)',
+        preparedBy: 'J. Dupont',
+        checkedBy: 'M. Lambert, EurGeol',
+        approvedBy: 'Dr. H. Kemekong, P.Eng',
+      },
+    ],
     createdAt: '2026-10-22T14:00:00.000Z',
     updatedAt: '2026-10-23T10:00:00.000Z',
   };
@@ -129,7 +144,7 @@ export async function ensureGeoLabDataSeeded(): Promise<void> {
     sampleId,
     testType: 'grain_size',
     standard: 'NF P94-056',
-    reportNumber: 'GL-2026-0002',
+    reportNumber: 'DEMO-GL-2026-0002',
     version: 1,
     status: 'approved',
     testedDate: '2026-10-23',
@@ -137,10 +152,21 @@ export async function ensureGeoLabDataSeeded(): Promise<void> {
     rawInput: grainSizeInput,
     computedResults: grainSizeResults,
     qualityWarnings: grainSizeWarnings,
-    observations: 'Matériau sableux propre à granularité continue. Classification LCPC : Sm (Sable propre mal gradué) ; GTR : D1 (Sol insensible à l\'eau).',
+    observations: '[DEMO] Matériau sableux propre à granularité continue. Classification LCPC : Sm (Sable propre mal gradué) ; GTR : D1 (Sol insensible à l\'eau).',
     preparedBy: { name: 'J. Dupont', title: 'Technicien Géotechnique', date: '2026-10-23' },
     checkedBy: { name: 'M. Lambert, EurGeol', title: 'Responsable Assurance Qualité', date: '2026-10-24' },
     approvedBy: { name: 'Dr. H. Kemekong, P.Eng', title: 'Directeur Technique', date: '2026-10-24' },
+    isDemo: true,
+    revisionHistory: [
+      {
+        index: 1,
+        date: '2026-10-23',
+        natureOfChange: 'Émission initiale (Démonstration)',
+        preparedBy: 'J. Dupont',
+        checkedBy: 'M. Lambert, EurGeol',
+        approvedBy: 'Dr. H. Kemekong, P.Eng',
+      },
+    ],
     createdAt: '2026-10-23T11:00:00.000Z',
     updatedAt: '2026-10-24T09:00:00.000Z',
   };
@@ -163,7 +189,7 @@ export async function ensureGeoLabDataSeeded(): Promise<void> {
     sampleId,
     testType: 'water_content',
     standard: 'NF P94-050',
-    reportNumber: 'GL-2026-0003',
+    reportNumber: 'DEMO-GL-2026-0003',
     version: 1,
     status: 'approved',
     testedDate: '2026-10-24',
@@ -171,10 +197,21 @@ export async function ensureGeoLabDataSeeded(): Promise<void> {
     rawInput: waterContentInput,
     computedResults: waterContentResults,
     qualityWarnings: waterContentWarnings,
-    observations: 'Teneur en eau naturelle conforme aux sondages de reconnaissance géotechnique.',
+    observations: '[DEMO] Teneur en eau naturelle conforme aux sondages de reconnaissance géotechnique.',
     preparedBy: { name: 'J. Dupont', title: 'Technicien Géotechnique', date: '2026-10-24' },
     checkedBy: { name: 'M. Lambert, EurGeol', title: 'Responsable Assurance Qualité', date: '2026-10-24' },
     approvedBy: { name: 'Dr. H. Kemekong, P.Eng', title: 'Directeur Technique', date: '2026-10-24' },
+    isDemo: true,
+    revisionHistory: [
+      {
+        index: 1,
+        date: '2026-10-24',
+        natureOfChange: 'Émission initiale (Démonstration)',
+        preparedBy: 'J. Dupont',
+        checkedBy: 'M. Lambert, EurGeol',
+        approvedBy: 'Dr. H. Kemekong, P.Eng',
+      },
+    ],
     createdAt: '2026-10-24T12:00:00.000Z',
     updatedAt: '2026-10-24T15:00:00.000Z',
   };
@@ -184,3 +221,4 @@ export async function ensureGeoLabDataSeeded(): Promise<void> {
   await db.analyses.put(waterContentAnalysis);
 }
 
+export const ensureGeoLabDataSeeded = seedGeoLabDemoData;

@@ -5,7 +5,7 @@ import { NewAnalysisView } from './NewAnalysisView';
 import { ReportsListView } from './ReportsListView';
 import { AnalysisDetailView } from './AnalysisDetailView';
 import { OrganisationProfileView } from './OrganisationProfileView';
-import { ensureGeoLabDataSeeded } from '../../db/geolabSeed';
+import { seedGeoLabDemoData } from '../../db/geolabSeed';
 import {
   Users,
   FolderOpen,
@@ -13,6 +13,7 @@ import {
   FileSpreadsheet,
   Building2,
   ArrowRightLeft,
+  Sparkles,
 } from 'lucide-react';
 
 export type GeoLabTab = 'clients' | 'projects' | 'new_analysis' | 'reports' | 'profile' | 'analysis_detail';
@@ -27,10 +28,12 @@ export const GeoLabShell: React.FC<Props> = ({ language, onSwitchToFragMill }) =
   const [selectedSampleIdForNewAnalysis, setSelectedSampleIdForNewAnalysis] = useState<string | undefined>(undefined);
   const [selectedAnalysisIdForDetail, setSelectedAnalysisIdForDetail] = useState<string | null>(null);
   const [selectedClientIdForProjects, setSelectedClientIdForProjects] = useState<string | undefined>(undefined);
+  const [dataVersion, setDataVersion] = useState(0);
 
-  useEffect(() => {
-    ensureGeoLabDataSeeded();
-  }, []);
+  const handleLoadDemo = async () => {
+    await seedGeoLabDemoData();
+    setDataVersion((v) => v + 1);
+  };
 
   const handleStartAnalysis = (sampleId: string) => {
     setSelectedSampleIdForNewAnalysis(sampleId);
@@ -145,13 +148,22 @@ export const GeoLabShell: React.FC<Props> = ({ language, onSwitchToFragMill }) =
                 <Building2 className="w-3.5 h-3.5" />
                 {language === 'fr' ? 'Profil Laboratoire' : 'Organisation Profile'}
               </button>
+
+              <button
+                onClick={handleLoadDemo}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-300 hover:text-amber-200 hover:bg-slate-800 border border-amber-500/30 transition ml-2"
+                title={language === 'fr' ? 'Charger les données de démonstration' : 'Load Demo Data'}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>{language === 'fr' ? 'Données Démo' : 'Demo Data'}</span>
+              </button>
             </nav>
           </div>
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main key={dataVersion} className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {activeTab === 'clients' && (
           <ClientManagementView
             language={language}

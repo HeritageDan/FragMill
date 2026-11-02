@@ -443,7 +443,7 @@ export const ProjectSampleView: React.FC<Props> = ({
                 </div>
                 <div>
                   <label className="block text-slate-300 font-medium mb-1">
-                    {language === 'fr' ? 'N° Contrat / Commande' : 'Reference / Contract No'}
+                    {language === 'fr' ? 'N° Référence / Réf Interne' : 'Reference / Internal Ref'}
                   </label>
                   <input
                     type="text"
@@ -452,6 +452,74 @@ export const ProjectSampleView: React.FC<Props> = ({
                     className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
                   />
                 </div>
+              </div>
+
+              {/* Extended Project Details */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    {language === 'fr' ? 'Programme / Mission' : 'Programme / Mission'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={language === 'fr' ? 'Ex: Programme National de Réhabilitation' : 'e.g. National Rehabilitation Programme'}
+                    value={editingProject.programmeTitle || ''}
+                    onChange={(e) => setEditingProject({ ...editingProject, programmeTitle: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    {language === 'fr' ? 'Lot / Section' : 'Lot / Section'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={language === 'fr' ? 'Ex: Lot 2 - PK 40 au PK 60' : 'e.g. Lot 2 - Sec. PK 40-60'}
+                    value={editingProject.lotSection || ''}
+                    onChange={(e) => setEditingProject({ ...editingProject, lotSection: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    {language === 'fr' ? 'N° Marché / Contrat' : 'Contract Number'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={language === 'fr' ? 'Ex: CTR-2026/BTP-08' : 'e.g. CTR-2026/BTP-08'}
+                    value={editingProject.contractNumber || ''}
+                    onChange={(e) => setEditingProject({ ...editingProject, contractNumber: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    {language === 'fr' ? 'Appel d’offres n°' : 'Tender Number'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={language === 'fr' ? 'Ex: AO-2026-MINTP-01' : 'e.g. AO-2026-MINTP-01'}
+                    value={editingProject.tenderNumber || ''}
+                    onChange={(e) => setEditingProject({ ...editingProject, tenderNumber: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  {language === 'fr' ? 'Financement (Bailleurs / Ligne budgétaire)' : 'Financing (Funders / Budget line)'}
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder={language === 'fr' ? 'Ex: Banque Mondiale / Budget d’Investissement Public' : 'e.g. World Bank / State Public Investment Budget'}
+                  value={editingProject.financingText || ''}
+                  onChange={(e) => setEditingProject({ ...editingProject, financingText: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white"
+                />
               </div>
 
               <div>

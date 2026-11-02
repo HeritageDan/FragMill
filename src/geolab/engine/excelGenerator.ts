@@ -5,6 +5,7 @@ import type {
   GeoLabProject,
   GeoLabSample,
   OrganisationProfile,
+  AnalysisRevision,
 } from '../../types/geolab';
 import type { GeoLabTestDefinition } from '../tests/types';
 import type { ProctorInput, ProctorResults, ProctorFitMethod } from '../tests/proctor';
@@ -21,6 +22,14 @@ export interface ExcelGenerationOptions {
   language?: 'en' | 'fr';
 }
 
+interface EmbeddedLogo {
+  id: string;
+  fileName: string;
+  b64: string;
+  ext: 'png' | 'jpg';
+  position: 'left' | 'center' | 'right';
+}
+
 function escapeXml(unsafe: any): string {
   if (unsafe === undefined || unsafe === null) return '';
   return String(unsafe)
@@ -32,15 +41,60 @@ function escapeXml(unsafe: any): string {
 }
 
 /**
- * Builds a styled OpenXML spreadsheet with live Excel formulas and native DrawingML charts.
+ * Builds a styled OpenXML spreadsheet with live Excel formulas, embedded logos, and native DrawingML charts.
  */
 export async function generateGeoLabExcelReport(options: ExcelGenerationOptions): Promise<Blob> {
   const { analysis, client, project, sample, orgProfile, testDef } = options;
   const lang = options.language || orgProfile.defaultLanguage || 'en';
+
+  // Enforce company name requirement on approved reports
+  if (analysis.status === 'approved' && !orgProfile.companyName?.trim()) {
+    throw new Error(
+      lang === 'fr'
+        ? 'Veuillez configurer le profil de votre organisation avant de générer des rapports approuvés.'
+        : 'Please configure your organisation profile before generating approved reports.'
+    );
+  }
+
+  const isDemo = Boolean(
+    analysis.isDemo ||
+    project.isDemo ||
+    client.isDemo ||
+    client.companyName === 'Demo Client' ||
+    analysis.reportNumber?.startsWith('DEMO-')
+  );
+  const watermarkText = isDemo ? 'DEMO' : (analysis.status === 'approved' ? '' : 'DRAFT / PROVISOIRE');
+
   const zip = new JSZip();
 
-  const isApproved = analysis.status === 'approved';
-  const watermarkText = isApproved ? '' : 'DRAFT / PROVISOIRE';
+  // Extract embedded logos (up to 3 header logos + main logo)
+  const logos: EmbeddedLogo[] = [];
+  const headerLogos = orgProfile.headerLogos || (orgProfile as any).logos;
+  const leftB64 = headerLogos?.leftBase64 || headerLogos?.left || orgProfile.logoBase64;
+  if (leftB64) {
+    const ext = leftB64.includes('image/jpeg') || leftB64.includes('image/jpg') ? 'jpg' : 'png';
+    const cleanB64 = leftB64.replace(/^data:image\/\w+;base64,/, '');
+    logos.push({ id: 'rIdLogoLeft', fileName: `imageLeft.${ext}`, b64: cleanB64, ext, position: 'left' });
+  }
+
+  const centerB64 = headerLogos?.centerBase64 || headerLogos?.center;
+  if (centerB64) {
+    const ext = centerB64.includes('image/jpeg') || centerB64.includes('image/jpg') ? 'jpg' : 'png';
+    const cleanB64 = centerB64.replace(/^data:image\/\w+;base64,/, '');
+    logos.push({ id: 'rIdLogoCenter', fileName: `imageCenter.${ext}`, b64: cleanB64, ext, position: 'center' });
+  }
+
+  const rightB64 = headerLogos?.rightBase64 || headerLogos?.right;
+  if (rightB64) {
+    const ext = rightB64.includes('image/jpeg') || rightB64.includes('image/jpg') ? 'jpg' : 'png';
+    const cleanB64 = rightB64.replace(/^data:image\/\w+;base64,/, '');
+    logos.push({ id: 'rIdLogoRight', fileName: `imageRight.${ext}`, b64: cleanB64, ext, position: 'right' });
+  }
+
+  // Save logo binaries to xl/media/
+  for (const logo of logos) {
+    zip.file(`xl/media/${logo.fileName}`, logo.b64, { base64: true });
+  }
 
   // Build Sheet XML based on test type
   const { sheetXml, chartXml, hasChart } = buildTestSheetAndChart(
@@ -54,8 +108,10 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
     watermarkText
   );
 
+  const hasDrawing = hasChart || logos.length > 0;
+
   // [Content_Types].xml
-  zip.file('[Content_Types].xml', getContentTypesXml(hasChart));
+  zip.file('[Content_Types].xml', getContentTypesXml(hasChart, hasDrawing, logos));
 
   // _rels/.rels
   zip.file('_rels/.rels', getGlobalRelsXml());
@@ -72,7 +128,7 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
   // xl/worksheets/sheet1.xml
   zip.file('xl/worksheets/sheet1.xml', sheetXml);
 
-  if (hasChart && chartXml) {
+  if (hasDrawing) {
     // xl/worksheets/_rels/sheet1.xml.rels
     zip.file(
       'xl/worksheets/_rels/sheet1.xml.rels',
@@ -83,19 +139,15 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
     );
 
     // xl/drawings/drawing1.xml
-    zip.file('xl/drawings/drawing1.xml', getDrawingXml());
+    zip.file('xl/drawings/drawing1.xml', getDrawingXml(logos, hasChart));
 
     // xl/drawings/_rels/drawing1.xml.rels
-    zip.file(
-      'xl/drawings/_rels/drawing1.xml.rels',
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/>
-</Relationships>`
-    );
+    zip.file('xl/drawings/_rels/drawing1.xml.rels', getDrawingRelsXml(logos, hasChart));
 
-    // xl/charts/chart1.xml
-    zip.file('xl/charts/chart1.xml', chartXml);
+    if (hasChart && chartXml) {
+      // xl/charts/chart1.xml
+      zip.file('xl/charts/chart1.xml', chartXml);
+    }
   }
 
   // docProps
@@ -133,6 +185,128 @@ function buildTestSheetAndChart(
 }
 
 // -------------------------------------------------------------
+// Common Revision Table and Signatures Builders
+// -------------------------------------------------------------
+function buildRevisionTableRows(analysis: GeoLabAnalysis, lang: 'en' | 'fr', startRow: number): { xml: string; nextRow: number } {
+  const revisions: AnalysisRevision[] = (analysis.revisionHistory && analysis.revisionHistory.length > 0)
+    ? analysis.revisionHistory
+    : [
+        {
+          index: analysis.version || 1,
+          date: analysis.testedDate,
+          natureOfChange: lang === 'fr' ? 'Émission initiale' : 'Initial issue',
+          preparedBy: analysis.preparedBy?.name || 'Technicien Labo',
+          checkedBy: analysis.checkedBy?.name || 'Responsable Qualité',
+          approvedBy: analysis.approvedBy?.name || 'Directeur Technique',
+        },
+      ];
+
+  let xml = `
+  <row r="${startRow}">
+    <c r="A${startRow}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'HISTORIQUE DES RÉVISIONS' : 'REVISION HISTORY'}</t></is></c>
+  </row>
+  <row r="${startRow + 1}">
+    <c r="A${startRow + 1}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'Indice' : 'Rev'}</t></is></c>
+    <c r="B${startRow + 1}" t="inlineStr" s="8"><is><t>Date</t></is></c>
+    <c r="C${startRow + 1}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'Nature de la modification' : 'Nature of change'}</t></is></c>
+    <c r="E${startRow + 1}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'Établi par' : 'Prepared by'}</t></is></c>
+    <c r="F${startRow + 1}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'Vérifié par' : 'Checked by'}</t></is></c>
+    <c r="G${startRow + 1}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'Approuvé par' : 'Approved by'}</t></is></c>
+  </row>`;
+
+  let cur = startRow + 2;
+  revisions.forEach((rev) => {
+    xml += `<row r="${cur}">
+      <c r="A${cur}" s="9"><v>${rev.index}</v></c>
+      <c r="B${cur}" t="inlineStr" s="9"><is><t>${escapeXml(rev.date)}</t></is></c>
+      <c r="C${cur}" t="inlineStr" s="6"><is><t>${escapeXml(rev.natureOfChange)}</t></is></c>
+      <c r="E${cur}" t="inlineStr"><is><t>${escapeXml(rev.preparedBy || '-')}</t></is></c>
+      <c r="F${cur}" t="inlineStr"><is><t>${escapeXml(rev.checkedBy || '-')}</t></is></c>
+      <c r="G${cur}" t="inlineStr"><is><t>${escapeXml(rev.approvedBy || '-')}</t></is></c>
+    </row>`;
+    cur++;
+  });
+
+  return { xml, nextRow: cur };
+}
+
+function buildSignaturesRows(
+  analysis: GeoLabAnalysis,
+  org: OrganisationProfile,
+  lang: 'en' | 'fr',
+  startRow: number
+): string {
+  const chain = (org.approvalChain && org.approvalChain.length > 0)
+    ? org.approvalChain.slice(0, 6)
+    : [
+        {
+          id: 'sig-1',
+          roleLabel: { en: 'Tested by', fr: 'Essai réalisé par' },
+          name: analysis.preparedBy?.name || org.signatories[0]?.name || 'Technicien Labo',
+          title: analysis.preparedBy?.title || org.signatories[0]?.title || 'Technicien Géotechnique',
+        },
+        {
+          id: 'sig-2',
+          roleLabel: { en: 'Checked by', fr: 'Vérifié par' },
+          name: analysis.checkedBy?.name || org.signatories[1]?.name || 'Responsable Qualité',
+          title: analysis.checkedBy?.title || org.signatories[1]?.title || 'Responsable AQ',
+        },
+        {
+          id: 'sig-3',
+          roleLabel: { en: 'Approved by', fr: 'Approuvé par' },
+          name: analysis.approvedBy?.name || org.signatories[2]?.name || 'Directeur Technique',
+          title: analysis.approvedBy?.title || org.signatories[2]?.title || 'Directeur Technique',
+        },
+      ];
+
+  let xml = '';
+  // Split chain into chunks of 3 for multi-row rendering
+  for (let chunkIdx = 0; chunkIdx < chain.length; chunkIdx += 3) {
+    const chunk = chain.slice(chunkIdx, chunkIdx + 3);
+    const rowOffset = startRow + (chunkIdx / 3) * 4;
+
+    const cols = ['A', 'C', 'E'];
+    // Row 1: Role labels
+    xml += `<row r="${rowOffset}">`;
+    chunk.forEach((sig, idx) => {
+      const col = cols[idx];
+      const roleText = sig.roleLabel?.[lang] || sig.title || `Signataire ${chunkIdx + idx + 1}`;
+      xml += `<c r="${col}${rowOffset}" t="inlineStr" s="8"><is><t>${escapeXml(roleText)}</t></is></c>`;
+    });
+    xml += `</row>`;
+
+    // Row 2: Signatory Names
+    xml += `<row r="${rowOffset + 1}">`;
+    chunk.forEach((sig, idx) => {
+      const col = cols[idx];
+      xml += `<c r="${col}${rowOffset + 1}" t="inlineStr" s="6"><is><t>${escapeXml(sig.name || '-')}</t></is></c>`;
+    });
+    xml += `</row>`;
+
+    // Row 3: Titles / Functions
+    xml += `<row r="${rowOffset + 2}">`;
+    chunk.forEach((sig, idx) => {
+      const col = cols[idx];
+      xml += `<c r="${col}${rowOffset + 2}" t="inlineStr"><is><t>${escapeXml(sig.title || '-')}</t></is></c>`;
+    });
+    xml += `</row>`;
+
+    // Row 4: Signature / Stamp Mention
+    xml += `<row r="${rowOffset + 3}">`;
+    chunk.forEach((sig, idx) => {
+      const col = cols[idx];
+      const stampText = sig.stampOrSignatureBase64
+        ? (lang === 'fr' ? '[Cachet / Signature numérique authentifiée]' : '[Digital Stamp / Verified Signature]')
+        : (lang === 'fr' ? '[Signature manuscrite]' : '[Handwritten Signature]');
+      xml += `<c r="${col}${rowOffset + 3}" t="inlineStr" s="4"><is><t>${stampText}</t></is></c>`;
+    });
+    xml += `</row>`;
+  }
+
+  return xml;
+}
+
+// -------------------------------------------------------------
 // PROCTOR EXCEL & DRAWINGML CHART
 // -------------------------------------------------------------
 function buildProctorSheet(
@@ -148,17 +322,23 @@ function buildProctorSheet(
   const res = analysis.computedResults;
   const pts = res.points || [];
 
+  const formCode = org.formCodes?.proctor || 'PR2-FOR-02';
+  const accreditationLabel = org.accreditationNumber?.trim()
+    ? `${lang === 'fr' ? "N° d'agrément / d'accréditation : " : 'Agrément / Accreditation no.: '}${escapeXml(org.accreditationNumber)}`
+    : '';
+
   let rowsXml = '';
-  // Row 1: Header / Org Name
+  // Row 1: Org Name & Accreditation
   rowsXml += `<row r="1" ht="28">
     <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
-    <c r="G1" t="inlineStr" s="2"><is><t>${escapeXml(org.accreditationNumber)}</t></is></c>
+    ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
   </row>`;
 
-  // Row 2: Title
+  // Row 2: Document Title & Form Code
   const titleText = lang === 'fr' ? "PROCES-VERBAL D'ESSAI PROCTOR" : 'PROCTOR COMPACTION TEST REPORT';
   rowsXml += `<row r="2" ht="24">
     <c r="A2" t="inlineStr" s="3"><is><t>${titleText} - ${escapeXml(analysis.standard)}</t></is></c>
+    <c r="G2" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
   </row>`;
 
   // Row 3: Meta & Watermark
@@ -171,7 +351,11 @@ function buildProctorSheet(
   // Row 4: Blank
   rowsXml += `<row r="4"/>`;
 
-  // Rows 5-9: Project & Client Block
+  // Rows 5-8: Project & Client Block (with Programme, Lot, Contract, Financing)
+  const progText = project.programmeTitle || project.programme;
+  const projectDisplay = progText ? `${project.projectName} / ${progText}` : project.projectName;
+  const financeDisplay = project.financingText || project.financing || '-';
+
   rowsXml += `
   <row r="5">
     <c r="A5" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Client :' : 'Client:'}</t></is></c>
@@ -181,7 +365,7 @@ function buildProctorSheet(
   </row>
   <row r="6">
     <c r="A6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Projet :' : 'Project:'}</t></is></c>
-    <c r="B6" t="inlineStr"><is><t>${escapeXml(project.projectName)}</t></is></c>
+    <c r="B6" t="inlineStr"><is><t>${escapeXml(projectDisplay)}</t></is></c>
     <c r="D6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Profondeur :' : 'Depth:'}</t></is></c>
     <c r="E6" t="inlineStr"><is><t>${escapeXml(sample.depth || '-')}</t></is></c>
   </row>
@@ -190,10 +374,13 @@ function buildProctorSheet(
     <c r="B7" t="inlineStr"><is><t>${escapeXml(project.siteLocation)}</t></is></c>
     <c r="D7" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Masse vol. grains (ρs) :' : 'Particle Density (ρs):'}</t></is></c>
     <c r="E7" s="7"><v>${input.particleDensityGs || 2.82}</v></c>
+  </row>
+  <row r="8">
+    <c r="A8" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Marché / Lot :' : 'Contract / Lot:'}</t></is></c>
+    <c r="B8" t="inlineStr"><is><t>${escapeXml(project.contractNumber || project.referenceNumber || '-')} / ${escapeXml(project.lotSection || '-')}</t></is></c>
+    <c r="D8" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Financement :' : 'Financing:'}</t></is></c>
+    <c r="E8" t="inlineStr"><is><t>${escapeXml(financeDisplay)}</t></is></c>
   </row>`;
-
-  // Row 8: Blank
-  rowsXml += `<row r="8"/>`;
 
   // Row 9: Table Header
   rowsXml += `<row r="9" ht="20">
@@ -224,7 +411,7 @@ function buildProctorSheet(
   // Key Results Summary Block
   const fitMethodLabels: Record<string, { en: string; fr: string }> = {
     quadratic: { en: 'Polynomial degree 2 (quadratic)', fr: 'Polynôme degré 2 (quadratique)' },
-    cubic: { en: 'Polynomial degree 3 (cubique)', fr: 'Polynôme degré 3 (cubique)' },
+    cubic: { en: 'Polynomial degree 3 (cubic)', fr: 'Polynôme degré 3 (cubique)' },
     quartic: { en: 'Polynomial degree 4 (quartic)', fr: 'Polynôme degré 4 (quartique)' },
     manual: { en: 'Manually entered value', fr: 'Valeur saisie manuellement' },
   };
@@ -259,38 +446,40 @@ function buildProctorSheet(
     <c r="C${summaryStartRow + 4}" t="inlineStr"><is><t>${res.fittedCoefficients?.r2 ? `R² = ${res.fittedCoefficients.r2}` : ''}</t></is></c>
   </row>`;
 
+  // Revision Table
+  const revStartRow = summaryStartRow + 6;
+  const { xml: revXml, nextRow: afterRevRow } = buildRevisionTableRows(analysis, lang, revStartRow);
+  rowsXml += revXml;
+
   // Observations / Signatures
-  const obsRow = summaryStartRow + 6;
+  const obsRow = afterRevRow + 1;
   rowsXml += `
   <row r="${obsRow}">
     <c r="A${obsRow}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Observations :' : 'Observations:'}</t></is></c>
     <c r="B${obsRow}" t="inlineStr"><is><t>${escapeXml(analysis.observations || analysis.aiNarrative || 'Conforme aux exigences normatives.')}</t></is></c>
-  </row>
-  <row r="${obsRow + 2}">
-    <c r="A${obsRow + 2}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'Essai réalisé par' : 'Tested by'}</t></is></c>
-    <c r="C${obsRow + 2}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'Vérifié par' : 'Checked by'}</t></is></c>
-    <c r="E${obsRow + 2}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'Approuvé par' : 'Approved by'}</t></is></c>
-  </row>
-  <row r="${obsRow + 3}">
-    <c r="A${obsRow + 3}" t="inlineStr"><is><t>${escapeXml(analysis.preparedBy?.name || org.signatories[0]?.name || 'Technicien Labo')}</t></is></c>
-    <c r="C${obsRow + 3}" t="inlineStr"><is><t>${escapeXml(analysis.checkedBy?.name || org.signatories[1]?.name || 'Responsable Qualité')}</t></is></c>
-    <c r="E${obsRow + 3}" t="inlineStr"><is><t>${escapeXml(analysis.approvedBy?.name || org.signatories[2]?.name || 'Directeur Technique')}</t></is></c>
   </row>`;
+
+  // Configurable Approval Chain (Up to 6 signatories)
+  rowsXml += buildSignaturesRows(analysis, org, lang, obsRow + 2);
 
   const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetPr>
+    <pageSetUpPr fitToPage="1"/>
+  </sheetPr>
   <cols>
-    <col min="1" max="1" width="28" customWidth="1"/>
-    <col min="2" max="2" width="16" customWidth="1"/>
-    <col min="3" max="3" width="18" customWidth="1"/>
-    <col min="4" max="4" width="18" customWidth="1"/>
-    <col min="5" max="5" width="16" customWidth="1"/>
-    <col min="6" max="6" width="18" customWidth="1"/>
-    <col min="7" max="7" width="24" customWidth="1"/>
+    <col min="1" max="1" width="30" customWidth="1"/>
+    <col min="2" max="2" width="24" customWidth="1"/>
+    <col min="3" max="3" width="22" customWidth="1"/>
+    <col min="4" max="4" width="24" customWidth="1"/>
+    <col min="5" max="5" width="20" customWidth="1"/>
+    <col min="6" max="6" width="22" customWidth="1"/>
+    <col min="7" max="7" width="26" customWidth="1"/>
   </cols>
   <sheetData>
     ${rowsXml}
   </sheetData>
+  <pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/>
   <drawing r:id="rId1"/>
 </worksheet>`;
 
@@ -328,8 +517,25 @@ function buildProctorChartXml(
           <c:idx val="0"/>
           <c:order val="0"/>
           <c:tx><c:v>${ser1Title}</c:v></c:tx>
-          <c:marker><c:symbol val="circle"/><c:size val="7"/></c:marker>
+          <c:spPr>
+            <a:ln w="9525"><a:noFill/></a:ln>
+          </c:spPr>
+          <c:marker>
+            <c:symbol val="circle"/>
+            <c:size val="7"/>
+            <c:spPr>
+              <a:solidFill><a:srgbClr val="2563EB"/></a:solidFill>
+              <a:ln w="9525"><a:solidFill><a:srgbClr val="1E40AF"/></a:solidFill></a:ln>
+            </c:spPr>
+          </c:marker>
           <c:trendline>
+            <c:name>${lang === 'fr' ? 'Courbe d’ajustement polynomiale' : 'Polynomial trendline'}</c:name>
+            <c:spPr>
+              <a:ln w="25400" cmpd="s">
+                <a:solidFill><a:srgbClr val="1E40AF"/></a:solidFill>
+                <a:prstDash val="solid"/>
+              </a:ln>
+            </c:spPr>
             <c:trendlineType val="poly"/>
             <c:order val="${effectiveOrder}"/>
             <c:dispRSqr val="0"/>
@@ -347,11 +553,19 @@ function buildProctorChartXml(
           </c:yVal>
           <c:smooth val="0"/>
         </c:ser>
-        <!-- Series 2: Saturation Curve -->
+        <!-- Series 2: Saturation Curve (visible dashed line) -->
         <c:ser>
           <c:idx val="1"/>
           <c:order val="1"/>
           <c:tx><c:v>${ser2Title}</c:v></c:tx>
+          <c:spPr>
+            <a:ln w="19050" cmpd="s">
+              <a:solidFill>
+                <a:srgbClr val="DC2626"/>
+              </a:solidFill>
+              <a:prstDash val="dash"/>
+            </a:ln>
+          </c:spPr>
           <c:marker><c:symbol val="none"/></c:marker>
           <c:xVal>
             <c:numRef>
@@ -409,22 +623,30 @@ function buildGrainSizeSheet(
   const res = analysis.computedResults;
   const rows = res.rows || [];
 
+  const formCode = org.formCodes?.grain_size || 'GR1-FOR-01';
+  const accreditationLabel = org.accreditationNumber?.trim()
+    ? `${lang === 'fr' ? "N° d'agrément / d'accréditation : " : 'Agrément / Accreditation no.: '}${escapeXml(org.accreditationNumber)}`
+    : '';
+
   let rowsXml = '';
-  // Header
+  // Row 1: Org Header
   rowsXml += `<row r="1" ht="28">
     <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
-    <c r="F1" t="inlineStr" s="2"><is><t>${escapeXml(org.accreditationNumber)}</t></is></c>
+    ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
   </row>`;
 
+  // Row 2: Document Title & Form Code
   const titleText = lang === 'fr' ? 'PROCES-VERBAL D\'ANALYSE GRANULOMÉTRIQUE' : 'PARTICLE SIZE DISTRIBUTION TEST REPORT';
   rowsXml += `<row r="2" ht="24">
     <c r="A2" t="inlineStr" s="3"><is><t>${titleText} - ${escapeXml(analysis.standard)}</t></is></c>
+    <c r="G2" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
   </row>`;
 
+  // Row 3: Meta & Watermark
   rowsXml += `<row r="3">
     <c r="A3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'N° Rapport :' : 'Report No:'} ${escapeXml(analysis.reportNumber)} (v${analysis.version})</t></is></c>
     <c r="D3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'Date :' : 'Date:'} ${escapeXml(analysis.testedDate)}</t></is></c>
-    ${watermark ? `<c r="F3" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
+    ${watermark ? `<c r="G3" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
   </row>
   <row r="4"/>
   <row r="5">
@@ -435,11 +657,16 @@ function buildGrainSizeSheet(
   </row>
   <row r="6">
     <c r="A6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Projet :' : 'Project:'}</t></is></c>
-    <c r="B6" t="inlineStr"><is><t>${escapeXml(project.projectName)}</t></is></c>
+    <c r="B6" t="inlineStr"><is><t>${escapeXml(project.programmeTitle || project.programme ? `${project.projectName} / ${project.programmeTitle || project.programme}` : project.projectName)}</t></is></c>
     <c r="D6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Masse sèche (Ms) :' : 'Total Dry Mass (Ms):'}</t></is></c>
     <c r="E6" s="7"><v>${res.totalDryMassG}</v></c>
   </row>
-  <row r="7"/>`;
+  <row r="7">
+    <c r="A7" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Site / Lieu :' : 'Site Location:'}</t></is></c>
+    <c r="B7" t="inlineStr"><is><t>${escapeXml(project.siteLocation)}</t></is></c>
+    <c r="D7" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Marché / Lot :' : 'Contract / Lot:'}</t></is></c>
+    <c r="E7" t="inlineStr"><is><t>${escapeXml(project.contractNumber || project.referenceNumber || '-')}${project.lotSection ? ` / ${escapeXml(project.lotSection)}` : ''}</t></is></c>
+  </row>`;
 
   // Sieve Table Header
   rowsXml += `<row r="8" ht="20">
@@ -487,20 +714,39 @@ function buildGrainSizeSheet(
     <c r="B${summaryStartRow + 3}" t="inlineStr"><is><t>${escapeXml(res.lcpcClassification)}</t></is></c>
   </row>`;
 
+  // Revision Table
+  const revStartRow = summaryStartRow + 5;
+  const { xml: revXml, nextRow: afterRevRow } = buildRevisionTableRows(analysis, lang, revStartRow);
+  rowsXml += revXml;
+
+  // Observations / Signatures
+  const obsRow = afterRevRow + 1;
+  rowsXml += `
+  <row r="${obsRow}">
+    <c r="A${obsRow}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Observations :' : 'Observations:'}</t></is></c>
+    <c r="B${obsRow}" t="inlineStr"><is><t>${escapeXml(analysis.observations || analysis.aiNarrative || 'Conforme aux exigences normatives.')}</t></is></c>
+  </row>`;
+
+  rowsXml += buildSignaturesRows(analysis, org, lang, obsRow + 2);
+
   const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetPr>
+    <pageSetUpPr fitToPage="1"/>
+  </sheetPr>
   <cols>
-    <col min="1" max="1" width="18" customWidth="1"/>
-    <col min="2" max="2" width="18" customWidth="1"/>
-    <col min="3" max="3" width="18" customWidth="1"/>
-    <col min="4" max="4" width="18" customWidth="1"/>
-    <col min="5" max="5" width="20" customWidth="1"/>
-    <col min="6" max="6" width="16" customWidth="1"/>
-    <col min="7" max="7" width="16" customWidth="1"/>
+    <col min="1" max="1" width="30" customWidth="1"/>
+    <col min="2" max="2" width="22" customWidth="1"/>
+    <col min="3" max="3" width="22" customWidth="1"/>
+    <col min="4" max="4" width="22" customWidth="1"/>
+    <col min="5" max="5" width="22" customWidth="1"/>
+    <col min="6" max="6" width="20" customWidth="1"/>
+    <col min="7" max="7" width="24" customWidth="1"/>
   </cols>
   <sheetData>
     ${rowsXml}
   </sheetData>
+  <pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/>
   <drawing r:id="rId1"/>
 </worksheet>`;
 
@@ -588,22 +834,30 @@ function buildWaterContentSheet(
   const res = analysis.computedResults;
   const specs = res.specimens || [];
 
+  const formCode = org.formCodes?.water_content || 'TE1-FOR-01';
+  const accreditationLabel = org.accreditationNumber?.trim()
+    ? `${lang === 'fr' ? "N° d'agrément / d'accréditation : " : 'Agrément / Accreditation no.: '}${escapeXml(org.accreditationNumber)}`
+    : '';
+
   let rowsXml = '';
-  // Header
+  // Row 1: Org Header
   rowsXml += `<row r="1" ht="28">
     <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
-    <c r="F1" t="inlineStr" s="2"><is><t>${escapeXml(org.accreditationNumber)}</t></is></c>
+    ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
   </row>`;
 
+  // Row 2: Document Title & Form Code
   const titleText = lang === 'fr' ? 'PROCES-VERBAL DE TENEUR EN EAU NATURELLE' : 'NATURAL WATER CONTENT TEST REPORT';
   rowsXml += `<row r="2" ht="24">
     <c r="A2" t="inlineStr" s="3"><is><t>${titleText} - ${escapeXml(analysis.standard)}</t></is></c>
+    <c r="G2" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
   </row>`;
 
+  // Row 3: Meta & Watermark
   rowsXml += `<row r="3">
     <c r="A3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'N° Rapport :' : 'Report No:'} ${escapeXml(analysis.reportNumber)} (v${analysis.version})</t></is></c>
     <c r="D3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'Date :' : 'Date:'} ${escapeXml(analysis.testedDate)}</t></is></c>
-    ${watermark ? `<c r="F3" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
+    ${watermark ? `<c r="G3" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
   </row>
   <row r="4"/>
   <row r="5">
@@ -614,11 +868,16 @@ function buildWaterContentSheet(
   </row>
   <row r="6">
     <c r="A6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Projet :' : 'Project:'}</t></is></c>
-    <c r="B6" t="inlineStr"><is><t>${escapeXml(project.projectName)}</t></is></c>
+    <c r="B6" t="inlineStr"><is><t>${escapeXml(project.programmeTitle || project.programme ? `${project.projectName} / ${project.programmeTitle || project.programme}` : project.projectName)}</t></is></c>
     <c r="D6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Tolérance répétabilité :' : 'Tolerance:'}</t></is></c>
     <c r="E6" s="10"><v>${res.maxTolerancePercent}</v></c>
   </row>
-  <row r="7"/>`;
+  <row r="7">
+    <c r="A7" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Site / Lieu :' : 'Site Location:'}</t></is></c>
+    <c r="B7" t="inlineStr"><is><t>${escapeXml(project.siteLocation)}</t></is></c>
+    <c r="D7" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Marché / Lot :' : 'Contract / Lot:'}</t></is></c>
+    <c r="E7" t="inlineStr"><is><t>${escapeXml(project.contractNumber || project.referenceNumber || '-')}${project.lotSection ? ` / ${escapeXml(project.lotSection)}` : ''}</t></is></c>
+  </row>`;
 
   // Specimen Table Header
   rowsXml += `<row r="8" ht="20">
@@ -666,39 +925,134 @@ function buildWaterContentSheet(
     <c r="B${summaryRow + 2}" t="inlineStr"><is><t>${res.repeatabilityAccepted ? (lang === 'fr' ? 'CONFORME' : 'PASSED') : (lang === 'fr' ? 'NON CONFORME' : 'FAILED')}</t></is></c>
   </row>`;
 
+  // Revision Table
+  const revStartRow = summaryRow + 4;
+  const { xml: revXml, nextRow: afterRevRow } = buildRevisionTableRows(analysis, lang, revStartRow);
+  rowsXml += revXml;
+
+  // Observations / Signatures
+  const obsRow = afterRevRow + 1;
+  rowsXml += `
+  <row r="${obsRow}">
+    <c r="A${obsRow}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Observations :' : 'Observations:'}</t></is></c>
+    <c r="B${obsRow}" t="inlineStr"><is><t>${escapeXml(analysis.observations || analysis.aiNarrative || 'Conforme aux exigences normatives.')}</t></is></c>
+  </row>`;
+
+  rowsXml += buildSignaturesRows(analysis, org, lang, obsRow + 2);
+
   const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetPr>
+    <pageSetUpPr fitToPage="1"/>
+  </sheetPr>
   <cols>
-    <col min="1" max="1" width="16" customWidth="1"/>
-    <col min="2" max="2" width="16" customWidth="1"/>
-    <col min="3" max="3" width="18" customWidth="1"/>
+    <col min="1" max="1" width="30" customWidth="1"/>
+    <col min="2" max="2" width="20" customWidth="1"/>
+    <col min="3" max="3" width="22" customWidth="1"/>
     <col min="4" max="4" width="22" customWidth="1"/>
     <col min="5" max="5" width="22" customWidth="1"/>
-    <col min="6" max="6" width="18" customWidth="1"/>
-    <col min="7" max="7" width="18" customWidth="1"/>
-    <col min="8" max="8" width="20" customWidth="1"/>
+    <col min="6" max="6" width="20" customWidth="1"/>
+    <col min="7" max="7" width="20" customWidth="1"/>
+    <col min="8" max="8" width="24" customWidth="1"/>
   </cols>
   <sheetData>
     ${rowsXml}
   </sheetData>
+  <pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/>
+  <drawing r:id="rId1"/>
 </worksheet>`;
 
   return { sheetXml, chartXml: null, hasChart: false };
 }
 
 // -------------------------------------------------------------
-// OpenXML Boilerplate Packages
+// OpenXML Packaging Helpers
 // -------------------------------------------------------------
-function getContentTypesXml(hasChart: boolean): string {
+function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean): string {
+  let anchorsXml = '';
+
+  // Logo Anchors
+  logos.forEach((logo, idx) => {
+    const colFrom = logo.position === 'left' ? 0 : (logo.position === 'center' ? 3 : 6);
+    const colTo = logo.position === 'left' ? 1 : (logo.position === 'center' ? 4 : 7);
+
+    anchorsXml += `
+    <xdr:twoCellAnchor editAs="oneCell">
+      <xdr:from><xdr:col>${colFrom}</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>15000</xdr:rowOff></xdr:from>
+      <xdr:to><xdr:col>${colTo}</xdr:col><xdr:colOff>100000</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>40000</xdr:rowOff></xdr:to>
+      <xdr:pic>
+        <xdr:nvPicPr>
+          <xdr:cNvPr id="${10 + idx}" name="${logo.fileName}"/>
+          <xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
+        </xdr:nvPicPr>
+        <xdr:blipFill>
+          <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${logo.id}"/>
+          <a:stretch><a:fillRect/></a:stretch>
+        </xdr:blipFill>
+        <xdr:spPr>
+          <a:xfrm><a:off x="0" y="0"/><a:ext cx="1200000" cy="600000"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        </xdr:spPr>
+      </xdr:pic>
+      <xdr:clientData/>
+    </xdr:twoCellAnchor>`;
+  });
+
+  // Chart Anchor
+  if (hasChart) {
+    anchorsXml += `
+    <xdr:twoCellAnchor>
+      <xdr:from><xdr:col>6</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+      <xdr:to><xdr:col>13</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>23</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+      <xdr:graphicFrame macro="">
+        <xdr:nvGraphicFramePr>
+          <xdr:cNvPr id="2" name="GeoLab Chart"/>
+          <xdr:cNvGraphicFramePr/>
+        </xdr:nvGraphicFramePr>
+        <xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>
+        <a:graphic>
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+            <c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rIdChart"/>
+          </a:graphicData>
+        </a:graphic>
+      </xdr:graphicFrame>
+      <xdr:clientData/>
+    </xdr:twoCellAnchor>`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  ${anchorsXml}
+</xdr:wsDr>`;
+}
+
+function getDrawingRelsXml(logos: EmbeddedLogo[], hasChart: boolean): string {
+  let rels = '';
+  logos.forEach((logo) => {
+    rels += `\n  <Relationship Id="${logo.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${logo.fileName}"/>`;
+  });
+  if (hasChart) {
+    rels += `\n  <Relationship Id="rIdChart" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/>`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}
+</Relationships>`;
+}
+
+function getContentTypesXml(hasChart: boolean, hasDrawing: boolean, logos: EmbeddedLogo[]): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Default Extension="jpg" ContentType="image/jpeg"/>
+  <Default Extension="jpeg" ContentType="image/jpeg"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-  ${hasChart ? `<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>
-  <Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>` : ''}
+  ${hasDrawing ? '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>' : ''}
+  ${hasChart ? '<Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>' : ''}
   <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
 </Types>`;
@@ -730,31 +1084,7 @@ function getWorkbookRelsXml(): string {
 </Relationships>`;
 }
 
-function getDrawingXml(): string {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-  <xdr:twoCellAnchor>
-    <xdr:from><xdr:col>6</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
-    <xdr:to><xdr:col>13</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>23</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
-    <xdr:graphicFrame macro="">
-      <xdr:nvGraphicFramePr>
-        <xdr:cNvPr id="2" name="GeoLab Chart"/>
-        <xdr:cNvGraphicFramePr/>
-      </xdr:nvGraphicFramePr>
-      <xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>
-      <a:graphic>
-        <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
-          <c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/>
-        </a:graphicData>
-      </a:graphic>
-    </xdr:graphicFrame>
-    <xdr:clientData/>
-  </xdr:twoCellAnchor>
-</xdr:wsDr>`;
-}
-
 function getStylesXml(primaryColor: string): string {
-  // Convert primaryColor hex to AARRGGBB
   const hex = (primaryColor || '#1e40af').replace('#', '').toUpperCase();
   const argb = `FF${hex.length === 6 ? hex : '1E40AF'}`;
 
@@ -788,29 +1118,29 @@ function getStylesXml(primaryColor: string): string {
     </border>
   </borders>
   <cellXfs count="12">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
     <!-- 1: Org Header -->
-    <xf numFmtId="0" fontId="1" fillId="0" borderId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="0" borderId="0" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
     <!-- 2: Accreditation -->
-    <xf numFmtId="0" fontId="3" fillId="0" borderId="0" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="0" borderId="0" applyAlignment="1"><alignment horizontal="right" wrapText="1" vertical="center"/></xf>
     <!-- 3: Document Title -->
-    <xf numFmtId="0" fontId="2" fillId="0" borderId="0"/>
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="0" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
     <!-- 4: Report Meta -->
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
     <!-- 5: Watermark Draft -->
-    <xf numFmtId="0" fontId="4" fillId="0" borderId="0"/>
+    <xf numFmtId="0" fontId="4" fillId="0" borderId="0" applyAlignment="1"><alignment horizontal="center" wrapText="1" vertical="center"/></xf>
     <!-- 6: Bold Label -->
-    <xf numFmtId="0" fontId="3" fillId="0" borderId="0"/>
+    <xf numFmtId="0" fontId="3" fillId="0" borderId="0" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
     <!-- 7: Plain Number -->
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyNumberFormat="1"/>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyNumberFormat="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
     <!-- 8: Table Header (Filled) -->
-    <xf numFmtId="0" fontId="3" fillId="3" borderId="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="3" borderId="1" applyAlignment="1"><alignment horizontal="center" wrapText="1" vertical="center"/></xf>
     <!-- 9: Center Align Cell -->
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyAlignment="1"><alignment horizontal="center" wrapText="1" vertical="center"/></xf>
     <!-- 10: 1-decimal / percent -->
-    <xf numFmtId="164" fontId="0" fillId="0" borderId="1" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="1" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right" wrapText="1" vertical="center"/></xf>
     <!-- 11: 3-decimal density -->
-    <xf numFmtId="165" fontId="0" fillId="0" borderId="1" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="165" fontId="0" fillId="0" borderId="1" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right" wrapText="1" vertical="center"/></xf>
   </cellXfs>
 </styleSheet>`;
 }
@@ -821,7 +1151,7 @@ function getCorePropsXml(reportNumber: string, companyName: string): string {
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <dc:title>${escapeXml(reportNumber)} - Geotechnical Test Report</dc:title>
   <dc:creator>${escapeXml(companyName)}</dc:creator>
-  <cp:lastModifiedBy>GeoLab System</cp:lastModifiedBy>
+  <cp:lastModifiedBy>FraGeo Suite - GeoLab Module</cp:lastModifiedBy>
   <dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
 </cp:coreProperties>`;
@@ -834,4 +1164,3 @@ function getAppPropsXml(): string {
   <DocSecurity>0</DocSecurity>
 </Properties>`;
 }
-

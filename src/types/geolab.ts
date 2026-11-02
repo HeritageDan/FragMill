@@ -10,20 +10,59 @@ export interface GeoLabSignatory {
   role: 'prepared' | 'checked' | 'approved';
   name: string;
   title: string;
+  stampOrSignatureBase64?: string;
+}
+
+export interface HeaderLogos {
+  leftBase64?: string;
+  centerBase64?: string;
+  rightBase64?: string;
+  left?: string;
+  center?: string;
+  right?: string;
+}
+
+export interface BilingualHeaderBlock {
+  col1Text?: string;
+  col2Text?: string;
+  column1?: string;
+  column2?: string;
+}
+
+export interface ApprovalChainEntry {
+  id: string;
+  roleLabel?: { en: string; fr: string };
+  role?: string;
+  name: string;
+  title?: string;
+  date?: string;
+  stampOrSignatureBase64?: string;
 }
 
 export interface OrganisationProfile {
   companyName: string;
   logoBase64?: string;
+  headerLogos?: HeaderLogos;
+  logos?: HeaderLogos;
+  bilingualHeaderBlock?: BilingualHeaderBlock;
+  bilingualHeader?: any;
   address: string;
   phone: string;
   email: string;
   accreditationNumber: string;
   primaryColor: string; // e.g. '#1e40af'
   signatories: GeoLabSignatory[];
+  approvalChain?: ApprovalChainEntry[]; // configurable list up to 6 entries
+  formCodes?: Record<string, string>; // e.g. { proctor: 'PR2-FOR-02' }
   reportFooterText: string;
   defaultLanguage: 'en' | 'fr';
   defaultStandard: StandardBody;
+}
+
+export interface ProjectParty {
+  role: string;
+  name: string;
+  contact?: string;
 }
 
 export interface GeoLabClient {
@@ -39,6 +78,7 @@ export interface GeoLabClient {
   clientLogoBase64?: string;
   taxRegistrationNumber?: string;
   isArchived: boolean;
+  isDemo?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,10 +87,19 @@ export interface GeoLabProject {
   id: string;
   clientId: string;
   projectName: string;
+  programmeTitle?: string;
+  programme?: string;
+  lotSection?: string;
+  contractNumber?: string;
+  tenderNumber?: string;
+  financingText?: string;
+  financing?: string;
+  parties?: ProjectParty[];
   siteLocation: string;
   referenceNumber: string;
   startDate: string;
   isArchived: boolean;
+  isDemo?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -77,6 +126,18 @@ export interface QualityWarning {
   };
 }
 
+export interface AnalysisRevision {
+  index?: number;
+  date: string;
+  natureOfChange?: string;
+  preparedBy?: string;
+  checkedBy?: string;
+  approvedBy?: string;
+  revNumber?: number;
+  author?: string;
+  description?: string;
+}
+
 export interface GeoLabAnalysis<TInput = any, TResults = any> {
   id: string;
   sampleId: string;
@@ -96,6 +157,9 @@ export interface GeoLabAnalysis<TInput = any, TResults = any> {
   preparedBy?: { name: string; title: string; date: string };
   checkedBy?: { name: string; title: string; date: string };
   approvedBy?: { name: string; title: string; date: string };
+  isDemo?: boolean;
+  revisionHistory?: AnalysisRevision[];
+  revisions?: AnalysisRevision[];
   createdAt: string;
   updatedAt: string;
 }

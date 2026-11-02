@@ -5,6 +5,7 @@ import type {
   GeoLabProject,
   GeoLabSample,
   OrganisationProfile,
+  AnalysisRevision,
 } from '../../types/geolab';
 import type { GeoLabTestDefinition } from '../tests/types';
 import type { ProctorInput, ProctorResults } from '../tests/proctor';
@@ -32,23 +33,41 @@ function hexToRgb(hex: string): [number, number, number] {
 export async function generateGeoLabPdfReport(options: PdfGenerationOptions): Promise<Blob> {
   const { analysis, client, project, sample, orgProfile, testDef } = options;
   const lang = options.language || orgProfile.defaultLanguage || 'en';
+
+  // Enforce company name requirement on approved reports
+  if (analysis.status === 'approved' && !orgProfile.companyName?.trim()) {
+    throw new Error(
+      lang === 'fr'
+        ? 'Veuillez configurer le profil de votre organisation avant de générer des rapports approuvés.'
+        : 'Please configure your organisation profile before generating approved reports.'
+    );
+  }
+
+  const isDemo = Boolean(
+    analysis.isDemo ||
+    project.isDemo ||
+    client.isDemo ||
+    client.companyName === 'Demo Client' ||
+    analysis.reportNumber?.startsWith('DEMO-')
+  );
+  const watermarkText = isDemo ? 'DEMO' : (analysis.status === 'approved' ? '' : 'DRAFT / PROVISOIRE');
+
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const [prR, prG, prB] = hexToRgb(orgProfile.primaryColor);
 
   const pageWidth = 210;
   const pageHeight = 297;
-  const margin = 15;
+  const margin = 14;
   const contentWidth = pageWidth - margin * 2;
-  let cursorY = margin;
+  let cursorY = 12;
 
-  // Watermark if draft
-  if (analysis.status !== 'approved') {
+  // Watermark (DEMO or DRAFT)
+  if (watermarkText) {
     doc.saveGraphicsState();
     doc.setTextColor(230, 230, 230);
-    doc.setFontSize(55);
+    doc.setFontSize(watermarkText === 'DEMO' ? 70 : 50);
     doc.setFont('helvetica', 'bold');
-    // Draw rotated text across middle of page
-    doc.text('DRAFT / PROVISOIRE', pageWidth / 2, pageHeight / 2, {
+    doc.text(watermarkText, pageWidth / 2, pageHeight / 2, {
       align: 'center',
       angle: 45,
     });
@@ -56,208 +75,357 @@ export async function generateGeoLabPdfReport(options: PdfGenerationOptions): Pr
   }
 
   // -------------------------------------------------------------
-  // 1. Header Block
+  // 1. Header Block & Authority / Bilingual Header
   // -------------------------------------------------------------
+  const bilingual = orgProfile.bilingualHeaderBlock || (orgProfile as any).bilingualHeader;
+  const col1Text = bilingual?.col1Text || bilingual?.column1 || '';
+  const col2Text = bilingual?.col2Text || bilingual?.column2 || '';
+  if (col1Text || col2Text) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    const col1Lines = col1Text.split('\n').filter(Boolean);
+    const col2Lines = col2Text.split('\n').filter(Boolean);
+    const maxL = Math.max(col1Lines.length, col2Lines.length);
+
+    col1Lines.forEach((l: string, i: number) => doc.text(l, margin, cursorY + i * 3.2));
+    col2Lines.forEach((l: string, i: number) => doc.text(l, pageWidth - margin, cursorY + i * 3.2, { align: 'right' }));
+    cursorY += maxL * 3.2 + 2;
+  }
+
   // Top brand band
   doc.setFillColor(prR, prG, prB);
   doc.rect(margin, cursorY, contentWidth, 2, 'F');
-  cursorY += 6;
+  cursorY += 5;
 
-  // Lab Logo (if available)
-  if (orgProfile.logoBase64) {
-    try {
-      doc.addImage(orgProfile.logoBase64, 'PNG', margin, cursorY, 24, 16);
-    } catch {
-      // ignore image render failure
-    }
+  // Header Logos: Left, Center, Right
+  const headerLogos = orgProfile.headerLogos || (orgProfile as any).logos;
+  const leftLogo = headerLogos?.leftBase64 || headerLogos?.left || orgProfile.logoBase64;
+  const centerLogo = headerLogos?.centerBase64 || headerLogos?.center;
+  const rightLogo = headerLogos?.rightBase64 || headerLogos?.right;
+  if (leftLogo) {
+    try { doc.addImage(leftLogo, 'PNG', margin, cursorY, 22, 14); } catch {}
+  }
+  if (centerLogo) {
+    try { doc.addImage(centerLogo, 'PNG', pageWidth / 2 - 11, cursorY, 22, 14); } catch {}
+  }
+  if (rightLogo) {
+    try { doc.addImage(rightLogo, 'PNG', pageWidth - margin - 22, cursorY, 22, 14); } catch {}
   }
 
   // Lab Name & Accreditation
-  const textLeft = orgProfile.logoBase64 ? margin + 28 : margin;
+  const textLeft = leftLogo ? margin + 26 : margin;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
+  doc.setFontSize(12);
   doc.setTextColor(prR, prG, prB);
-  doc.text(orgProfile.companyName, textLeft, cursorY + 4);
+  doc.text(orgProfile.companyName || '', textLeft, cursorY + 4);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(90, 100, 115);
-  doc.text(`${orgProfile.address} | Tel: ${orgProfile.phone} | ${orgProfile.email}`, textLeft, cursorY + 9);
-  doc.text(orgProfile.accreditationNumber, textLeft, cursorY + 13);
+  const contactParts = [
+    orgProfile.address,
+    orgProfile.phone ? `Tel: ${orgProfile.phone}` : '',
+    orgProfile.email,
+  ].filter(Boolean);
+  if (contactParts.length > 0) {
+    doc.text(contactParts.join(' | '), textLeft, cursorY + 8.5);
+  }
+  if (orgProfile.accreditationNumber?.trim()) {
+    const accLabel = lang === 'fr' ? "N° d'agrément / d'accréditation : " : 'Agrément / Accreditation no.: ';
+    doc.text(`${accLabel}${orgProfile.accreditationNumber}`, textLeft, cursorY + 12.5);
+  }
 
   // Right-aligned report number and status
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(30, 41, 59);
   doc.text(`${lang === 'fr' ? 'N° Rapport' : 'Report No'}: ${analysis.reportNumber}`, pageWidth - margin, cursorY + 4, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text(`Version: v${analysis.version} | Date: ${analysis.testedDate}`, pageWidth - margin, cursorY + 9, { align: 'right' });
+  doc.setFontSize(7.5);
+  doc.text(`Version: v${analysis.version} | Date: ${analysis.testedDate}`, pageWidth - margin, cursorY + 8.5, { align: 'right' });
 
   const statusLabel = analysis.status === 'approved'
     ? (lang === 'fr' ? 'APPROUVÉ / DÉFINITIF' : 'APPROVED / FINAL')
     : (lang === 'fr' ? 'BROUILLON (NON AUDITÉ)' : 'DRAFT (UNAUDITED)');
   doc.setTextColor(analysis.status === 'approved' ? 16 : 220, analysis.status === 'approved' ? 185 : 38, analysis.status === 'approved' ? 129 : 38);
   doc.setFont('helvetica', 'bold');
-  doc.text(statusLabel, pageWidth - margin, cursorY + 14, { align: 'right' });
+  doc.text(statusLabel, pageWidth - margin, cursorY + 13, { align: 'right' });
 
-  cursorY += 20;
+  cursorY += 18;
 
-  // Title Banner
+  // Title Banner with Form Code
+  const formCode = orgProfile.formCodes?.[testDef.id];
+  const formCodeText = formCode ? ` [${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${formCode}]` : '';
+
   doc.setFillColor(241, 245, 249);
-  doc.roundedRect(margin, cursorY, contentWidth, 10, 1.5, 1.5, 'F');
+  doc.roundedRect(margin, cursorY, contentWidth, 9, 1.5, 1.5, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   doc.setTextColor(prR, prG, prB);
   doc.text(
-    `${testDef.name[lang].toUpperCase()} - ${analysis.standard}`,
+    `${testDef.name[lang].toUpperCase()} - ${analysis.standard}${formCodeText}`,
     pageWidth / 2,
-    cursorY + 6.5,
+    cursorY + 6,
     { align: 'center' }
   );
 
-  cursorY += 14;
+  cursorY += 12;
 
   // -------------------------------------------------------------
-  // 2. Client & Project Block
+  // 2. Client & Project Block (with Extended Metadata)
   // -------------------------------------------------------------
+  const hasExtendedProject = Boolean(
+    project.programmeTitle ||
+    project.lotSection ||
+    project.contractNumber ||
+    project.tenderNumber ||
+    project.financingText ||
+    (project.parties && project.parties.length > 0)
+  );
+  const projectBoxHeight = hasExtendedProject ? 28 : 22;
+
   doc.setDrawColor(226, 232, 240);
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(margin, cursorY, contentWidth, 24, 1.5, 1.5, 'D');
+  doc.roundedRect(margin, cursorY, contentWidth, projectBoxHeight, 1.5, 1.5, 'D');
 
-  const col1X = margin + 4;
-  const col2X = margin + 36;
+  const col1X = margin + 3;
+  const col2X = margin + 32;
   const col3X = margin + 98;
-  const col4X = margin + 134;
+  const col4X = margin + 132;
 
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
 
   // Row 1
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text(lang === 'fr' ? 'Client :' : 'Client:', col1X, cursorY + 5);
+  doc.text(lang === 'fr' ? 'Client :' : 'Client:', col1X, cursorY + 4.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(`${client.companyName}${client.contactPerson ? ` (${client.contactPerson})` : ''}`, col2X, cursorY + 5);
+  doc.text(`${client.companyName}${client.contactPerson ? ` (${client.contactPerson})` : ''}`, col2X, cursorY + 4.5);
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text(lang === 'fr' ? 'Échantillon :' : 'Sample ID:', col3X, cursorY + 5);
+  doc.text(lang === 'fr' ? 'Échantillon :' : 'Sample ID:', col3X, cursorY + 4.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(sample.sampleId, col4X, cursorY + 5);
+  doc.text(sample.sampleId, col4X, cursorY + 4.5);
 
   // Row 2
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text(lang === 'fr' ? 'Projet :' : 'Project:', col1X, cursorY + 11);
+  doc.text(lang === 'fr' ? 'Projet :' : 'Project:', col1X, cursorY + 10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(project.projectName, col2X, cursorY + 11);
+  doc.text(project.projectName, col2X, cursorY + 10);
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text(lang === 'fr' ? 'Profondeur :' : 'Depth:', col3X, cursorY + 11);
+  doc.text(lang === 'fr' ? 'Profondeur :' : 'Depth:', col3X, cursorY + 10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(sample.depth || '-', col4X, cursorY + 11);
+  doc.text(sample.depth || '-', col4X, cursorY + 10);
 
   // Row 3
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text(lang === 'fr' ? 'Site / Lieu :' : 'Site Location:', col1X, cursorY + 17);
+  doc.text(lang === 'fr' ? 'Site / Lieu :' : 'Site Location:', col1X, cursorY + 15.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(project.siteLocation, col2X, cursorY + 17);
+  doc.text(project.siteLocation, col2X, cursorY + 15.5);
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text(lang === 'fr' ? 'Date prélèvement :' : 'Sample Date:', col3X, cursorY + 17);
+  doc.text(lang === 'fr' ? 'Date prélèvement :' : 'Sample Date:', col3X, cursorY + 15.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(sample.samplingDate, col4X, cursorY + 17);
+  doc.text(sample.samplingDate, col4X, cursorY + 15.5);
 
-  cursorY += 28;
+  if (hasExtendedProject) {
+    // Row 4: Extended details
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(71, 85, 105);
+    doc.text(lang === 'fr' ? 'Marché / Lot :' : 'Contract / Lot:', col1X, cursorY + 21);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(15, 23, 42);
+    const contractLot = `${project.contractNumber || project.referenceNumber || '-'} ${project.lotSection ? `(${project.lotSection})` : ''}`;
+    doc.text(contractLot, col2X, cursorY + 21);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(71, 85, 105);
+    doc.text(lang === 'fr' ? 'Financement :' : 'Financing:', col3X, cursorY + 21);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(15, 23, 42);
+    doc.text(project.financingText || (project.parties?.[0]?.name ? `${project.parties[0].role}: ${project.parties[0].name}` : '-'), col4X, cursorY + 21);
+  }
+
+  cursorY += projectBoxHeight + 4;
 
   // -------------------------------------------------------------
   // 3. Test Specific Results & Chart
   // -------------------------------------------------------------
   if (testDef.id === 'proctor') {
     renderProctorPdfSection(doc, analysis as GeoLabAnalysis<ProctorInput, ProctorResults>, margin, cursorY, contentWidth, lang, prR, prG, prB);
-    cursorY += 120;
+    cursorY += 105;
   } else if (testDef.id === 'grain_size') {
     renderGrainSizePdfSection(doc, analysis as GeoLabAnalysis<GrainSizeInput, GrainSizeResults>, margin, cursorY, contentWidth, lang, prR, prG, prB);
-    cursorY += 120;
+    cursorY += 105;
   } else {
     renderWaterContentPdfSection(doc, analysis as GeoLabAnalysis<WaterContentInput, WaterContentResults>, margin, cursorY, contentWidth, lang, prR, prG, prB);
-    cursorY += 80;
+    cursorY += 75;
   }
 
   // -------------------------------------------------------------
-  // 4. Observations & Engineering Interpretation
+  // 4. Revision History Table
+  // -------------------------------------------------------------
+  const revs: AnalysisRevision[] = (analysis.revisionHistory && analysis.revisionHistory.length > 0)
+    ? analysis.revisionHistory
+    : [
+        {
+          index: analysis.version || 1,
+          date: analysis.testedDate,
+          natureOfChange: lang === 'fr' ? 'Émission initiale' : 'Initial issue',
+          preparedBy: analysis.preparedBy?.name || 'Technicien Labo',
+          checkedBy: analysis.checkedBy?.name || 'Responsable Qualité',
+          approvedBy: analysis.approvedBy?.name || 'Directeur Technique',
+        },
+      ];
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(prR, prG, prB);
+  doc.text(lang === 'fr' ? 'HISTORIQUE DES RÉVISIONS' : 'REVISION HISTORY', margin, cursorY);
+  cursorY += 2;
+
+  const revTableY = cursorY;
+  doc.setFillColor(241, 245, 249);
+  doc.rect(margin, revTableY, contentWidth, 4.2, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(lang === 'fr' ? 'Ind.' : 'Rev', margin + 2, revTableY + 3);
+  doc.text('Date', margin + 14, revTableY + 3);
+  doc.text(lang === 'fr' ? 'Nature de la modification' : 'Nature of change', margin + 36, revTableY + 3);
+  doc.text(lang === 'fr' ? 'Établi par' : 'Prepared by', margin + 98, revTableY + 3);
+  doc.text(lang === 'fr' ? 'Vérifié par' : 'Checked by', margin + 126, revTableY + 3);
+  doc.text(lang === 'fr' ? 'Approuvé par' : 'Approved by', margin + 154, revTableY + 3);
+
+  cursorY += 4.2;
+  revs.slice(0, 2).forEach((rev) => {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(String(rev.index ?? rev.revNumber ?? 0), margin + 2, cursorY + 3);
+    doc.text(rev.date || '', margin + 14, cursorY + 3);
+    doc.text(rev.natureOfChange || rev.description || '-', margin + 36, cursorY + 3);
+    doc.text(rev.preparedBy || rev.author || '-', margin + 98, cursorY + 3);
+    doc.text(rev.checkedBy || '-', margin + 126, cursorY + 3);
+    doc.text(rev.approvedBy || '-', margin + 154, cursorY + 3);
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin, cursorY + 4, margin + contentWidth, cursorY + 4);
+    cursorY += 4.2;
+  });
+  cursorY += 2;
+
+  // -------------------------------------------------------------
+  // 5. Observations & Engineering Interpretation
   // -------------------------------------------------------------
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setTextColor(prR, prG, prB);
   doc.text(lang === 'fr' ? 'OBSERVATIONS & INTERPRÉTATION GÉOTECHNIQUE' : 'OBSERVATIONS & GEOTECHNICAL INTERPRETATION', margin, cursorY);
-  cursorY += 3;
+  cursorY += 2.5;
 
   const narrativeText = analysis.observations || analysis.aiNarrative || (lang === 'fr' ? 'Essai réalisé conformément à la norme de référence. Résultats conformes aux spécifications du projet.' : 'Test performed in accordance with reference standard. Results satisfy project specifications.');
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(51, 65, 85);
   const splitNarrative = doc.splitTextToSize(narrativeText, contentWidth);
-  doc.text(splitNarrative, margin, cursorY + 3);
-  cursorY += splitNarrative.length * 3.8 + 6;
+  doc.text(splitNarrative, margin, cursorY + 2.5);
+  cursorY += splitNarrative.length * 3.5 + 4;
 
   // -------------------------------------------------------------
-  // 5. Signatures Block
+  // 6. Configurable Approval Chain (Up to 6 entries)
   // -------------------------------------------------------------
-  const sigBoxWidth = (contentWidth - 8) / 3;
-  const sigHeight = 22;
+  const chain = (orgProfile.approvalChain && orgProfile.approvalChain.length > 0)
+    ? orgProfile.approvalChain.slice(0, 6)
+    : [
+        {
+          id: 'sig-1',
+          roleLabel: { en: 'Tested by (Technician)', fr: 'Réalisé par (Technicien)' },
+          name: analysis.preparedBy?.name || orgProfile.signatories[0]?.name || 'J. Dupont',
+          title: analysis.preparedBy?.title || orgProfile.signatories[0]?.title || 'Technicien Labo',
+        },
+        {
+          id: 'sig-2',
+          roleLabel: { en: 'Checked by (QA)', fr: 'Vérifié par (Qualité)' },
+          name: analysis.checkedBy?.name || orgProfile.signatories[1]?.name || 'M. Lambert',
+          title: analysis.checkedBy?.title || orgProfile.signatories[1]?.title || 'Responsable AQ',
+        },
+        {
+          id: 'sig-3',
+          roleLabel: { en: 'Approved by (Director)', fr: 'Approuvé par (Directeur)' },
+          name: analysis.approvedBy?.name || orgProfile.signatories[2]?.name || 'Dr. H. Kemekong',
+          title: analysis.approvedBy?.title || orgProfile.signatories[2]?.title || 'Directeur Technique',
+        },
+      ];
 
-  // Draw 3 signature boxes
-  const sigs = [
-    { title: lang === 'fr' ? 'Réalisé par (Technicien)' : 'Tested by (Technician)', name: analysis.preparedBy?.name || orgProfile.signatories[0]?.name || 'J. Dupont' },
-    { title: lang === 'fr' ? 'Vérifié par (Qualité)' : 'Checked by (Quality)', name: analysis.checkedBy?.name || orgProfile.signatories[1]?.name || 'M. Lambert' },
-    { title: lang === 'fr' ? 'Approuvé par (Directeur)' : 'Approved by (Director)', name: analysis.approvedBy?.name || orgProfile.signatories[2]?.name || 'Dr. H. Kemekong' },
-  ];
+  const sigCount = Math.min(chain.length, 6);
+  const itemsPerRow = sigCount <= 3 ? sigCount : 3;
+  const numRows = Math.ceil(sigCount / 3);
+  const sigBoxWidth = (contentWidth - (itemsPerRow - 1) * 4) / itemsPerRow;
+  const sigHeight = 18;
 
-  sigs.forEach((sig, idx) => {
-    const boxX = margin + idx * (sigBoxWidth + 4);
+  chain.forEach((sig, idx) => {
+    const rowIdx = Math.floor(idx / 3);
+    const colIdx = idx % 3;
+    const boxX = margin + colIdx * (sigBoxWidth + 4);
+    const boxY = cursorY + rowIdx * (sigHeight + 2.5);
+
     doc.setDrawColor(203, 213, 225);
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(boxX, cursorY, sigBoxWidth, sigHeight, 1, 1, 'FD');
+    doc.roundedRect(boxX, boxY, sigBoxWidth, sigHeight, 1, 1, 'FD');
 
+    const roleTitle = sig.roleLabel?.[lang] || sig.title || `Signataire ${idx + 1}`;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
+    doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
-    doc.text(sig.title, boxX + 3, cursorY + 5);
+    doc.text(roleTitle, boxX + 2.5, boxY + 4);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
+    doc.setFontSize(7.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(sig.name, boxX + 3, cursorY + 11);
+    doc.text(sig.name || '-', boxX + 2.5, boxY + 8.5);
 
-    doc.setFontSize(7);
-    doc.setTextColor(148, 163, 184);
-    doc.text(lang === 'fr' ? '[Signature numérique]' : '[Digital Signature]', boxX + 3, cursorY + 18);
+    if (sig.stampOrSignatureBase64) {
+      try {
+        doc.addImage(sig.stampOrSignatureBase64, 'PNG', boxX + sigBoxWidth - 20, boxY + 3.5, 17, 12);
+      } catch {
+        doc.setFontSize(6);
+        doc.setTextColor(148, 163, 184);
+        doc.text(lang === 'fr' ? '[Cachet numérique]' : '[Digital Stamp]', boxX + 2.5, boxY + 14);
+      }
+    } else {
+      doc.setFontSize(6);
+      doc.setTextColor(148, 163, 184);
+      doc.text(lang === 'fr' ? '[Signature manuscrite]' : '[Handwritten Signature]', boxX + 2.5, boxY + 14);
+    }
   });
 
-  cursorY += sigHeight + 8;
+  cursorY += numRows * (sigHeight + 2.5) + 4;
 
   // -------------------------------------------------------------
-  // 6. Footer Block
+  // 7. Footer Block
   // -------------------------------------------------------------
   doc.setDrawColor(226, 232, 240);
-  doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
+  doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
-  doc.text(orgProfile.reportFooterText, margin, pageHeight - 8);
-  doc.text('Page 1 / 1', pageWidth - margin, pageHeight - 8, { align: 'right' });
+  doc.text(orgProfile.reportFooterText || 'FraGeo Suite - GeoLab Module', margin, pageHeight - 6.5);
+  doc.text('Page 1 / 1', pageWidth - margin, pageHeight - 6.5, { align: 'right' });
 
   return doc.output('blob');
 }

@@ -222,5 +222,177 @@ describe('GeoLab Excel Generator with Native DrawingML Charts', () => {
     const sheetXml = await zip.file('xl/worksheets/sheet1.xml')!.async('string');
     expect(sheetXml).toContain('AVERAGE(H9:H10)');
   });
+
+  it('blocks final approved report when company name is empty', async () => {
+    const rawInput = {
+      specimens: [
+        { specimenId: 'A', containerId: 'T1', tareMassG: 45.2, wetSoilPlusTareG: 198.6, drySoilPlusTareG: 183.8 },
+      ],
+    };
+    const computedResults = waterContentTestDefinition.calculate(rawInput);
+    const approvedAnalysis: GeoLabAnalysis = {
+      id: 'analysis-block-test',
+      sampleId: 'sample-1',
+      testType: 'water_content',
+      standard: 'NF P94-050',
+      reportNumber: 'GL-2026-BLOCK',
+      version: 1,
+      status: 'approved',
+      testedDate: '2026-10-24',
+      rawInput,
+      computedResults,
+      qualityWarnings: [],
+      createdAt: '2026-11-01',
+      updatedAt: '2026-11-01',
+    };
+
+    const emptyOrg: OrganisationProfile = {
+      ...mockOrg,
+      companyName: '   ',
+    };
+
+    await expect(
+      generateGeoLabExcelReport({
+        analysis: approvedAnalysis,
+        client: mockClient,
+        project: mockProject,
+        sample: mockSample,
+        orgProfile: emptyOrg,
+        testDef: waterContentTestDefinition,
+      })
+    ).rejects.toThrow(/Veuillez configurer le profil de votre organisation|Please configure your organisation profile/);
+
+    // Draft reports must remain allowed even if companyName is empty
+    const draftAnalysis: GeoLabAnalysis = {
+      ...approvedAnalysis,
+      status: 'draft',
+    };
+    const draftBlob = await generateGeoLabExcelReport({
+      analysis: draftAnalysis,
+      client: mockClient,
+      project: mockProject,
+      sample: mockSample,
+      orgProfile: emptyOrg,
+      testDef: waterContentTestDefinition,
+    });
+    expect(draftBlob).toBeDefined();
+  });
+
+  it('embeds logos, sets landscape page setup fit to 1 page wide, and verifies visible trendline & saturation curve', async () => {
+    const tinyPngBase64 =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    const brandedOrg: OrganisationProfile = {
+      ...mockOrg,
+      logos: {
+        left: tinyPngBase64,
+        center: tinyPngBase64,
+        right: tinyPngBase64,
+      },
+      bilingualHeader: {
+        column1: 'RÉPUBLIQUE DU CAMEROUN\nPaix - Travail - Patrie\nMINISTÈRE DES TRAVAUX PUBLICS',
+        column2: 'REPUBLIC OF CAMEROON\nPeace - Work - Fatherland\nMINISTRY OF PUBLIC WORKS',
+      },
+      accreditationNumber: 'N° 123/MINTP/LABO',
+      formCodes: {
+        proctor: 'PR2-FOR-02 Ind A',
+      },
+      approvalChain: [
+        { id: '1', role: "L'Opérateur", name: 'E. Martin', date: '2026-10-22' },
+        { id: '2', role: 'Le Chef de Section', name: 'M. Lambert', date: '2026-10-22' },
+        { id: '3', role: 'Le Responsable Laboratoire', name: 'Dr. H. Kemekong', date: '2026-10-23' },
+      ],
+    };
+
+    const projectWithMeta: GeoLabProject = {
+      ...mockProject,
+      programmeTitle: 'Projet de Développement des Secteurs Urbains',
+      lotSection: 'Lot 2 : Tronçon Nord',
+      contractNumber: 'CT-2026/MINTP/045',
+      tenderNumber: 'DAO N° 12/MINTP/2026',
+      financing: 'Banque Mondiale (IDA) / BIP',
+    };
+
+    const rawInput = {
+      mouldType: 'cbr' as const,
+      mouldVolumeCm3: 2124,
+      particleDensityGs: 2.82,
+      targetCompactionPercent: 95,
+      points: [
+        { pointIndex: 1, waterContentPercent: 4.3, dryDensityGcm3: 2.115 },
+        { pointIndex: 2, waterContentPercent: 6.7, dryDensityGcm3: 2.213 },
+        { pointIndex: 3, waterContentPercent: 8.2, dryDensityGcm3: 2.21 },
+        { pointIndex: 4, waterContentPercent: 10.5, dryDensityGcm3: 2.129 },
+        { pointIndex: 5, waterContentPercent: 12.0, dryDensityGcm3: 2.04 },
+      ],
+    };
+    const computedResults = proctorTestDefinition.calculate(rawInput);
+
+    const analysis: GeoLabAnalysis = {
+      id: 'analysis-proctor-quality',
+      sampleId: 'sample-1',
+      testType: 'proctor',
+      standard: 'NF P94-093',
+      reportNumber: 'DEMO-GL-2026-0099',
+      version: 1,
+      status: 'approved',
+      isDemo: true,
+      testedDate: '2026-10-22',
+      rawInput,
+      computedResults,
+      qualityWarnings: [],
+      revisions: [
+        { revNumber: 0, date: '2026-10-22', author: 'E. Martin', description: 'Émission initiale / Initial issue' },
+      ],
+      createdAt: '2026-11-01',
+      updatedAt: '2026-11-01',
+    };
+
+    const blob = await generateGeoLabExcelReport({
+      analysis,
+      client: mockClient,
+      project: projectWithMeta,
+      sample: mockSample,
+      orgProfile: brandedOrg,
+      testDef: proctorTestDefinition,
+    });
+
+    const arrayBuffer = await blob.arrayBuffer();
+    const zip = await JSZip.loadAsync(arrayBuffer);
+
+    // Verify embedded images in xl/media/
+    expect(zip.file('xl/media/imageLeft.png')).not.toBeNull();
+    expect(zip.file('xl/media/imageCenter.png')).not.toBeNull();
+    expect(zip.file('xl/media/imageRight.png')).not.toBeNull();
+
+    // Verify drawing anchors
+    const drawingXml = await zip.file('xl/drawings/drawing1.xml')!.async('string');
+    expect(drawingXml).toContain('twoCellAnchor');
+    expect(drawingXml).toContain('xdr:graphicFrame'); // embedded chart anchor
+    expect(drawingXml).toContain('rIdChart');
+
+    // Verify landscape page setup and fitToWidth="1"
+    const sheetXml = await zip.file('xl/worksheets/sheet1.xml')!.async('string');
+    expect(sheetXml).toContain('orientation="landscape"');
+    expect(sheetXml).toContain('fitToWidth="1"');
+    expect(sheetXml).toContain('fitToPage="1"');
+
+    // Verify DEMO watermark or badge
+    expect(sheetXml).toContain('DEMO');
+
+    // Verify accreditation label and form code
+    expect(sheetXml).toContain("N° d'agrément / d'accréditation");
+    expect(sheetXml).toContain('PR2-FOR-02 Ind A');
+
+    // Verify project metadata
+    expect(sheetXml).toContain('Projet de Développement des Secteurs Urbains');
+    expect(sheetXml).toContain('Lot 2 : Tronçon Nord');
+
+    // Verify chart XML contains trendline and dashed saturation line series
+    const chartXml = await zip.file('xl/charts/chart1.xml')!.async('string');
+    expect(chartXml).toContain('<c:trendline>');
+    expect(chartXml).toContain('<c:trendlineType val="poly"/>');
+    expect(chartXml).toContain('<a:prstDash val="dash"/>'); // Saturation curve is dashed
+  });
 });
 

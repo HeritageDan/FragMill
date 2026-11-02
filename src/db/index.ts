@@ -77,18 +77,20 @@ export const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export const DEFAULT_ORGANISATION_PROFILE: OrganisationProfile = {
-  companyName: 'GeoLab Materials & Soil Testing Laboratory',
-  address: '142 Boulevard de la Recherche, 75013 Paris, France',
-  phone: '+33 (0)1 45 87 90 20',
-  email: 'contact@geolab-testing.com',
-  accreditationNumber: 'COFRAC / ISO 17025 N° 1-4820',
+  companyName: '',
+  address: '',
+  phone: '',
+  email: '',
+  accreditationNumber: '',
   primaryColor: '#1e40af',
-  signatories: [
-    { role: 'prepared', name: 'J. Dupont', title: 'Laboratory Technician' },
-    { role: 'checked', name: 'M. Lambert, EurGeol', title: 'Quality Assurance Lead' },
-    { role: 'approved', name: 'Dr. H. Kemekong, P.Eng', title: 'Technical Director' },
-  ],
-  reportFooterText: 'Certified Geotechnical Laboratory Report - Quality Assurance Protocol',
+  signatories: [],
+  approvalChain: [],
+  formCodes: {
+    proctor: 'PR2-FOR-02',
+    grain_size: 'GR1-FOR-01',
+    water_content: 'TE1-FOR-01',
+  },
+  reportFooterText: '',
   defaultLanguage: 'fr',
   defaultStandard: 'NF',
 };
@@ -107,10 +109,27 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
 
 export async function getOrganisationProfile(): Promise<OrganisationProfile> {
   const row = await db.settings.get('geolab_organisation_profile');
-  if (row) {
-    return { ...DEFAULT_ORGANISATION_PROFILE, ...row.value };
+  const profile: OrganisationProfile = row
+    ? { ...DEFAULT_ORGANISATION_PROFILE, ...row.value }
+    : { ...DEFAULT_ORGANISATION_PROFILE };
+
+  // Backwards compatibility migration: convert legacy signatories to approvalChain if needed
+  if ((!profile.approvalChain || profile.approvalChain.length === 0) && profile.signatories && profile.signatories.length > 0) {
+    const roleLabels: Record<string, { en: string; fr: string }> = {
+      prepared: { en: 'Tested by', fr: 'Essai réalisé par' },
+      checked: { en: 'Checked by', fr: 'Vérifié par' },
+      approved: { en: 'Approved by', fr: 'Approuvé par' },
+    };
+    profile.approvalChain = profile.signatories.slice(0, 6).map((s, idx) => ({
+      id: `sig-${idx + 1}`,
+      roleLabel: roleLabels[s.role] || { en: s.role, fr: s.role },
+      name: s.name,
+      title: s.title,
+      stampOrSignatureBase64: s.stampOrSignatureBase64,
+    }));
   }
-  return DEFAULT_ORGANISATION_PROFILE;
+
+  return profile;
 }
 
 export async function saveOrganisationProfile(profile: OrganisationProfile): Promise<void> {
