@@ -16,65 +16,65 @@ describe('Demo Project Seed & Migration', () => {
     mockProjects = [];
     mockSites = [];
 
-    vi.spyOn(db, 'transaction').mockImplementation(async (...args: any[]) => {
+    (vi.spyOn(db, 'transaction') as any).mockImplementation(async (...args: any[]) => {
       const fn = args[args.length - 1];
       return fn();
     });
 
-    vi.spyOn(db.projects, 'get').mockImplementation(async (id: any) =>
+    (vi.spyOn(db.projects, 'get') as any).mockImplementation(async (id: any) =>
       mockProjects.find((p) => p.id === id)
     );
-    vi.spyOn(db.projects, 'update').mockImplementation(async (id: any, changes: any) => {
+    (vi.spyOn(db.projects, 'update') as any).mockImplementation(async (id: any, changes: any) => {
       const p = mockProjects.find((item) => item.id === id);
       if (p) Object.assign(p, changes);
       return 1;
     });
-    vi.spyOn(db.projects, 'toArray').mockImplementation(async () => [...mockProjects]);
-    vi.spyOn(db.projects, 'where').mockImplementation((field: string) => ({
+    (vi.spyOn(db.projects, 'toArray') as any).mockImplementation(async () => [...mockProjects]);
+    (vi.spyOn(db.projects, 'where') as any).mockImplementation((field: string) => ({
       equals: (val: any) => ({
         first: async () => mockProjects.find((p) => p[field] === val),
       }),
-    } as any));
-    vi.spyOn(db.projects, 'add').mockImplementation(async (proj: any) => {
+    }));
+    (vi.spyOn(db.projects, 'add') as any).mockImplementation(async (proj: any) => {
       mockProjects.push(proj);
       return proj.id;
     });
-    vi.spyOn(db.projects, 'put').mockImplementation(async (proj: any) => {
+    (vi.spyOn(db.projects, 'put') as any).mockImplementation(async (proj: any) => {
       mockProjects.push(proj);
       return proj.id;
     });
-    vi.spyOn(db.projects, 'count').mockImplementation(async () => mockProjects.length);
+    (vi.spyOn(db.projects, 'count') as any).mockImplementation(async () => mockProjects.length);
 
-    vi.spyOn(db.sites, 'where').mockImplementation((field: string) => ({
+    (vi.spyOn(db.sites, 'where') as any).mockImplementation((field: string) => ({
       equals: (val: any) => ({
         first: async () => mockSites.find((s) => s[field] === val),
       }),
-    } as any));
-    vi.spyOn(db.sites, 'update').mockImplementation(async (id: any, changes: any) => {
+    }));
+    (vi.spyOn(db.sites, 'update') as any).mockImplementation(async (id: any, changes: any) => {
       const s = mockSites.find((item) => item.id === id);
       if (s) Object.assign(s, changes);
       return 1;
     });
-    vi.spyOn(db.sites, 'add').mockImplementation(async (site: any) => {
+    (vi.spyOn(db.sites, 'add') as any).mockImplementation(async (site: any) => {
       mockSites.push(site);
       return site.id;
     });
-    vi.spyOn(db.sites, 'put').mockImplementation(async (site: any) => {
+    (vi.spyOn(db.sites, 'put') as any).mockImplementation(async (site: any) => {
       mockSites.push(site);
       return site.id;
     });
 
-    vi.spyOn(db.blasts, 'put').mockImplementation(async () => 1 as any);
-    vi.spyOn(db.images, 'put').mockImplementation(async () => 1 as any);
-    vi.spyOn(db.segmentationRuns, 'put').mockImplementation(async () => 1 as any);
-    vi.spyOn(db.groundTruths, 'put').mockImplementation(async () => 1 as any);
-    vi.spyOn(db.millBatches, 'put').mockImplementation(async () => 1 as any);
+    (vi.spyOn(db.blasts, 'put') as any).mockImplementation(async () => 1);
+    (vi.spyOn(db.images, 'put') as any).mockImplementation(async () => 1);
+    (vi.spyOn(db.segmentationRuns, 'put') as any).mockImplementation(async () => 1);
+    (vi.spyOn(db.groundTruths, 'put') as any).mockImplementation(async () => 1);
+    (vi.spyOn(db.millBatches, 'put') as any).mockImplementation(async () => 1);
 
-    vi.spyOn(db.blasts, 'bulkAdd').mockImplementation(async () => 1 as any);
-    vi.spyOn(db.images, 'bulkAdd').mockImplementation(async () => 1 as any);
-    vi.spyOn(db.segmentationRuns, 'bulkAdd').mockImplementation(async () => 1 as any);
-    vi.spyOn(db.groundTruths, 'bulkAdd').mockImplementation(async () => 1 as any);
-    vi.spyOn(db.millBatches, 'bulkAdd').mockImplementation(async () => 1 as any);
+    (vi.spyOn(db.blasts, 'bulkAdd') as any).mockImplementation(async () => 1);
+    (vi.spyOn(db.images, 'bulkAdd') as any).mockImplementation(async () => 1);
+    (vi.spyOn(db.segmentationRuns, 'bulkAdd') as any).mockImplementation(async () => 1);
+    (vi.spyOn(db.groundTruths, 'bulkAdd') as any).mockImplementation(async () => 1);
+    (vi.spyOn(db.millBatches, 'bulkAdd') as any).mockImplementation(async () => 1);
   });
 
   it('preserves DEMO_PROJECT_ID at runtime', () => {

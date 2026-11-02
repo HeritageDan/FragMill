@@ -807,7 +807,7 @@ function getCorePropsXml(reportNumber: string, companyName: string): string {
 function getAppPropsXml(): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
-  <Application>FragMill GeoLab Module</Application>
+  <Application>FraGeo Suite - GeoLab Module</Application>
   <DocSecurity>0</DocSecurity>
 </Properties>`;
 }

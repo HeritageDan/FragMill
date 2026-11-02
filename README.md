@@ -1,14 +1,18 @@
-# FragMill: Blast-to-Mill Fragmentation Lab
+# FraGeo Suite: Blast-to-Mill & Materials Lab
 
-> **A low-cost, open, client-side post-blast muck pile fragmentation measurement and comminution optimization platform for Artisanal and Small-Scale Mining (ASM).**
+> **A low-cost, open, client-side mining and geotechnical engineering suite combining post-blast muck pile fragmentation measurement with a complete materials testing laboratory.**
 
 ---
 
 ## Overview
 
-**FragMill** is an open-source, production-grade geotechnical web application designed to measure rock fragment size distributions directly from muck pile photographs, linking fragmentation to blast design parameters, crushing/milling energy consumption, and gold recovery.
+**FraGeo Suite** is an open-source, production-grade geotechnical and mining engineering suite comprising two core modules:
+- **FraGeo Blast** (formerly FragMill): Post-blast muck pile fragmentation measurement from photographs, blast design optimization, 3D initiation sequencing, comminution digital twin (Bond & Morrell), and gold recovery modeling.
+- **FraGeo Lab** (formerly GeoLab): Geotechnical materials testing laboratory suite for Proctor compaction (NF P94-093 / ASTM D698 / D1557), Particle Size Distribution (NF P94-056 / ASTM D422), and Natural Water Content (NF P94-050).
 
-Developed specifically for research and field operations in artisanal and small-scale mining districts, FragMill provides an accessible alternative to commercial desktop tools (e.g., WipFrag, Split-Desktop). It requires **no server backend**, operates **100% offline** in remote mine pits, and runs directly inside any modern web browser on smartphones, tablets, or laptops.
+Developed specifically for research and field operations in artisanal, small-scale, and industrial mining operations, FraGeo Suite provides an accessible alternative to commercial desktop tools. It requires **no server backend**, operates **100% offline** in remote mine pits and field camps, and runs directly inside any modern web browser on smartphones, tablets, or laptops.
+
+*Note on legacy compatibility: The internal Dexie database name (`FragMillDB`), all `localStorage` keys prefixed with `fragmill_`, and internal module IDs (`fragmill`, `geolab`) are preserved intact so existing user data is never lost.*
 
 ---
 

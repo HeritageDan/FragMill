@@ -104,9 +104,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-black text-base tracking-tight text-white">FRAGMILL</span>
+              <span className="font-black text-base tracking-tight text-white">FRAGEO SUITE</span>
               <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                Blast-to-Mill
+                Blast-to-Mill & Lab
               </span>
             </div>
             <p className="text-[10px] text-slate-400 font-medium">
@@ -114,7 +114,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             </p>
           </div>
 
-          {/* Module Switcher: FragMill | GeoLab */}
+          {/* Module Switcher: FraGeo Blast | FraGeo Lab */}
           {onSwitchAppModule && (
             <div className="flex items-center gap-1 bg-slate-800/90 p-1 rounded-lg border border-slate-700 ml-2">
               <button
@@ -125,7 +125,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                FragMill
+                FraGeo Blast
               </button>
               <button
                 onClick={() => onSwitchAppModule('geolab')}
@@ -135,7 +135,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                GeoLab
+                FraGeo Lab
               </button>
             </div>
           )}

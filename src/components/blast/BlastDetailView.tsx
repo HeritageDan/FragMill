@@ -823,7 +823,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                     const a = document.createElement('a');
                     a.href = url;
                     const dateStr = new Date().toISOString().slice(0, 10);
-                    a.download = `FRAGMILL_Rapport_General_${blast.blastId}_${dateStr}.pdf`;
+                    a.download = `FraGeo_Rapport_General_${blast.blastId}_${dateStr}.pdf`;
                     a.click();
                     URL.revokeObjectURL(url);
                   } catch (err) {
@@ -843,7 +843,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = lang === 'fr' ? `FragMill_Donnees_${blast.blastId}.xlsx` : `FragMill_${blast.blastId}.xlsx`;
+                  a.download = lang === 'fr' ? `FraGeo_Donnees_${blast.blastId}.xlsx` : `FraGeo_${blast.blastId}.xlsx`;
                   a.click();
                 }}
                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow"

@@ -51,7 +51,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
           </div>
           <div>
             <h2 className="text-xl font-black text-slate-900">
-              {isFr ? 'Guide Complet FragMill : De l’Abattage au Moulin' : 'FragMill Complete Guide: From Blast to Mill'}
+              {isFr ? 'Guide Complet FraGeo Suite : De l’Abattage au Moulin' : 'FraGeo Suite Complete Guide: From Blast to Mill'}
             </h2>
             <p className="text-xs text-slate-500">
               {isFr
@@ -133,8 +133,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
             {isFr ? 'Avertissement de Sécurité Minière Obligatoire :' : 'Mandatory Mining Safety Notice:'}
           </span>
           {isFr
-            ? 'FragMill est un outil d’aide à la décision technique et d’ingénierie. Toute modification du plan de tir (maille, écartement, charge d’explosif, séquencement) doit obligatoirement être validée par un ingénieur des mines ou un boutefeu qualifié conformément à la réglementation en vigueur (stabilité des gradins, projections, vibrations).'
-            : 'FragMill is an engineering decision-support tool. Any blast pattern modification (burden, spacing, charge per hole, initiation delays) must be reviewed and approved by a qualified mining engineer or certified blaster in compliance with local statutory safety regulations.'}
+            ? 'FraGeo Blast est un outil d’aide à la décision technique et d’ingénierie. Toute modification du plan de tir (maille, écartement, charge d’explosif, séquencement) doit obligatoirement être validée par un ingénieur des mines ou un boutefeu qualifié conformément à la réglementation en vigueur (stabilité des gradins, projections, vibrations).'
+            : 'FraGeo Blast is an engineering decision-support tool. Any blast pattern modification (burden, spacing, charge per hole, initiation delays) must be reviewed and approved by a qualified mining engineer or certified blaster in compliance with local statutory safety regulations.'}
         </div>
       </div>
 
@@ -144,7 +144,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-amber-500" />
-              {isFr ? 'Qu’est-ce que FragMill et pourquoi est-ce essentiel ?' : 'What is FragMill and Why Does It Matter?'}
+              {isFr ? 'Qu’est-ce que FraGeo Suite et pourquoi est-ce essentiel ?' : 'What is FraGeo Suite and Why Does It Matter?'}
             </h3>
 
             <div className="text-xs text-slate-600 space-y-3 leading-relaxed">
@@ -163,11 +163,11 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
               <p>
                 {isFr ? (
                   <>
-                    <strong>FragMill</strong> est une application web moderne de haute précision, 100% autonome et fonctionnant <strong>sans aucune connexion internet</strong>. Elle permet de mesurer instantanément la taille de ces roches en prenant simplement une <strong>photo sur le terrain</strong> avec votre smartphone ou tablette, puis de relier directement cette qualité de tir à la <strong>consommation d’énergie des concasseurs</strong> et à la <strong>quantité d’or récupérée</strong> au moulin.
+                    <strong>FraGeo Suite</strong> est une application web moderne de haute précision, 100% autonome et fonctionnant <strong>sans aucune connexion internet</strong>. Elle permet de mesurer instantanément la taille de ces roches en prenant simplement une <strong>photo sur le terrain</strong> avec votre smartphone ou tablette, puis de relier directement cette qualité de tir à la <strong>consommation d’énergie des concasseurs</strong> et à la <strong>quantité d’or récupérée</strong> au moulin.
                   </>
                 ) : (
                   <>
-                    <strong>FragMill</strong> is a modern high-precision web application that operates 100% client-side, <strong>completely offline</strong> in remote open pits. It allows mining teams to measure rock fragment sizes simply by taking a <strong>field photograph</strong> of the muck pile with a scale bar, and then links that fragmentation directly to <strong>crusher power consumption</strong> and <strong>gold recovery rates</strong>.
+                    <strong>FraGeo Suite</strong> is a modern high-precision web application that operates 100% client-side, <strong>completely offline</strong> in remote open pits. It allows mining teams to measure rock fragment sizes simply by taking a <strong>field photograph</strong> of the muck pile with a scale bar, and then links that fragmentation directly to <strong>crusher power consumption</strong> and <strong>gold recovery rates</strong>.
                   </>
                 )}
               </p>
@@ -198,8 +198,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 </span>
                 <p>
                   {isFr
-                    ? 'Pour économiser l’explosif, l’équipe a utilisé seulement 15 kg d’ANFO par trou. Résultat sur la photo analysée par FragMill : un P80 de 320 mm. Plus de 20% des blocs dépassent 300 mm.'
-                    : 'To save on explosive costs, the crew loaded only 15 kg of ANFO per hole. FragMill measured a coarse P80 of 320 mm. Over 20% of the pile consisted of oversize boulders (>300 mm).'}
+                    ? 'Pour économiser l’explosif, l’équipe a utilisé seulement 15 kg d’ANFO par trou. Résultat sur la photo analysée par FraGeo Blast : un P80 de 320 mm. Plus de 20% des blocs dépassent 300 mm.'
+                    : 'To save on explosive costs, the crew loaded only 15 kg of ANFO per hole. FraGeo Blast measured a coarse P80 of 320 mm. Over 20% of the pile consisted of oversize boulders (>300 mm).'}
                 </p>
                 <div className="p-2 bg-red-950/40 border border-red-500/30 rounded text-red-200">
                   <strong>{isFr ? 'Conséquences au moulin :' : 'Plant Consequences:'}</strong>{' '}
@@ -211,12 +211,12 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
 
               <div className="bg-white/10 p-4 rounded-xl border border-white/10 space-y-2">
                 <span className="font-bold text-emerald-300 block text-xs">
-                  {isFr ? '✅ Tir N°3 : Optimisé avec FragMill Advisor' : '✅ Blast #3: Optimized via FragMill Advisor'}
+                  {isFr ? '✅ Tir N°3 : Optimisé avec FraGeo Blast Advisor' : '✅ Blast #3: Optimized via FraGeo Blast Advisor'}
                 </span>
                 <p>
                   {isFr
-                    ? 'Guidée par le conseiller de tir, l’équipe a resserré la maille (B=2.2m, S=2.5m) avec 24 kg d’ANFO. FragMill mesure un P80 idéal de 155 mm avec moins de 2% de hors-gabarit.'
-                    : 'Guided by FragMill Advisor, the blaster adjusted burden to 2.2m and spacing to 2.5m with 24 kg ANFO. FragMill measured a smooth P80 of 155 mm with under 2% oversize.'}
+                    ? 'Guidée par le conseiller de tir, l’équipe a resserré la maille (B=2.2m, S=2.5m) avec 24 kg d’ANFO. FraGeo Blast mesure un P80 idéal de 155 mm avec moins de 2% de hors-gabarit.'
+                    : 'Guided by FraGeo Blast Advisor, the blaster adjusted burden to 2.2m and spacing to 2.5m with 24 kg ANFO. FraGeo Blast measured a smooth P80 of 155 mm with under 2% oversize.'}
                 </p>
                 <div className="p-2 bg-emerald-950/40 border border-emerald-500/30 rounded text-emerald-200">
                   <strong>{isFr ? 'Gains spectaculaires :' : 'Dramatic Gains:'}</strong>{' '}
@@ -248,8 +248,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 </div>
                 <p>
                   {isFr
-                    ? 'FragMill structure vos opérations en 4 espaces de travail professionnels organisés avec des sous-onglets ergonomiques :'
-                    : 'FragMill streamlines engineering operations across 4 structured workspaces with dedicated sub-tabs:'}
+                    ? 'FraGeo Suite structure vos opérations en 4 espaces de travail professionnels organisés avec des sous-onglets ergonomiques :'
+                    : 'FraGeo Suite streamlines engineering operations across 4 structured workspaces with dedicated sub-tabs:'}
                 </p>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>
@@ -384,7 +384,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 {isFr ? 'Niveau Industriel Supérieur' : 'Industrial Tier-1'}
               </span>
               <span className="text-xs text-blue-200 font-semibold">
-                {isFr ? 'Les 4 Piliers d’Ingénierie Avancée FragMill' : 'The 4 Core Pillars of Advanced Mining Engineering'}
+                {isFr ? 'Les 4 Piliers d’Ingénierie Avancée FraGeo Blast' : 'The 4 Core Pillars of Advanced Mining Engineering'}
               </span>
             </div>
             <h3 className="text-lg font-black text-white">
@@ -394,7 +394,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
             </h3>
             <p className="text-xs text-slate-300 leading-relaxed">
               {isFr
-                ? 'Ces 4 modules innovants hissent FragMill au standard des géants miniers tout en restant utilisables sur une simple tablette autonome dans les exploitations artisanales et semi-mécanisées.'
+                ? 'Ces 4 modules innovants hissent FraGeo Blast au standard des géants miniers tout en restant utilisables sur une simple tablette autonome dans les exploitations artisanales et semi-mécanisées.'
                 : 'These 4 innovative modules bring cutting-edge mine engineering to your pit tablet, operating 100% offline without cloud subscriptions or expensive external hardware.'}
             </p>
           </div>
@@ -430,11 +430,11 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
               <p>
                 {isFr ? (
                   <>
-                    <strong>La solution FragMill :</strong> Vous pouvez charger les orthomosaïques géoréférencées issues de vols de drone (DJI, Autel, Wingtra). L’algorithme de <strong>stéréologie 3D de Cunningham</strong> convertit les ellipses 2D en véritables volumes 3D (V = π/6 · a · b²) et réinjecte la distribution des fines dissimulées. De plus, le tas est découpé en 3 secteurs spatiaux (Crête, Milieu, Pied de talus) avec rendu d’un maillage isométrique 3D interactif.
+                    <strong>La solution FraGeo :</strong> Vous pouvez charger les orthomosaïques géoréférencées issues de vols de drone (DJI, Autel, Wingtra). L’algorithme de <strong>stéréologie 3D de Cunningham</strong> convertit les ellipses 2D en véritables volumes 3D (V = π/6 · a · b²) et réinjecte la distribution des fines dissimulées. De plus, le tas est découpé en 3 secteurs spatiaux (Crête, Milieu, Pied de talus) avec rendu d’un maillage isométrique 3D interactif.
                   </>
                 ) : (
                   <>
-                    <strong>FragMill Solution:</strong> Import georeferenced UAV orthomosaics. FragMill applies <strong>3D ellipsoidal stereology</strong> to reconstruct true rock volumes and corrects for hidden fines, mapping spatial fragmentation gradients across crest, center, and toe sectors.
+                    <strong>FraGeo Solution:</strong> Import georeferenced UAV orthomosaics. FraGeo Blast applies <strong>3D ellipsoidal stereology</strong> to reconstruct true rock volumes and corrects for hidden fines, mapping spatial fragmentation gradients across crest, center, and toe sectors.
                   </>
                 )}
               </p>
@@ -478,11 +478,11 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
               <p>
                 {isFr ? (
                   <>
-                    <strong>La solution FragMill :</strong> Une caméra industrielle ou webcam connectée filme en continu le tapis roulant d’alimentation à 20 images par seconde. Un pipeline WebAssembly analyse chaque image en 40 millisecondes et calcule en direct les moyennes mobiles du P20, P50, P80 et le débit en tonnes par heure (TPH). Si un bloc dépassant la limite de sécurité est détecté, l’API Web Audio déclenche une <strong>alarme sonore aiguë (sirène à 880 Hz)</strong> et un bandeau rouge clignotant avertit l’opérateur d’arrêter l’alimentateur vibrant.
+                    <strong>La solution FraGeo :</strong> Une caméra industrielle ou webcam connectée filme en continu le tapis roulant d’alimentation à 20 images par seconde. Un pipeline WebAssembly analyse chaque image en 40 millisecondes et calcule en direct les moyennes mobiles du P20, P50, P80 et le débit en tonnes par heure (TPH). Si un bloc dépassant la limite de sécurité est détecté, l’API Web Audio déclenche une <strong>alarme sonore aiguë (sirène à 880 Hz)</strong> et un bandeau rouge clignotant avertit l’opérateur d’arrêter l’alimentateur vibrant.
                   </>
                 ) : (
                   <>
-                    <strong>FragMill Solution:</strong> Rugged cameras process conveyor rock streams continuously at 20 FPS in WebAssembly. Moving P20, P50, and P80 curves are tracked alongside TPH throughput. If an oversize boulder exceeds crusher gape limits, a Web Audio <strong>high-frequency audible siren (880 Hz)</strong> fires instantly to halt the feeder.
+                    <strong>FraGeo Solution:</strong> Rugged cameras process conveyor rock streams continuously at 20 FPS in WebAssembly. Moving P20, P50, and P80 curves are tracked alongside TPH throughput. If an oversize boulder exceeds crusher gape limits, a Web Audio <strong>high-frequency audible siren (880 Hz)</strong> fires instantly to halt the feeder.
                   </>
                 )}
               </p>
@@ -526,19 +526,19 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
               <p>
                 {isFr ? (
                   <>
-                    <strong>La solution FragMill :</strong> Le simulateur 3D permet de tester le tir au ralenti milliseconde par milliseconde (séquençage en V, rangée par rangée ou détonateurs électroniques). Il calcule automatiquement les vibrations au sol (PPV en mm/s selon la formule de l’USBM) en fonction de la distance des habitations, et inspecte le profil laser du front de taille pour alerter en rouge en cas de zone de sous-banquette à risque mortel de projection.
+                    <strong>La solution FraGeo :</strong> Le simulateur 3D permet de tester le tir au ralenti milliseconde par milliseconde (séquençage en V, rangée par rangée ou détonateurs électroniques). Il calcule automatiquement les vibrations au sol (PPV en mm/s selon la formule de l’USBM) en fonction de la distance des habitations, et inspecte le profil laser du front de taille pour alerter en rouge en cas de zone de sous-banquette à risque mortel de projection.
                   </>
                 ) : (
                   <>
-                    <strong>FragMill Solution:</strong> Step through blast progression millisecond-by-millisecond (V-echelon, row-by-row, electronic). FragMill predicts ground vibration (Peak Particle Velocity via USBM equations) at village distances and scans bench face profiles to flag dangerous flyrock underburden zones in bright red.
+                    <strong>FraGeo Solution:</strong> Step through blast progression millisecond-by-millisecond (V-echelon, row-by-row, electronic). FraGeo Blast predicts ground vibration (Peak Particle Velocity via USBM equations) at village distances and scans bench face profiles to flag dangerous flyrock underburden zones in bright red.
                   </>
                 )}
               </p>
               <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-purple-900">
                 <strong>{isFr ? 'Exemple réel :' : 'Real Example:'}</strong>{' '}
                 {isFr
-                  ? 'Pour un tir situé à 450 m du camp des travailleurs, le tir simultané classique produisait 28 mm/s de vibration (fissures aux murs). Le passage en V-échelon (17ms entre trous, 42ms entre rangées) simulé dans FragMill a réduit la vibration à 7.4 mm/s (conforme aux normes internationales < 10 mm/s) avec zéro projection.'
-                  : 'At 450m from camp facilities, simultaneous rows created 28 mm/s PPV. Switching to FragMill simulated V-echelon delays dropped vibrations to 7.4 mm/s (well below the 10 mm/s statutory ceiling) with zero flyrock.'}
+                  ? 'Pour un tir situé à 450 m du camp des travailleurs, le tir simultané classique produisait 28 mm/s de vibration (fissures aux murs). Le passage en V-échelon (17ms entre trous, 42ms entre rangées) simulé dans FraGeo Blast a réduit la vibration à 7.4 mm/s (conforme aux normes internationales < 10 mm/s) avec zéro projection.'
+                  : 'At 450m from camp facilities, simultaneous rows created 28 mm/s PPV. Switching to FraGeo Blast simulated V-echelon delays dropped vibrations to 7.4 mm/s (well below the 10 mm/s statutory ceiling) with zero flyrock.'}
               </div>
             </div>
           </div>
@@ -574,11 +574,11 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
               <p>
                 {isFr ? (
                   <>
-                    <strong>La solution FragMill :</strong> Le jumeau numérique calcule l’énergie de concassage et de broyage selon la 3ème théorie de Bond et le modèle de Morrell (Mic, Mih). Il démontre comment l’onde de choc du tir crée des micro-fissures invisibles à l’intérieur des grains de quartz, ce qui facilite leur broyage et libère les micro-particules d’or emprisonnées dans la pyrite. FragMill trace la courbe en U du coût total d’exploitation pour trouver le point d’équilibre parfait (Sweet-Spot P80).
+                    <strong>La solution FraGeo :</strong> Le jumeau numérique calcule l’énergie de concassage et de broyage selon la 3ème théorie de Bond et le modèle de Morrell (Mic, Mih). Il démontre comment l’onde de choc du tir crée des micro-fissures invisibles à l’intérieur des grains de quartz, ce qui facilite leur broyage et libère les micro-particules d’or emprisonnées dans la pyrite. FraGeo Blast trace la courbe en U du coût total d’exploitation pour trouver le point d’équilibre parfait (Sweet-Spot P80).
                   </>
                 ) : (
                   <>
-                    <strong>FragMill Solution:</strong> Digital twin simulation calculates crushing and milling energy via Bond’s Third Theory and Morrell’s micro-crack models. It proves how shockwaves induce internal micro-fissures in quartz grains, boosting gold liberation on gravity tables and plotting the exact total cost U-curve sweet spot.
+                    <strong>FraGeo Solution:</strong> Digital twin simulation calculates crushing and milling energy via Bond’s Third Theory and Morrell’s micro-crack models. It proves how shockwaves induce internal micro-fissures in quartz grains, boosting gold liberation on gravity tables and plotting the exact total cost U-curve sweet spot.
                   </>
                 )}
               </p>
@@ -662,8 +662,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 </span>
                 <p>
                   {isFr
-                    ? 'FragMill intègre un filtre de validation géologique. Si vous téléversez un logo, un diagramme ou une image synthétique non géologique, le système détectera les contrastes artificiels de texte et les prendra pour des cailloux. Téléversez toujours des photographies réelles de roche concassée.'
-                    : 'FragMill includes a geological heuristic validator. Uploading digital graphics, company logos, or vector diagrams will cause high-contrast letters and geometric borders to be classified as rock fragments. Always capture authentic field muck pile images.'}
+                    ? 'FraGeo Suite intègre un filtre de validation géologique. Si vous téléversez un logo, un diagramme ou une image synthétique non géologique, le système détectera les contrastes artificiels de texte et les prendra pour des cailloux. Téléversez toujours des photographies réelles de roche concassée.'
+                    : 'FraGeo Suite includes a geological heuristic validator. Uploading digital graphics, company logos, or vector diagrams will cause high-contrast letters and geometric borders to be classified as rock fragments. Always capture authentic field muck pile images.'}
                 </p>
               </div>
             </div>
@@ -711,8 +711,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                   </span>
                   <p className="text-[11px] text-slate-500">
                     {isFr
-                      ? 'Total des kilowattheures consommés divisé par la masse de minerai traitée. FragMill calcule en direct la consommation du concasseur et du broyeur.'
-                      : 'Kilowatt-hours divided by dry ore tonnes milled. FragMill computes crushing and milling power draw per tonne processed.'}
+                      ? 'Total des kilowattheures consommés divisé par la masse de minerai traitée. FraGeo Blast calcule en direct la consommation du concasseur et du broyeur.'
+                      : 'Kilowatt-hours divided by dry ore tonnes milled. FraGeo Blast computes crushing and milling power draw per tonne processed.'}
                   </p>
                 </div>
 
@@ -760,8 +760,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 </span>
                 <p>
                   {isFr
-                    ? 'Dans la pratique minière, personne ne connaît exactement la valeur théorique du facteur de roche A d’un gisement. FragMill résout ce problème : à chaque tir analysé par photo, un algorithme d’échantillonnage de Metropolis-Hastings (MCMC) compare la granulométrie réelle observée au modèle théorique et met à jour automatiquement la valeur exacte du facteur de roche pour votre mine spécifique, avec un intervalle de confiance à 95% !'
-                    : 'In real mining, site geological factor A cannot be directly measured with a ruler. FragMill solves this: as you record blasts, Metropolis-Hastings MCMC compares measured photographic X50 to model predictions and calibrates the exact rock factor A for your pit with full 95% credible intervals!'}
+                    ? 'Dans la pratique minière, personne ne connaît exactement la valeur théorique du facteur de roche A d’un gisement. FraGeo Blast résout ce problème : à chaque tir analysé par photo, un algorithme d’échantillonnage de Metropolis-Hastings (MCMC) compare la granulométrie réelle observée au modèle théorique et met à jour automatiquement la valeur exacte du facteur de roche pour votre mine spécifique, avec un intervalle de confiance à 95% !'
+                    : 'In real mining, site geological factor A cannot be directly measured with a ruler. FraGeo Blast solves this: as you record blasts, Metropolis-Hastings MCMC compares measured photographic X50 to model predictions and calibrates the exact rock factor A for your pit with full 95% credible intervals!'}
                 </p>
               </div>
             </div>
@@ -785,8 +785,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 </span>
                 <p className="text-slate-600">
                   {isFr
-                    ? 'Oui ! FragMill est une Progressive Web App (PWA). Toutes les bases de données (IndexedDB), les moteurs de calcul (WebAssembly) et les réseaux de neurones IA sont stockés localement sur votre appareil. Aucune photo ne quitte votre téléphone ou votre tablette.'
-                    : 'Yes! FragMill is 100% client-side. All databases (IndexedDB), image processing pipelines (WebAssembly), and AI models run locally on your device without transmitting data outside.'}
+                    ? 'Oui ! FraGeo Suite est une Progressive Web App (PWA). Toutes les bases de données (IndexedDB), les moteurs de calcul (WebAssembly) et les réseaux de neurones IA sont stockés localement sur votre appareil. Aucune photo ne quitte votre téléphone ou votre tablette.'
+                    : 'Yes! FraGeo Suite is 100% client-side. All databases (IndexedDB), image processing pipelines (WebAssembly), and AI models run locally on your device without transmitting data outside.'}
                 </p>
               </div>
 

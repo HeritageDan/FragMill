@@ -76,7 +76,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = lang === 'fr' ? 'FragMill_Mire_Etalonnage_A4.pdf' : 'FragMill_A4_Calibration_Target.pdf';
+    a.download = lang === 'fr' ? 'FraGeo_Mire_Etalonnage_A4.pdf' : 'FraGeo_A4_Calibration_Target.pdf';
     a.click();
   };
 
@@ -88,7 +88,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `FragMill_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `FraGeo_Backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     setBackupStatus(lang === 'fr' ? 'Projet exporté avec succès !' : 'Project exported successfully!');
   };
@@ -113,7 +113,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleClearAllData = async () => {
     const confirmMsg = lang === 'fr'
       ? 'Êtes-vous sûr de vouloir effacer définitivement tous les projets, tirs et photos de cet appareil ?'
-      : 'Are you sure you want to permanently erase all FragMill projects, blasts, and images from this device?';
+      : 'Are you sure you want to permanently erase all FraGeo Suite projects, blasts, and images from this device?';
     if (window.confirm(confirmMsg)) {
       await db.delete();
       window.location.reload();

@@ -775,7 +775,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                       const a = document.createElement('a');
                       a.href = url;
                       const dateStr = new Date().toISOString().slice(0, 10);
-                      a.download = `FRAGMILL_Rapport_General_${currentBlast.blastId}_${dateStr}.pdf`;
+                      a.download = `FraGeo_Rapport_General_${currentBlast.blastId}_${dateStr}.pdf`;
                       a.click();
                       URL.revokeObjectURL(url);
                     } catch (err) {

@@ -151,7 +151,7 @@ export const DrillHolesManager: React.FC<DrillHolesManagerProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `FragMill_Trous_${blast.blastId}.xlsx`;
+    a.download = `FraGeo_Trous_${blast.blastId}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
     showToast(isFrench ? 'Fichier Excel généré !' : 'Excel file downloaded!');
@@ -164,7 +164,7 @@ export const DrillHolesManager: React.FC<DrillHolesManagerProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `FragMill_Trous_${blast.blastId}.csv`;
+    a.download = `FraGeo_Trous_${blast.blastId}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     showToast(isFrench ? 'Fichier CSV généré !' : 'CSV file downloaded!');

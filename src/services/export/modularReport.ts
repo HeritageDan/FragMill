@@ -280,8 +280,8 @@ export async function generateModularVaultPdfReport(
     const p = entry?.payload || {};
 
     const headerTitle = isFr
-      ? `FRAGMILL : ${meta.titleFr.toUpperCase()}`
-      : `FRAGMILL : ${meta.titleEn.toUpperCase()}`;
+      ? `FRAGEO BLAST : ${meta.titleFr.toUpperCase()}`
+      : `FRAGEO BLAST : ${meta.titleEn.toUpperCase()}`;
     const headerSub = isFr
       ? `Projet : ${project.name} | Site : ${site.name} | Tir : ${blast.blastId} | Date : ${blast.dateTime}`
       : `Project: ${project.name} | Site: ${site.name} | Blast ID: ${blast.blastId} | Date: ${blast.dateTime}`;
@@ -1492,7 +1492,7 @@ export async function generateModularVaultPdfReport(
 
   // DEDICATED FINAL PAGE: DATA QUALITY CONTROL & AUDIT TRAIL
   doc.addPage();
-  const qaTitle = isFr ? 'FRAGMILL : CONTRÔLE QUALITÉ & INTÉGRITÉ' : 'FRAGMILL : DATA QUALITY CONTROL & AUDIT';
+  const qaTitle = isFr ? 'FRAGEO BLAST : CONTRÔLE QUALITÉ & INTÉGRITÉ' : 'FRAGEO BLAST : DATA QUALITY CONTROL & AUDIT';
   const qaSub = isFr
     ? `Audit de cohérence physique, détection d'incohérences géotechniques et traçabilité pour le tir ${blast.blastId}`
     : `Physical consistency audit, geotechnical validation checks, and data provenance for blast ${blast.blastId}`;
@@ -1591,8 +1591,8 @@ export async function generateModularVaultPdfReport(
 
   qaY = drawTable(
     isFr
-      ? ['Domaine Analytique FragMill', 'Provenance de la Donnée', 'Détails Métrologiques', 'Niveau de Certitude']
-      : ['FragMill Analytical Domain', 'Data Provenance / Source', 'Metrological Details', 'Confidence Level'],
+      ? ['Domaine Analytique FraGeo Blast', 'Provenance de la Donnée', 'Détails Métrologiques', 'Niveau de Certitude']
+      : ['FraGeo Blast Analytical Domain', 'Data Provenance / Source', 'Metrological Details', 'Confidence Level'],
     provenanceRows,
     [48, 44, 56, 34],
     qaY,
@@ -1634,8 +1634,8 @@ export async function generateModularVaultPdfReport(
     doc.setTextColor(148, 163, 184);
     doc.text(
       isFr
-        ? `FRAGMILL MINING SUITE • Rapport Modulaire d'Ingénierie Personnalisé • Page ${i} sur ${totalPages}`
-        : `FRAGMILL MINING SUITE • Custom Modular Engineering Report • Page ${i} of ${totalPages}`,
+        ? `FRAGEO SUITE • Rapport Modulaire d'Ingénierie Personnalisé • Page ${i} sur ${totalPages}`
+        : `FRAGEO SUITE • Custom Modular Engineering Report • Page ${i} of ${totalPages}`,
       105,
       291,
       { align: 'center' }

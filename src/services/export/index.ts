@@ -288,7 +288,7 @@ export function generatePrintableA4CalibrationSheet(lang: Language = 'en'): Blob
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
   doc.text(
-    isFr ? 'FRAGMILL : MIRE D\'ÉTALONNAGE OPTIQUE & PROTOCOLE TERRAIN' : 'FRAGMILL : OPTICAL SCALE CALIBRATION TARGET & PROTOCOL',
+    isFr ? 'FRAGEO : MIRE D\'ÉTALONNAGE OPTIQUE & PROTOCOLE TERRAIN' : 'FRAGEO : OPTICAL SCALE CALIBRATION TARGET & PROTOCOL',
     14,
     11
   );
@@ -416,7 +416,7 @@ export function exportBlastWorkbookXlsx(blast: Blast, run: SegmentationRun, lang
 
   // Sheet 1: Summary & Percentiles
   const summaryData = isFr ? [
-    ['FRAGMILL : SYNTHÈSE D\'ANALYSE DE FRAGMENTATION'],
+    ['FRAGEO : SYNTHÈSE D\'ANALYSE DE FRAGMENTATION'],
     ['Réf. Tir', blast.blastId],
     ['Date & Heure', blast.dateTime],
     ['Type de Roche', blast.rockMass.rockType],
@@ -434,7 +434,7 @@ export function exportBlastWorkbookXlsx(blast: Blast, run: SegmentationRun, lang
     ['Blocs Hors-Gabarit (>300mm) %', run.metrics.oversizePercent],
     ['Fines (<25mm) %', run.metrics.finesPercent],
   ] : [
-    ['FRAGMILL BLAST ANALYSIS SUMMARY'],
+    ['FRAGEO BLAST ANALYSIS SUMMARY'],
     ['Blast ID', blast.blastId],
     ['Date & Time', blast.dateTime],
     ['Rock Type', blast.rockMass.rockType],
@@ -490,7 +490,7 @@ export function exportCocoDatasetJson(
 ): string {
   const coco = {
     info: {
-      description: 'FragMill Post-Blast Rock Fragmentation Dataset',
+      description: 'FraGeo Blast Post-Blast Rock Fragmentation Dataset',
       version: '1.0',
       year: new Date().getFullYear(),
       contributor: project.name,
@@ -556,6 +556,8 @@ export async function exportProjectBackupJson(projectId: string): Promise<string
   const millBatches = await db.millBatches.where('blastId').anyOf(blastIds).toArray();
 
   const backup = {
+    app: 'frageo',
+    suite: 'FraGeo Suite',
     version: '1.0',
     exportDate: new Date().toISOString(),
     project,
@@ -573,7 +575,12 @@ export async function exportProjectBackupJson(projectId: string): Promise<string
 export async function importProjectBackupJson(jsonString: string): Promise<string> {
   const data = JSON.parse(jsonString);
   if (!data.project || !data.project.id) {
-    throw new Error('Invalid FragMill backup format');
+    throw new Error('Invalid backup format: missing project');
+  }
+
+  // Backup format compatibility check: accepts legacy "fragmill" or modern "frageo"
+  if (data.app && !/fragmill|frageo/i.test(data.app)) {
+    throw new Error('Unsupported application backup origin');
   }
 
   await db.transaction('rw', [db.projects, db.sites, db.blasts, db.images, db.segmentationRuns, db.groundTruths, db.millBatches], async () => {

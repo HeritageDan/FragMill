@@ -1106,7 +1106,7 @@ export function downloadSampleDrillHoleTemplate(lang: 'en' | 'fr' = 'en') {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = isFr ? 'FragMill_Modele_Trous_Foration.xlsx' : 'FragMill_DrillHoles_Template.xlsx';
+  a.download = isFr ? 'FraGeo_Modele_Trous_Foration.xlsx' : 'FraGeo_DrillHoles_Template.xlsx';
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -1204,8 +1204,8 @@ export function downloadOptimizedNextBlastExcel(
         delayMs,
         'Electronic i-kon',
         isFr
-          ? `Design optimisé par FragMill Advisor (P80 cible ${rec.predictedP80Mm || 180}mm)`
-          : `FragMill Advisor Optimized Design (Target P80 ${rec.predictedP80Mm || 180}mm)`,
+          ? `Design optimisé par FraGeo Blast Advisor (P80 cible ${rec.predictedP80Mm || 180}mm)`
+          : `FraGeo Blast Advisor Optimized Design (Target P80 ${rec.predictedP80Mm || 180}mm)`,
       ]);
       holeIdx++;
     }
@@ -1224,7 +1224,7 @@ export function downloadOptimizedNextBlastExcel(
   const a = document.createElement('a');
   a.href = url;
   const nextId = blast.blastId ? `BL-${parseInt(blast.blastId.replace(/\D/g, '') || '1') + 1}` : 'Prochain_Tir';
-  a.download = isFr ? `FragMill_Plan_Foration_Optimise_${nextId}.xlsx` : `FragMill_Optimized_Drill_Plan_${nextId}.xlsx`;
+  a.download = isFr ? `FraGeo_Plan_Foration_Optimise_${nextId}.xlsx` : `FraGeo_Optimized_Drill_Plan_${nextId}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 }
