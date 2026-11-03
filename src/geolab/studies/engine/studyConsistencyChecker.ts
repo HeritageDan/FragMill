@@ -55,42 +55,59 @@ export function checkStudyConsistency(params: ConsistencyCheckParams): Consisten
   const studyAnalyses = analyses.filter((a) => includedSet.has(a.id));
 
   // --------------------------------------------------------------------------
-  // Rule 1: Specific gravity (G_s or rho_s) divergence across fractions
-  // Flag if standard deviation > 0.05 Mg/m3 (warning)
+  // Rule 1: Specific gravity (G_s or rho_s) divergence across fractions/materials
+  // Compare the same parameter of the SAME material or fraction across analyses.
+  // Flag if standard deviation > 0.05 Mg/m3 within the same material (warning)
   // --------------------------------------------------------------------------
-  const solidDensities: number[] = [];
+  const densitiesByMaterial = new Map<string, Array<{ density: number; analysis: GeoLabAnalysis }>>();
+
   studyAnalyses.forEach((a) => {
     const res = a.computedResults;
+    let densityVal: number | undefined;
     if (res) {
       if (typeof res.solidDensityMgM3 === 'number' && res.solidDensityMgM3 > 0) {
-        solidDensities.push(res.solidDensityMgM3);
+        densityVal = res.solidDensityMgM3;
       } else if (typeof res.solidDensityGcm3 === 'number' && res.solidDensityGcm3 > 0) {
-        solidDensities.push(res.solidDensityGcm3);
+        densityVal = res.solidDensityGcm3;
+      }
+    }
+    if (typeof densityVal === 'number') {
+      const s = sampleMap.get(a.sampleId);
+      const mat = (s?.materialType || a.rawInput?.materialType || a.rawInput?.material || a.computedResults?.materialType || '').trim().toLowerCase();
+      const frac = (a.rawInput?.fraction || a.computedResults?.fraction || '').trim().toLowerCase();
+      const key = mat ? (frac ? `${mat}::${frac}` : mat) : '__unspecified__';
+
+      const list = densitiesByMaterial.get(key) || [];
+      list.push({ density: densityVal, analysis: a });
+      densitiesByMaterial.set(key, list);
+    }
+  });
+
+  densitiesByMaterial.forEach((items, matKey) => {
+    if (items.length >= 2) {
+      const values = items.map((i) => i.density);
+      const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+      const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / (values.length - 1);
+      const stdDev = Math.sqrt(variance);
+
+      if (stdDev > 0.05) {
+        const matDisplay = matKey === '__unspecified__' ? '' : ` (${matKey})`;
+        findings.push({
+          ruleCode: 'DIVERGENT_SPECIFIC_GRAVITY',
+          severity: 'warning',
+          message: {
+            en: `Specific gravity divergence across samples of the same material${matDisplay} (std dev = ${stdDev.toFixed(3)} > 0.050 Mg/m³).`,
+            fr: `Divergence de la masse volumique absolue entre échantillons du même matériau${matDisplay} (écart-type = ${stdDev.toFixed(3)} > 0.050 Mg/m³).`,
+          },
+        });
       }
     }
   });
 
-  if (solidDensities.length >= 2) {
-    const mean = solidDensities.reduce((sum, v) => sum + v, 0) / solidDensities.length;
-    const variance =
-      solidDensities.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / (solidDensities.length - 1);
-    const stdDev = Math.sqrt(variance);
-
-    if (stdDev > 0.05) {
-      findings.push({
-        ruleCode: 'DIVERGENT_SPECIFIC_GRAVITY',
-        severity: 'warning',
-        message: {
-          en: `Specific gravity divergence across samples (std dev = ${stdDev.toFixed(3)} > 0.050 Mg/m³).`,
-          fr: `Divergence de la masse volumique absolue entre échantillons (écart-type = ${stdDev.toFixed(3)} > 0.050 Mg/m³).`,
-        },
-      });
-    }
-  }
-
   // --------------------------------------------------------------------------
   // Rule 2: Water content / Proctor consistency
-  // Flag if |w_n - w_opt| > 15% for the same sample (warning)
+  // Flag if |w_n - w_opt| > 15% for the same sample as 'info' with neutral wording
+  // (different samples or depths normally have different natural moisture; not an inconsistency)
   // --------------------------------------------------------------------------
   const sampleAnalysesMap = new Map<string, GeoLabAnalysis[]>();
   studyAnalyses.forEach((a) => {
@@ -119,12 +136,12 @@ export function checkStudyConsistency(params: ConsistencyCheckParams): Consisten
           const sampleName = s ? s.sampleId : sampleId;
           findings.push({
             ruleCode: 'PROCTOR_MOISTURE_DIVERGENCE',
-            severity: 'warning',
+            severity: 'info',
             sampleId,
             analysisId: proctor.id,
             message: {
-              en: `Large difference between natural moisture (${wN.toFixed(1)}%) and Proctor optimum (${wOpt.toFixed(1)}%) for sample ${sampleName}: |Δw| = ${diff.toFixed(1)}% > 15%.`,
-              fr: `Écart important entre la teneur en eau naturelle (${wN.toFixed(1)}%) et l'optimum Proctor (${wOpt.toFixed(1)}%) pour l'échantillon ${sampleName} : |Δw| = ${diff.toFixed(1)}% > 15%.`,
+              en: `Natural moisture (${wN.toFixed(1)}%) differs from Proctor optimum (${wOpt.toFixed(1)}%) for sample ${sampleName} (|Δw| = ${diff.toFixed(1)}%), reflecting in-situ condition relative to compaction optimum.`,
+              fr: `La teneur en eau naturelle (${wN.toFixed(1)}%) diffère de l'optimum Proctor (${wOpt.toFixed(1)}%) pour l'échantillon ${sampleName} (|Δw| = ${diff.toFixed(1)}%), reflétant l'état hydrique in situ par rapport à l'optimum de compactage.`,
             },
           });
         }
@@ -161,7 +178,9 @@ export function checkStudyConsistency(params: ConsistencyCheckParams): Consisten
   });
 
   // --------------------------------------------------------------------------
-  // Rule 4: Repeated rows / identical values across different samples (error)
+  // Rule 4: Repeated rows / identical values (error)
+  // 4a. Cross-sample copy-paste detection (identical results across distinct samples)
+  // 4b. Intra-analysis copy-paste detection (repeated identical rows within a table)
   // --------------------------------------------------------------------------
   for (let i = 0; i < studyAnalyses.length; i++) {
     for (let j = i + 1; j < studyAnalyses.length; j++) {
@@ -193,6 +212,14 @@ export function checkStudyConsistency(params: ConsistencyCheckParams): Consisten
       }
     }
   }
+
+  // 4b. Intra-analysis duplicate rows within raw input or results tables
+  studyAnalyses.forEach((a) => {
+    const s = sampleMap.get(a.sampleId);
+    const sampleName = s ? s.sampleId : a.sampleId;
+    const intraFindings = checkIntraAnalysisDuplicates(a, sampleName);
+    findings.push(...intraFindings);
+  });
 
   // --------------------------------------------------------------------------
   // Rule 5: Repeatability limits (AFNOR / ASTM)
@@ -440,4 +467,64 @@ export function checkStudyConsistency(params: ConsistencyCheckParams): Consisten
     hasWarnings,
     findings,
   };
+}
+
+/**
+ * Detects identical copy-pasted rows within a single analysis (e.g. inside rawInput tables or computedResults arrays).
+ */
+function checkIntraAnalysisDuplicates(a: GeoLabAnalysis, _sampleName: string): ConsistencyFinding[] {
+  const findings: ConsistencyFinding[] = [];
+  const sources: Array<{ name: string; data: any }> = [
+    { name: 'rawInput', data: a.rawInput },
+    { name: 'computedResults', data: a.computedResults },
+  ];
+
+  for (const src of sources) {
+    if (!src.data || typeof src.data !== 'object') continue;
+
+    for (const [key, val] of Object.entries(src.data)) {
+      if (!Array.isArray(val) || val.length < 2) continue;
+
+      const seenSignatures = new Map<string, number>();
+
+      for (let idx = 0; idx < val.length; idx++) {
+        const item = val[idx];
+        if (!item || typeof item !== 'object') continue;
+
+        // Clean row: exclude purely index/identifier fields so copy-paste with auto-incremented index is still caught
+        const payload: Record<string, any> = {};
+        let hasValues = false;
+
+        for (const [k, v] of Object.entries(item)) {
+          if (['id', 'index', 'pointIndex', 'rowNo', 'rowNumber', 'key', '_id'].includes(k)) continue;
+          if (v !== '' && v !== null && v !== undefined) {
+            hasValues = true;
+          }
+          payload[k] = v;
+        }
+
+        if (!hasValues || Object.keys(payload).length === 0) continue;
+
+        const sig = JSON.stringify(payload);
+        if (seenSignatures.has(sig)) {
+          const firstIdx = seenSignatures.get(sig)!;
+          findings.push({
+            ruleCode: 'DUPLICATE_RESULT_ROWS',
+            severity: 'error',
+            analysisId: a.id,
+            sampleId: a.sampleId,
+            message: {
+              en: `Identical repeated rows detected within analysis ${a.reportNumber || a.id} (${key}, rows ${firstIdx + 1} and ${idx + 1}) - potential copy-paste error.`,
+              fr: `Lignes identiques répétées détectées au sein de l'analyse ${a.reportNumber || a.id} (${key}, lignes ${firstIdx + 1} et ${idx + 1}) - risque d'erreur de copier-coller.`,
+            },
+          });
+          break; // Flag once per array
+        } else {
+          seenSignatures.set(sig, idx);
+        }
+      }
+    }
+  }
+
+  return findings;
 }

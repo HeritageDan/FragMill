@@ -272,40 +272,40 @@ describe('FraGeo Lab Studies Engine - Stage 3', () => {
 
   describe('2. Consistency & Plausibility Rules (1 to 7)', () => {
     it('Rule 1: Specific Gravity divergence across fractions / samples', () => {
-      // Pass: small divergence (std dev <= 0.05)
-      const passAnalyses: GeoLabAnalysis[] = [
-        { ...mockAnalyses[0], id: 'a1', computedResults: { solidDensityMgM3: 2.68 } },
-        { ...mockAnalyses[0], id: 'a2', sampleId: 'samp-2', computedResults: { solidDensityMgM3: 2.70 } },
-      ];
-      const resPass = checkStudyConsistency({
-        study: { ...mockStudy, includedAnalysisIds: ['a1', 'a2'] },
-        project: mockProject,
-        organisation: mockOrg,
-        analyses: passAnalyses,
-        samples: mockSamples,
-        valueProvenances: { a1: 'measured', a2: 'measured' },
-      });
-      expect(resPass.findings.some((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')).toBe(false);
-
-      // Warning: large divergence (std dev > 0.05)
-      const failAnalyses: GeoLabAnalysis[] = [
-        { ...mockAnalyses[0], id: 'a1', computedResults: { solidDensityMgM3: 2.50 } },
+      // Pass: different materials with different specific gravity produce NO finding
+      const diffMaterialAnalyses: GeoLabAnalysis[] = [
+        { ...mockAnalyses[0], id: 'a1', sampleId: 'samp-1', computedResults: { solidDensityMgM3: 2.50 } },
         { ...mockAnalyses[0], id: 'a2', sampleId: 'samp-2', computedResults: { solidDensityMgM3: 2.85 } },
       ];
-      const resFail = checkStudyConsistency({
+      const resDiffMat = checkStudyConsistency({
         study: { ...mockStudy, includedAnalysisIds: ['a1', 'a2'] },
         project: mockProject,
         organisation: mockOrg,
-        analyses: failAnalyses,
+        analyses: diffMaterialAnalyses,
+        samples: mockSamples, // samp-1 is 'Graveleux latéritique', samp-2 is 'Sable argileux'
+        valueProvenances: { a1: 'measured', a2: 'measured' },
+      });
+      expect(resDiffMat.findings.some((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')).toBe(false);
+
+      // Warning: same material with divergent specific gravity (std dev > 0.05) DOES produce a finding
+      const sameMaterialFail: GeoLabAnalysis[] = [
+        { ...mockAnalyses[0], id: 'a1', sampleId: 'samp-1', computedResults: { solidDensityMgM3: 2.50 } },
+        { ...mockAnalyses[0], id: 'a2', sampleId: 'samp-1', computedResults: { solidDensityMgM3: 2.85 } },
+      ];
+      const resSameMat = checkStudyConsistency({
+        study: { ...mockStudy, includedAnalysisIds: ['a1', 'a2'] },
+        project: mockProject,
+        organisation: mockOrg,
+        analyses: sameMaterialFail,
         samples: mockSamples,
         valueProvenances: { a1: 'measured', a2: 'measured' },
       });
-      expect(resFail.findings.some((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')).toBe(true);
-      expect(resFail.findings.find((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')?.severity).toBe('warning');
+      expect(resSameMat.findings.some((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')).toBe(true);
+      expect(resSameMat.findings.find((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')?.severity).toBe('warning');
     });
 
     it('Rule 2: Water content / Proctor consistency', () => {
-      // Pass: |w_n - w_opt| = |11.2 - 12.0| = 0.8% <= 15%
+      // Pass: |w_n - w_opt| = |11.2 - 12.0| = 0.8% <= 15% -> no finding
       const passAnalyses: GeoLabAnalysis[] = [
         { ...mockAnalyses[0], id: 'a1', computedResults: { opmMoisturePercent: 11.2 } },
         { ...mockAnalyses[0], id: 'a2', testType: 'water_content', computedResults: { waterContentPercent: 12.0 } },
@@ -320,21 +320,24 @@ describe('FraGeo Lab Studies Engine - Stage 3', () => {
       });
       expect(resPass.findings.some((f) => f.ruleCode === 'PROCTOR_MOISTURE_DIVERGENCE')).toBe(false);
 
-      // Warning: |w_n - w_opt| = |30.0 - 11.2| = 18.8% > 15%
-      const failAnalyses: GeoLabAnalysis[] = [
+      // High difference: |w_n - w_opt| = |30.0 - 11.2| = 18.8% > 15% produces severity 'info', NO warning or error
+      const highDiffAnalyses: GeoLabAnalysis[] = [
         { ...mockAnalyses[0], id: 'a1', computedResults: { opmMoisturePercent: 11.2 } },
         { ...mockAnalyses[0], id: 'a2', testType: 'water_content', computedResults: { waterContentPercent: 30.0 } },
       ];
-      const resFail = checkStudyConsistency({
+      const resHighDiff = checkStudyConsistency({
         study: { ...mockStudy, includedAnalysisIds: ['a1', 'a2'] },
         project: mockProject,
         organisation: mockOrg,
-        analyses: failAnalyses,
+        analyses: highDiffAnalyses,
         samples: mockSamples,
         valueProvenances: { a1: 'measured', a2: 'measured' },
       });
-      expect(resFail.findings.some((f) => f.ruleCode === 'PROCTOR_MOISTURE_DIVERGENCE')).toBe(true);
-      expect(resFail.findings.find((f) => f.ruleCode === 'PROCTOR_MOISTURE_DIVERGENCE')?.severity).toBe('warning');
+      const finding = resHighDiff.findings.find((f) => f.ruleCode === 'PROCTOR_MOISTURE_DIVERGENCE');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('info');
+      expect(resHighDiff.hasWarnings).toBe(false);
+      expect(resHighDiff.hasErrors).toBe(false);
     });
 
     it('Rule 3: Missing provenance tag', () => {
@@ -411,6 +414,30 @@ describe('FraGeo Lab Studies Engine - Stage 3', () => {
       const dupFinding = res.findings.find((f) => f.ruleCode === 'DUPLICATE_RESULT_ROWS');
       expect(dupFinding).toBeDefined();
       expect(dupFinding?.severity).toBe('error');
+
+      // 4b. Intra-analysis table duplicates: identical rows in the same analysis table are flagged
+      const intraTableDupAnalysis: GeoLabAnalysis = {
+        ...mockAnalyses[0],
+        id: 'an-intra-dup',
+        sampleId: 'samp-1',
+        computedResults: {
+          points: [
+            { pointIndex: 1, waterContentPercent: 8.5, dryDensityGcm3: 1.95 },
+            { pointIndex: 2, waterContentPercent: 8.5, dryDensityGcm3: 1.95 }, // identical data row copy-pasted!
+          ],
+        },
+      };
+      const resIntra = checkStudyConsistency({
+        study: { ...mockStudy, includedAnalysisIds: ['an-intra-dup'] },
+        project: mockProject,
+        organisation: mockOrg,
+        analyses: [intraTableDupAnalysis],
+        samples: mockSamples,
+        valueProvenances: { 'an-intra-dup': 'measured' },
+      });
+      const intraFinding = resIntra.findings.find((f) => f.ruleCode === 'DUPLICATE_RESULT_ROWS');
+      expect(intraFinding).toBeDefined();
+      expect(intraFinding?.severity).toBe('error');
     });
 
     it('Rule 5: Repeatability limits (AFNOR / ASTM) for replicates', () => {
