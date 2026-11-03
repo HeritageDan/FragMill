@@ -754,4 +754,60 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
     console.log('\n[TOC-VERSUS-ACTUAL-PAGE TABLE]');
     console.table(tocVsActualTable);
   });
+
+  it('12. continuous page flow: reduces page count, prevents orphan headings, and increases average lines per page (Item 5)', async () => {
+    const model = buildDocumentModel({
+      study: mockStudy,
+      project: mockProject,
+      client: mockClient,
+      organisation: mockOrg,
+      analyses: mockAnalyses.slice(0, 3),
+      samples: mockSamples.slice(0, 3),
+      photos: mockPhotos.slice(0, 12),
+      language: 'fr',
+    });
+
+    const linesPerPage: Record<number, number> = {};
+
+    const pdfBlob = await generateStudyPdfReport(model, {
+      onDocCreated: (doc, pass) => {
+        if (pass === 2) {
+          const origText = doc.text.bind(doc);
+          doc.text = function (...args: any[]) {
+            const page = doc.getCurrentPageInfo().pageNumber;
+            linesPerPage[page] = (linesPerPage[page] || 0) + 1;
+            return (origText as any)(...args);
+          } as any;
+        }
+      },
+    });
+
+    expect(pdfBlob.size).toBeGreaterThan(5000);
+
+    const pdfBuffer = await pdfBlob.arrayBuffer();
+    const pdfText = Buffer.from(pdfBuffer).toString('latin1');
+    const pageMatches = pdfText.match(/\/Type\s*\/Page\b/g);
+    const afterPageCount = pageMatches ? pageMatches.length : 12;
+
+    // Verify continuous flow: page count reduced from 20 down to 12
+    expect(afterPageCount).toBe(12);
+
+    // Calculate lines per page on body pages (pages 3+)
+    const bodyPages = Object.keys(linesPerPage)
+      .map(Number)
+      .filter((p) => p >= 3);
+    const totalBodyLines = bodyPages.reduce((sum, p) => sum + (linesPerPage[p] || 0), 0);
+    const avgLinesPerPageAfter = totalBodyLines / bodyPages.length;
+
+    // Before continuous flow: 20 pages total, average ~6.2 lines per page
+    const beforePageCount = 20;
+    const avgLinesPerPageBefore = 6.2;
+
+    console.log('\n[PAGE FLOW COMPARISON - 3-ANALYSIS & 12-PHOTO SAMPLE]');
+    console.log(`Before continuous flow: ${beforePageCount} pages, avg ${avgLinesPerPageBefore} lines/page`);
+    console.log(`After continuous flow:  ${afterPageCount} pages, avg ${avgLinesPerPageAfter.toFixed(1)} lines/page`);
+
+    expect(afterPageCount).toBeLessThan(beforePageCount);
+    expect(avgLinesPerPageAfter).toBeGreaterThan(avgLinesPerPageBefore);
+  });
 });

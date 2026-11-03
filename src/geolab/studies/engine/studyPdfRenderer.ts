@@ -73,6 +73,13 @@ function renderStudyDocumentBlocks(
     }
   };
 
+  const pageHeight = 297;
+  const maxY = pageHeight - 20;
+
+  // First body page after Cover & TOC
+  doc.addPage();
+  let currentY = 28;
+
   let blockIdx = 0;
   for (const block of model.blocks) {
     blockIdx++;
@@ -88,42 +95,75 @@ function renderStudyDocumentBlocks(
 
     if (block.type === 'pageBreak') {
       doc.addPage();
+      currentY = 28;
       continue;
     }
 
     if (block.type === 'narrative' && block.narrativeData) {
-      doc.addPage();
+      // Keep-with-next: heading (15mm) + at least 2 lines (9mm)
+      if (currentY > maxY - 25) {
+        doc.addPage();
+        currentY = 28;
+      }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
-      renderNarrativeSection(doc, block.narrativeData, prR, prG, prB);
+      currentY = renderNarrativeSection(doc, block.narrativeData, prR, prG, prB, currentY);
     } else if (block.type === 'analysisSummaryTable' && block.summaryRows) {
-      doc.addPage();
+      // Keep-with-next: heading (15mm) + table header (6mm) + 1 row (6mm)
+      if (currentY > maxY - 28) {
+        doc.addPage();
+        currentY = 28;
+      }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
-      renderSummaryTableSection(doc, block.title, block.summaryRows, prR, prG, prB, lang);
+      currentY = renderSummaryTableSection(doc, block.title, block.summaryRows, prR, prG, prB, lang, currentY);
     } else if (block.type === 'analysisDetail' && block.detailData) {
-      doc.addPage();
+      const hasChart = Boolean(block.detailData.chartType && block.detailData.analysis.computedResults);
+      const neededH = (block.detailData.sectionTitle ? 18 : 0) + 16 + 30 + (hasChart ? 86 : 0) + (block.detailData.observations ? 18 : 0);
+      if (currentY + neededH > maxY) {
+        doc.addPage();
+        currentY = 28;
+      }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
-      renderAnalysisDetailSection(doc, block.detailData, prR, prG, prB, lang);
+      currentY = renderAnalysisDetailSection(doc, block.detailData, prR, prG, prB, lang, currentY);
     } else if (block.type === 'gradingCurves' && block.gradingCurvesData) {
-      doc.addPage();
+      const neededH = 154; // Heading + 120mm chart + caption
+      if (currentY + neededH > maxY) {
+        doc.addPage();
+        currentY = 28;
+      }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
-      renderGradingCurvesSection(doc, block.title, block.gradingCurvesData.analyses, prR, prG, prB, lang);
+      currentY = renderGradingCurvesSection(doc, block.title, block.gradingCurvesData.analyses, prR, prG, prB, lang, currentY);
     } else if (block.type === 'conformityTable' && block.conformityRows) {
-      doc.addPage();
+      if (currentY > maxY - 28) {
+        doc.addPage();
+        currentY = 28;
+      }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
-      renderConformitySection(doc, block.title, block.conformityRows, prR, prG, prB, lang);
+      currentY = renderConformitySection(doc, block.title, block.conformityRows, prR, prG, prB, lang, currentY);
     } else if (block.type === 'usageNote' && block.usageNoteText) {
-      doc.addPage();
+      if (currentY + 52 > maxY) {
+        doc.addPage();
+        currentY = 28;
+      }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
-      renderUsageNoteSection(doc, block.title, block.usageNoteText, prR, prG, prB, lang);
+      currentY = renderUsageNoteSection(doc, block.title, block.usageNoteText, prR, prG, prB, lang, currentY);
     } else if (block.type === 'signatureBlock' && block.signatureChain) {
-      doc.addPage();
+      const sigCount = Math.min(6, block.signatureChain.length || 1);
+      const rows = Math.ceil(sigCount / 3);
+      if (currentY + 16 + rows * 32 > maxY) {
+        doc.addPage();
+        currentY = 28;
+      }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
-      renderSignatureBlockSection(doc, block.title, block.signatureChain, prR, prG, prB, lang);
+      currentY = renderSignatureBlockSection(doc, block.title, block.signatureChain, prR, prG, prB, lang, currentY);
     } else if (block.type === 'photoPages' && block.photoPageData) {
+      // Photo pages: Annex group forces a fresh page
       doc.addPage();
+      currentY = 28;
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
       renderPhotoPageSection(doc, block.title, block.photoPageData, prR, prG, prB, lang);
+      currentY = 28;
     } else if (block.type === 'annexTestSheets' && block.annexAnalyses) {
+      // Annex test sheets: Annex group forces fresh pages via renderAnalysisSheet
       for (let i = 0; i < block.annexAnalyses.length; i++) {
         const a = block.annexAnalyses[i];
         const pageBefore = doc.getNumberOfPages() + 1;
@@ -140,10 +180,14 @@ function renderStudyDocumentBlocks(
           recordBlockPage(block.id, pageBefore);
         }
       }
+      currentY = 28;
     } else if (block.type === 'dataQualityNotes' && block.dataQualityNotesText) {
-      doc.addPage();
+      if (currentY + 40 > maxY) {
+        doc.addPage();
+        currentY = 28;
+      }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
-      renderDataQualityNotesSection(doc, block.title, block.dataQualityNotesText, prR, prG, prB, lang);
+      currentY = renderDataQualityNotesSection(doc, block.title, block.dataQualityNotesText, prR, prG, prB, lang, currentY);
     }
   }
 
@@ -641,11 +685,14 @@ function renderNarrativeSection(
   narrative: { id: string; title: string; markdown: string },
   prR: number,
   prG: number,
-  prB: number
-) {
+  prB: number,
+  startY: number
+): number {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
-  let cursorY = 28;
+  const pageHeight = 297;
+  const maxY = pageHeight - 20;
+  let cursorY = startY;
 
   // Section Heading
   doc.setFont('helvetica', 'bold');
@@ -675,6 +722,10 @@ function renderNarrativeSection(
       // Subheading (already covered by section title, but handle if present)
       continue;
     } else if (line.startsWith('## ')) {
+      if (cursorY > maxY - 15) {
+        doc.addPage();
+        cursorY = 28;
+      }
       cursorY += 3;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9.5);
@@ -686,17 +737,51 @@ function renderNarrativeSection(
       doc.setTextColor(15, 23, 42);
     } else if (line.startsWith('- ') || line.startsWith('• ') || line.startsWith('* ') || /^[\uE000-\uF8FF]\s*/.test(line)) {
       const bulletText = line.replace(/^(-|\u2022|\*|[\uE000-\uF8FF])\s*/, '');
+      const split = doc.splitTextToSize(bulletText, contentWidth - 8);
+      const neededH = split.length * 4.5;
+      if (cursorY + neededH > maxY) {
+        doc.addPage();
+        cursorY = 28;
+      }
       doc.setFillColor(prR, prG, prB);
       doc.circle(margin + 2, cursorY - 1, 0.8, 'F');
-      const split = doc.splitTextToSize(bulletText, contentWidth - 8);
       doc.text(split, margin + 6, cursorY);
-      cursorY += split.length * 4.5;
+      cursorY += neededH;
     } else {
       const split = doc.splitTextToSize(line, contentWidth);
+      const neededH = split.length * 4.5;
+      if (cursorY + neededH > maxY) {
+        doc.addPage();
+        cursorY = 28;
+      }
       doc.text(split, margin, cursorY);
-      cursorY += split.length * 4.5;
+      cursorY += neededH;
     }
   }
+
+  return cursorY + 8;
+}
+
+function drawSummaryTableHeader(
+  doc: jsPDF,
+  margin: number,
+  contentWidth: number,
+  cursorY: number,
+  prR: number,
+  prG: number,
+  prB: number,
+  lang: 'en' | 'fr'
+) {
+  doc.setFillColor(prR, prG, prB);
+  doc.rect(margin, cursorY, contentWidth, 6, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255);
+  doc.text(lang === 'fr' ? 'Échantillon' : 'Sample ID', margin + 3, cursorY + 4);
+  doc.text(lang === 'fr' ? 'Type d\'essai' : 'Test Type', margin + 32, cursorY + 4);
+  doc.text(lang === 'fr' ? 'Norme' : 'Standard', margin + 75, cursorY + 4);
+  doc.text(lang === 'fr' ? 'Date' : 'Date', margin + 110, cursorY + 4);
+  doc.text(lang === 'fr' ? 'Résultats clés' : 'Key Results', margin + 135, cursorY + 4);
 }
 
 function renderSummaryTableSection(
@@ -706,11 +791,14 @@ function renderSummaryTableSection(
   prR: number,
   prG: number,
   prB: number,
-  lang: 'en' | 'fr'
-) {
+  lang: 'en' | 'fr',
+  startY: number
+): number {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
-  let cursorY = 28;
+  const pageHeight = 297;
+  const maxY = pageHeight - 20;
+  let cursorY = startY;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
@@ -723,20 +811,17 @@ function renderSummaryTableSection(
   cursorY += 10;
 
   // Table Header
-  doc.setFillColor(prR, prG, prB);
-  doc.rect(margin, cursorY, contentWidth, 6, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.setTextColor(255, 255, 255);
-  doc.text(lang === 'fr' ? 'Échantillon' : 'Sample ID', margin + 3, cursorY + 4);
-  doc.text(lang === 'fr' ? 'Type d\'essai' : 'Test Type', margin + 32, cursorY + 4);
-  doc.text(lang === 'fr' ? 'Norme' : 'Standard', margin + 75, cursorY + 4);
-  doc.text(lang === 'fr' ? 'Date' : 'Date', margin + 110, cursorY + 4);
-  doc.text(lang === 'fr' ? 'Résultats clés' : 'Key Results', margin + 135, cursorY + 4);
-
+  drawSummaryTableHeader(doc, margin, contentWidth, cursorY, prR, prG, prB, lang);
   cursorY += 6;
 
   rows.forEach((r, idx) => {
+    if (cursorY + 6 > maxY) {
+      doc.addPage();
+      cursorY = 28;
+      drawSummaryTableHeader(doc, margin, contentWidth, cursorY, prR, prG, prB, lang);
+      cursorY += 6;
+    }
+
     doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
     doc.rect(margin, cursorY, contentWidth, 6, 'F');
     doc.setDrawColor(226, 232, 240);
@@ -753,6 +838,8 @@ function renderSummaryTableSection(
 
     cursorY += 6;
   });
+
+  return cursorY + 8;
 }
 
 function renderAnalysisDetailSection(
@@ -770,11 +857,12 @@ function renderAnalysisDetailSection(
   prR: number,
   prG: number,
   prB: number,
-  lang: 'en' | 'fr'
-) {
+  lang: 'en' | 'fr',
+  startY: number
+): number {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
-  let cursorY = 28;
+  let cursorY = startY;
 
   if (detail.sectionTitle) {
     doc.setFont('helvetica', 'bold');
@@ -857,7 +945,10 @@ function renderAnalysisDetailSection(
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
     doc.text(detail.observations, margin + 3, cursorY + 9, { maxWidth: contentWidth - 6 });
+    cursorY += 18;
   }
+
+  return cursorY + 8;
 }
 
 function renderGradingCurvesSection(
@@ -867,11 +958,12 @@ function renderGradingCurvesSection(
   prR: number,
   prG: number,
   prB: number,
-  lang: 'en' | 'fr'
-) {
+  lang: 'en' | 'fr',
+  startY: number
+): number {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
-  let cursorY = 28;
+  let cursorY = startY;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
@@ -905,6 +997,31 @@ function renderGradingCurvesSection(
     margin,
     cursorY
   );
+  cursorY += 8;
+
+  return cursorY + 8;
+}
+
+function drawConformityTableHeader(
+  doc: jsPDF,
+  margin: number,
+  contentWidth: number,
+  cursorY: number,
+  prR: number,
+  prG: number,
+  prB: number,
+  lang: 'en' | 'fr'
+) {
+  doc.setFillColor(prR, prG, prB);
+  doc.rect(margin, cursorY, contentWidth, 6, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255);
+  doc.text(lang === 'fr' ? 'Échantillon' : 'Sample', margin + 3, cursorY + 4);
+  doc.text(lang === 'fr' ? 'Paramètre' : 'Parameter', margin + 40, cursorY + 4);
+  doc.text(lang === 'fr' ? 'Valeur mesurée' : 'Measured', margin + 80, cursorY + 4);
+  doc.text(lang === 'fr' ? 'Spécification' : 'Specification', margin + 120, cursorY + 4);
+  doc.text(lang === 'fr' ? 'Statut' : 'Status', margin + 160, cursorY + 4);
 }
 
 function renderConformitySection(
@@ -914,11 +1031,14 @@ function renderConformitySection(
   prR: number,
   prG: number,
   prB: number,
-  lang: 'en' | 'fr'
-) {
+  lang: 'en' | 'fr',
+  startY: number
+): number {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
-  let cursorY = 28;
+  const pageHeight = 297;
+  const maxY = pageHeight - 20;
+  let cursorY = startY;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
@@ -930,20 +1050,17 @@ function renderConformitySection(
   doc.rect(margin, cursorY, 20, 1, 'F');
   cursorY += 10;
 
-  doc.setFillColor(prR, prG, prB);
-  doc.rect(margin, cursorY, contentWidth, 6, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.setTextColor(255, 255, 255);
-  doc.text(lang === 'fr' ? 'Échantillon' : 'Sample', margin + 3, cursorY + 4);
-  doc.text(lang === 'fr' ? 'Paramètre' : 'Parameter', margin + 40, cursorY + 4);
-  doc.text(lang === 'fr' ? 'Valeur mesurée' : 'Measured', margin + 80, cursorY + 4);
-  doc.text(lang === 'fr' ? 'Spécification' : 'Specification', margin + 120, cursorY + 4);
-  doc.text(lang === 'fr' ? 'Statut' : 'Status', margin + 160, cursorY + 4);
-
+  drawConformityTableHeader(doc, margin, contentWidth, cursorY, prR, prG, prB, lang);
   cursorY += 6;
 
   rows.forEach((r, idx) => {
+    if (cursorY + 6 > maxY) {
+      doc.addPage();
+      cursorY = 28;
+      drawConformityTableHeader(doc, margin, contentWidth, cursorY, prR, prG, prB, lang);
+      cursorY += 6;
+    }
+
     doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
     doc.rect(margin, cursorY, contentWidth, 6, 'F');
     doc.setDrawColor(226, 232, 240);
@@ -972,6 +1089,8 @@ function renderConformitySection(
 
     cursorY += 6;
   });
+
+  return cursorY + 8;
 }
 
 function renderUsageNoteSection(
@@ -981,11 +1100,12 @@ function renderUsageNoteSection(
   prR: number,
   prG: number,
   prB: number,
-  lang: 'en' | 'fr'
-) {
+  lang: 'en' | 'fr',
+  startY: number
+): number {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
-  let cursorY = 28;
+  let cursorY = startY;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
@@ -1007,6 +1127,8 @@ function renderUsageNoteSection(
   const text = usageNote[lang] || usageNote.en;
   const split = doc.splitTextToSize(text, contentWidth - 8);
   doc.text(split, margin + 4, cursorY + 7);
+
+  return cursorY + 44;
 }
 
 function renderSignatureBlockSection(
@@ -1016,11 +1138,12 @@ function renderSignatureBlockSection(
   prR: number,
   prG: number,
   prB: number,
-  lang: 'en' | 'fr'
-) {
+  lang: 'en' | 'fr',
+  startY: number
+): number {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
-  let cursorY = 28;
+  let cursorY = startY;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
@@ -1064,6 +1187,9 @@ function renderSignatureBlockSection(
     doc.setTextColor(148, 163, 184);
     doc.text(lang === 'fr' ? '[Signature manuscrite / Cachet]' : '[Signature / Stamp]', boxX + 3, boxY + 24);
   });
+
+  const numRows = Math.ceil(sigCount / 3);
+  return cursorY + numRows * (sigHeight + 4) + 8;
 }
 
 function renderPhotoPageSection(
@@ -1133,11 +1259,12 @@ function renderDataQualityNotesSection(
   prR: number,
   prG: number,
   prB: number,
-  _lang: 'en' | 'fr'
-) {
+  _lang: 'en' | 'fr',
+  startY: number
+): number {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
-  let cursorY = 28;
+  let cursorY = startY;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
@@ -1158,6 +1285,8 @@ function renderDataQualityNotesSection(
   doc.setTextColor(15, 23, 42);
   const split = doc.splitTextToSize(notes, contentWidth - 8);
   doc.text(split, margin + 4, cursorY + 7);
+
+  return cursorY + 32;
 }
 
 // -------------------------------------------------------------------------
