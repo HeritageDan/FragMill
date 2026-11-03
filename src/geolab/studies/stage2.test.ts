@@ -36,6 +36,10 @@ describe('FraGeo Lab Studies Engine - Stage 2', () => {
         id: 'proj-stage2-01',
         clientId: 'cli-stage2-01',
         projectName: 'Projet Route Nationale RN1',
+        programmeTitle: 'Programme de Modernisation des Infrastructures',
+        lotSection: 'Lot 1 - Terrassements et Chaussée',
+        contractNumber: 'CT-RN1-2026-001',
+        financingText: 'Budget d’Investissement Public',
         siteLocation: 'Zone PK 12+000',
         referenceNumber: 'REF-RN1-2026',
         startDate: '2026-03-01',
@@ -52,6 +56,8 @@ describe('FraGeo Lab Studies Engine - Stage 2', () => {
         email: 'direction@btp-ouvrages.cm',
         phone: '+237 699 00 11 22',
         address: 'Rue de l’Aéroport, Douala',
+        city: 'Douala',
+        country: 'Cameroun',
         isArchived: false,
         createdAt: '2026-03-01T08:00:00Z',
         updatedAt: '2026-03-01T08:00:00Z',
@@ -98,6 +104,10 @@ describe('FraGeo Lab Studies Engine - Stage 2', () => {
         testType: 'proctor',
         status: 'approved',
         reportNumber: 'PV-PR-2026-01',
+        standard: 'NF P94-093',
+        version: 1,
+        testedDate: '2026-03-02',
+        qualityWarnings: [],
         createdAt: '2026-03-02T10:00:00Z',
         updatedAt: '2026-03-02T10:00:00Z',
         rawInput: {},
@@ -106,36 +116,36 @@ describe('FraGeo Lab Studies Engine - Stage 2', () => {
     ];
 
     // Mock db.studyReports
-    vi.spyOn(db.studyReports, 'get').mockImplementation(async (id: any) =>
+    (vi.spyOn(db.studyReports, 'get') as any).mockImplementation(async (id: any) =>
       mockStudyReports.find((s) => s.id === id)
     );
-    vi.spyOn(db.studyReports, 'put').mockImplementation(async (study: any) => {
+    (vi.spyOn(db.studyReports, 'put') as any).mockImplementation(async (study: any) => {
       const idx = mockStudyReports.findIndex((s) => s.id === study.id);
       if (idx >= 0) mockStudyReports[idx] = study;
       else mockStudyReports.push(study);
       return study.id;
     });
-    vi.spyOn(db.studyReports, 'delete').mockImplementation(async (id: any) => {
+    (vi.spyOn(db.studyReports, 'delete') as any).mockImplementation(async (id: any) => {
       mockStudyReports = mockStudyReports.filter((s) => s.id !== id);
     });
-    vi.spyOn(db.studyReports, 'toArray').mockImplementation(async () => [...mockStudyReports]);
-    vi.spyOn(db.studyReports, 'count').mockImplementation(async () => mockStudyReports.length);
+    (vi.spyOn(db.studyReports, 'toArray') as any).mockImplementation(async () => [...mockStudyReports]);
+    (vi.spyOn(db.studyReports, 'count') as any).mockImplementation(async () => mockStudyReports.length);
 
     // Mock db.studyPhotos
-    vi.spyOn(db.studyPhotos, 'get').mockImplementation(async (id: any) =>
+    (vi.spyOn(db.studyPhotos, 'get') as any).mockImplementation(async (id: any) =>
       mockStudyPhotos.find((p) => p.id === id)
     );
-    vi.spyOn(db.studyPhotos, 'put').mockImplementation(async (photo: any) => {
+    (vi.spyOn(db.studyPhotos, 'put') as any).mockImplementation(async (photo: any) => {
       const idx = mockStudyPhotos.findIndex((p) => p.id === photo.id);
       if (idx >= 0) mockStudyPhotos[idx] = photo;
       else mockStudyPhotos.push(photo);
       return photo.id;
     });
-    vi.spyOn(db.studyPhotos, 'delete').mockImplementation(async (id: any) => {
+    (vi.spyOn(db.studyPhotos, 'delete') as any).mockImplementation(async (id: any) => {
       mockStudyPhotos = mockStudyPhotos.filter((p) => p.id !== id);
     });
-    vi.spyOn(db.studyPhotos, 'toArray').mockImplementation(async () => [...mockStudyPhotos]);
-    vi.spyOn(db.studyPhotos, 'where').mockImplementation((field: string) => ({
+    (vi.spyOn(db.studyPhotos, 'toArray') as any).mockImplementation(async () => [...mockStudyPhotos]);
+    (vi.spyOn(db.studyPhotos, 'where') as any).mockImplementation((field: string) => ({
       equals: (val: any) => ({
         toArray: async () => mockStudyPhotos.filter((p: any) => p[field] === val),
         sortBy: async (_sortField: string) =>
@@ -144,36 +154,36 @@ describe('FraGeo Lab Studies Engine - Stage 2', () => {
           mockStudyPhotos = mockStudyPhotos.filter((p: any) => p[field] !== val);
         },
       }),
-    } as any));
+    }));
 
     // Mock db.geolabProjects
-    vi.spyOn(db.geolabProjects, 'get').mockImplementation(async (id: any) =>
+    (vi.spyOn(db.geolabProjects, 'get') as any).mockImplementation(async (id: any) =>
       mockProjects.find((p) => p.id === id)
     );
-    vi.spyOn(db.geolabProjects, 'toArray').mockImplementation(async () => [...mockProjects]);
+    (vi.spyOn(db.geolabProjects, 'toArray') as any).mockImplementation(async () => [...mockProjects]);
 
     // Mock db.clients
-    vi.spyOn(db.clients, 'get').mockImplementation(async (id: any) =>
+    (vi.spyOn(db.clients, 'get') as any).mockImplementation(async (id: any) =>
       mockClients.find((c) => c.id === id)
     );
-    vi.spyOn(db.clients, 'toArray').mockImplementation(async () => [...mockClients]);
+    (vi.spyOn(db.clients, 'toArray') as any).mockImplementation(async () => [...mockClients]);
 
     // Mock db.samples
-    vi.spyOn(db.samples, 'toArray').mockImplementation(async () => [...mockSamples]);
-    vi.spyOn(db.samples, 'where').mockImplementation((field: string) => ({
+    (vi.spyOn(db.samples, 'toArray') as any).mockImplementation(async () => [...mockSamples]);
+    (vi.spyOn(db.samples, 'where') as any).mockImplementation((field: string) => ({
       equals: (val: any) => ({
         toArray: async () => mockSamples.filter((s: any) => s[field] === val),
       }),
-    } as any));
+    }));
 
     // Mock db.analyses
-    vi.spyOn(db.analyses, 'toArray').mockImplementation(async () => [...mockAnalyses]);
-    vi.spyOn(db.analyses, 'get').mockImplementation(async (id: any) =>
+    (vi.spyOn(db.analyses, 'toArray') as any).mockImplementation(async () => [...mockAnalyses]);
+    (vi.spyOn(db.analyses, 'get') as any).mockImplementation(async (id: any) =>
       mockAnalyses.find((a) => a.id === id)
     );
 
     // Mock getOrganisationProfile
-    vi.spyOn(db.settings, 'get').mockImplementation(async () => ({
+    (vi.spyOn(db.settings, 'get') as any).mockImplementation(async () => ({
       key: 'org_profile',
       value: {
         companyName: 'Laboratoire Géotechnique Central',
@@ -270,7 +280,7 @@ describe('FraGeo Lab Studies Engine - Stage 2', () => {
   it('3. Photo compression produces valid blobs <= 1600px', async () => {
     // Generate a synthetic test buffer simulating an image
     const syntheticBuffer = Buffer.from('FAKE-PHOTO-DATA-REPRESENTING-A-SITE-SOIL-SAMPLE-IMAGE');
-    const result = await compressStudyPhoto(syntheticBuffer);
+    const result = await compressStudyPhoto(new Blob([syntheticBuffer]));
 
     expect(result).toBeDefined();
     expect(result.mimeType).toBe('image/jpeg');

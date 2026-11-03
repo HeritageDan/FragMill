@@ -10,4 +10,6 @@ export * from './engine/studyWordRenderer';
 export * from './engine/photoUtils';
 export * from './engine/studyService';
 export * from './engine/studyZipExporter';
+export * from './engine/studyConsistencyChecker';
+export * from './engine/studyAiNarrative';
 export * from './templates';

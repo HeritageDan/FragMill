@@ -22,6 +22,10 @@ import {
   generateStudyPdfReport,
   generateStudyDocxReport,
   exportStudyPackageZip,
+  checkStudyConsistency,
+  generateStudyAiNarrative,
+  type ConsistencyCheckResult,
+  type StudyNarrativeDraft,
 } from '../../geolab/studies';
 import { getTestDefinition } from '../../geolab/tests';
 import {
@@ -50,6 +54,7 @@ import {
   Archive,
   Eye,
   Check,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface Props {
@@ -95,6 +100,13 @@ export const StudyReportEditorView: React.FC<Props> = ({
   const [isExporting, setIsExporting] = useState<'docx' | 'pdf' | 'zip' | null>(null);
   const [exportProgress, setExportProgress] = useState<string>('');
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  // Consistency & AI Narrative
+  const [consistencyResult, setConsistencyResult] = useState<ConsistencyCheckResult | null>(null);
+  const [showConsistencyPanel, setShowConsistencyPanel] = useState(false);
+  const [isNarrativeModalOpen, setIsNarrativeModalOpen] = useState(false);
+  const [isGeneratingNarrative, setIsGeneratingNarrative] = useState(false);
+  const [narrativeDraft, setNarrativeDraft] = useState<StudyNarrativeDraft | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -318,6 +330,79 @@ export const StudyReportEditorView: React.FC<Props> = ({
     setPhotos(updated);
   };
 
+  // Consistency & AI Narrative Handlers
+  const handleRunConsistencyCheck = () => {
+    if (!project || !orgProfile) return;
+    const includedSet = new Set(study.includedAnalysisIds || []);
+    const includedAnalyses = projectAnalyses.filter((a) => includedSet.has(a.id));
+
+    const result = checkStudyConsistency({
+      study,
+      project,
+      client: client || undefined,
+      organisation: orgProfile,
+      analyses: includedAnalyses,
+      samples,
+    });
+
+    setConsistencyResult(result);
+    setShowConsistencyPanel(true);
+  };
+
+  const handleOpenAiNarrativeModal = async () => {
+    if (!project || !client) return;
+    setIsNarrativeModalOpen(true);
+    setIsGeneratingNarrative(true);
+
+    const includedSet = new Set(study.includedAnalysisIds || []);
+    const includedAnalyses = projectAnalyses.filter((a) => includedSet.has(a.id));
+
+    const settingsRow = await db.settings.get('fragmill_settings');
+    const apiKey = settingsRow?.value?.geminiApiKey;
+
+    try {
+      const draft = await generateStudyAiNarrative({
+        study,
+        project,
+        client,
+        analyses: includedAnalyses,
+        samples,
+        apiKey,
+        language: lang,
+      });
+      setNarrativeDraft(draft);
+    } catch (err) {
+      console.error('Narrative generation error:', err);
+    } finally {
+      setIsGeneratingNarrative(false);
+    }
+  };
+
+  const handleApplyNarrativeToStudy = async () => {
+    if (!narrativeDraft || isLocked) return;
+
+    const newSections = study.sections.map((sec) => {
+      const titleLower = (sec.title[lang] || sec.title.fr || sec.title.en || '').toLowerCase();
+      if (titleLower.includes('introduction') || titleLower.includes('objet')) {
+        return { ...sec, content: narrativeDraft.introduction };
+      }
+      if (titleLower.includes('matériau') || titleLower.includes('material') || titleLower.includes('sol')) {
+        return { ...sec, content: narrativeDraft.materials };
+      }
+      if (titleLower.includes('discussion') || titleLower.includes('interprétation') || titleLower.includes('résultat')) {
+        return { ...sec, content: narrativeDraft.discussion };
+      }
+      if (titleLower.includes('recommandation') || titleLower.includes('conclusion')) {
+        return { ...sec, content: narrativeDraft.recommendations };
+      }
+      return sec;
+    });
+
+    const updated = await updateStudyReport(study.id, { sections: newSections }, lang);
+    setStudy(updated);
+    setIsNarrativeModalOpen(false);
+  };
+
   // Document Model Helper
   const getDocModel = () => {
     if (!project || !client || !orgProfile) return null;
@@ -331,6 +416,7 @@ export const StudyReportEditorView: React.FC<Props> = ({
       analyses: includedAnalyses,
       samples,
       photos,
+      validateConsistency: true,
     });
   };
 
@@ -564,65 +650,172 @@ export const StudyReportEditorView: React.FC<Props> = ({
         </button>
       </div>
 
-      {/* Editor Sub-Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-        <button
-          onClick={() => setActiveTab('sections')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-            activeTab === 'sections'
-              ? 'bg-blue-600 text-white shadow'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span>{lang === 'fr' ? 'Sections & Contenu' : 'Sections & Narrative'}</span>
-          <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300">
-            {study.sections.filter((s) => s.enabled).length}
-          </span>
-        </button>
+      {/* Editor Sub-Navigation Tabs & Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">
+        <div className="flex items-center gap-2 overflow-x-auto py-1">
+          <button
+            onClick={() => setActiveTab('sections')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition flex-shrink-0 ${
+              activeTab === 'sections'
+                ? 'bg-blue-600 text-white shadow'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>{lang === 'fr' ? 'Sections & Contenu' : 'Sections & Narrative'}</span>
+            <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300">
+              {study.sections.filter((s) => s.enabled).length}
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('analyses')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-            activeTab === 'analyses'
-              ? 'bg-blue-600 text-white shadow'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <FileSpreadsheet className="w-4 h-4" />
-          <span>{lang === 'fr' ? 'Analyses Incluses' : 'Included Analyses'}</span>
-          <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300">
-            {study.includedAnalysisIds?.length || 0}
-          </span>
-        </button>
+          <button
+            onClick={() => setActiveTab('analyses')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition flex-shrink-0 ${
+              activeTab === 'analyses'
+                ? 'bg-blue-600 text-white shadow'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>{lang === 'fr' ? 'Analyses Incluses' : 'Included Analyses'}</span>
+            <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300">
+              {study.includedAnalysisIds?.length || 0}
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('photos')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-            activeTab === 'photos'
-              ? 'bg-blue-600 text-white shadow'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <ImageIcon className="w-4 h-4" />
-          <span>{lang === 'fr' ? 'Planches Photos' : 'Photo Plates'}</span>
-          <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300">
-            {photos.length}
-          </span>
-        </button>
+          <button
+            onClick={() => setActiveTab('photos')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition flex-shrink-0 ${
+              activeTab === 'photos'
+                ? 'bg-blue-600 text-white shadow'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <ImageIcon className="w-4 h-4" />
+            <span>{lang === 'fr' ? 'Planches Photos' : 'Photo Plates'}</span>
+            <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300">
+              {photos.length}
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('preview')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
-            activeTab === 'preview'
-              ? 'bg-blue-600 text-white shadow'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
-          }`}
-        >
-          <Eye className="w-4 h-4" />
-          <span>{lang === 'fr' ? 'Aperçu Synthétique' : 'Document Overview'}</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('preview')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition flex-shrink-0 ${
+              activeTab === 'preview'
+                ? 'bg-blue-600 text-white shadow'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Eye className="w-4 h-4" />
+            <span>{lang === 'fr' ? 'Aperçu Synthétique' : 'Document Overview'}</span>
+          </button>
+        </div>
+
+        {/* Stage 3 Tools */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={handleRunConsistencyCheck}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-bold transition shadow-sm"
+            title={lang === 'fr' ? 'Lancer le vérificateur de cohérence et de plausibilité' : 'Run consistency & plausibility check'}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>{lang === 'fr' ? 'Vérifier la cohérence' : 'Check Consistency'}</span>
+          </button>
+
+          {!isLocked && (
+            <button
+              onClick={handleOpenAiNarrativeModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700/60 rounded-lg text-xs font-bold transition shadow-sm"
+              title={lang === 'fr' ? 'Rédiger les textes narratifs avec l’IA' : 'Draft narrative with AI'}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              <span>{lang === 'fr' ? 'Rédiger avec l’IA' : 'AI Narrative'}</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Consistency Findings Panel */}
+      {showConsistencyPanel && consistencyResult && (
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3 shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              <h4 className="text-sm font-bold text-white">
+                {lang === 'fr' ? 'Rapport de Cohérence & Plausibilité' : 'Consistency & Plausibility Report'}
+              </h4>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {consistencyResult.findings.length === 0 ? (
+                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-semibold">
+                  {lang === 'fr' ? '100% Cohérent (0 anomalie)' : '100% Consistent (0 anomalies)'}
+                </span>
+              ) : (
+                <>
+                  {consistencyResult.hasErrors && (
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-red-950 text-red-300 border border-red-800 font-semibold">
+                      {consistencyResult.findings.filter((f) => f.severity === 'error').length}{' '}
+                      {lang === 'fr' ? 'erreur(s) bloquante(s)' : 'blocking error(s)'}
+                    </span>
+                  )}
+                  {consistencyResult.hasWarnings && (
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800 font-semibold">
+                      {consistencyResult.findings.filter((f) => f.severity === 'warning').length}{' '}
+                      {lang === 'fr' ? 'avertissement(s)' : 'warning(s)'}
+                    </span>
+                  )}
+                </>
+              )}
+
+              <button
+                onClick={() => setShowConsistencyPanel(false)}
+                className="text-slate-400 hover:text-white p-1 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {consistencyResult.findings.length === 0 ? (
+            <p className="text-xs text-slate-400">
+              {lang === 'fr'
+                ? 'Toutes les règles de plausibilité physique, limites de répétabilité et concordances d’essais sont respectées.'
+                : 'All physical plausibility, repeatability limits, and multi-test concordance checks passed.'}
+            </p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {consistencyResult.findings.map((f, idx) => (
+                <div
+                  key={idx}
+                  className={`p-2.5 rounded-lg border text-xs flex items-start gap-2.5 ${
+                    f.severity === 'error'
+                      ? 'bg-red-950/40 border-red-800/60 text-red-200'
+                      : 'bg-amber-950/40 border-amber-800/60 text-amber-200'
+                  }`}
+                >
+                  <AlertTriangle
+                    className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
+                      f.severity === 'error' ? 'text-red-400' : 'text-amber-400'
+                    }`}
+                  />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-black/40">
+                        {f.ruleCode}
+                      </span>
+                      <span className="font-semibold text-[11px] uppercase tracking-wider">
+                        {f.severity}
+                      </span>
+                    </div>
+                    <p className="mt-1">{f.message[lang] || f.message.fr || f.message.en}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* TAB 1: Sections & Content */}
       {activeTab === 'sections' && (
@@ -1137,6 +1330,145 @@ export const StudyReportEditorView: React.FC<Props> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* AI Narrative Drafting Modal */}
+      {isNarrativeModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden my-8">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-400" />
+                <h3 className="text-base font-bold text-white">
+                  {lang === 'fr' ? 'Rédaction Assistée par IA' : 'AI Narrative Drafting'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsNarrativeModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {isGeneratingNarrative ? (
+                <div className="py-12 text-center text-slate-400 space-y-3">
+                  <RefreshCw className="w-8 h-8 animate-spin mx-auto text-purple-400" />
+                  <p className="text-sm font-medium">
+                    {lang === 'fr'
+                      ? 'Génération des sections narratives à partir des données structurées...'
+                      : 'Drafting narrative sections from structured geotechnical data...'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {lang === 'fr'
+                      ? 'Synthèse de l’introduction, description des matériaux, discussion et recommandations.'
+                      : 'Synthesizing introduction, materials, discussion, and recommendations.'}
+                  </p>
+                </div>
+              ) : narrativeDraft ? (
+                <div className="space-y-4">
+                  <div className="p-3 bg-purple-950/40 border border-purple-800/60 rounded-lg text-xs text-purple-200">
+                    <p className="font-semibold">
+                      {narrativeDraft.isAiGenerated
+                        ? lang === 'fr'
+                          ? 'Texte rédigé par Gemini Flash à partir des données structurées de l’étude.'
+                          : 'Drafted by Gemini Flash using structured study metrics.'
+                        : lang === 'fr'
+                          ? 'Texte généré via le moteur déterministe hors-ligne (valeurs exactes de laboratoire).'
+                          : 'Drafted via offline deterministic template engine citing exact lab values.'}
+                    </p>
+                    <p className="text-[11px] text-purple-300/80 mt-1">
+                      {lang === 'fr'
+                        ? 'Vous pouvez modifier les textes ci-dessous avant de les insérer dans votre étude.'
+                        : 'You can review and edit each section before applying them to your study report.'}
+                    </p>
+                  </div>
+
+                  {/* Section 1: Introduction */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                      {lang === 'fr' ? '1. Contexte & Introduction' : '1. Context & Introduction'}
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={narrativeDraft.introduction}
+                      onChange={(e) =>
+                        setNarrativeDraft({ ...narrativeDraft, introduction: e.target.value })
+                      }
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-purple-500 leading-relaxed font-mono"
+                    />
+                  </div>
+
+                  {/* Section 2: Materials */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                      {lang === 'fr' ? '2. Description des Matériaux' : '2. Description of Materials'}
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={narrativeDraft.materials}
+                      onChange={(e) =>
+                        setNarrativeDraft({ ...narrativeDraft, materials: e.target.value })
+                      }
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-purple-500 leading-relaxed font-mono"
+                    />
+                  </div>
+
+                  {/* Section 3: Discussion */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                      {lang === 'fr' ? '3. Discussion des Résultats' : '3. Discussion of Results'}
+                    </label>
+                    <textarea
+                      rows={5}
+                      value={narrativeDraft.discussion}
+                      onChange={(e) =>
+                        setNarrativeDraft({ ...narrativeDraft, discussion: e.target.value })
+                      }
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-purple-500 leading-relaxed font-mono"
+                    />
+                  </div>
+
+                  {/* Section 4: Recommendations */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                      {lang === 'fr' ? '4. Recommandations Géotechniques' : '4. Engineering Recommendations'}
+                    </label>
+                    <textarea
+                      rows={5}
+                      value={narrativeDraft.recommendations}
+                      onChange={(e) =>
+                        setNarrativeDraft({ ...narrativeDraft, recommendations: e.target.value })
+                      }
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-purple-500 leading-relaxed font-mono"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="p-4 bg-slate-900/90 border-t border-slate-800 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsNarrativeModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+              >
+                {lang === 'fr' ? 'Fermer' : 'Close'}
+              </button>
+              {narrativeDraft && !isLocked && (
+                <button
+                  type="button"
+                  onClick={handleApplyNarrativeToStudy}
+                  className="px-5 py-2 text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition shadow flex items-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>{lang === 'fr' ? 'Appliquer à l’Étude' : 'Apply to Study'}</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

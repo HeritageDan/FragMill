@@ -7,6 +7,7 @@ import type {
 } from '../../../types/geolab';
 import { getStudyTemplate } from '../templates';
 import { compressStudyPhoto } from './photoUtils';
+import { checkStudyConsistency } from './studyConsistencyChecker';
 
 export interface CreateStudyReportParams {
   projectId: string;
@@ -161,7 +162,7 @@ export async function changeStudyStatus(
   const study = await db.studyReports.get(studyId);
   if (!study) throw new Error('Study not found');
 
-  // Enforce company name requirement if approving
+  // Enforce company name and consistency rules if approving
   if (newStatus === 'approved') {
     const org = await getOrganisationProfile();
     if (!org.companyName?.trim()) {
@@ -169,6 +170,43 @@ export async function changeStudyStatus(
         language === 'fr'
           ? 'Veuillez configurer le profil de votre organisation avant d’approuver une étude.'
           : 'Please configure your organisation profile before approving a study.'
+      );
+    }
+
+    const proj = await db.geolabProjects.get(study.projectId);
+    const cli = proj ? await db.clients.get(proj.clientId) : undefined;
+    const allAnalyses = await db.analyses.toArray();
+    const includedAnalyses = allAnalyses.filter((a) => (study.includedAnalysisIds || []).includes(a.id));
+    const samples = proj ? await db.samples.where('projectId').equals(proj.id).toArray() : [];
+
+    const consistency = checkStudyConsistency({
+      study: { ...study, status: 'approved' },
+      project: proj || {
+        id: study.projectId,
+        clientId: '',
+        projectName: '',
+        siteLocation: '',
+        referenceNumber: '',
+        startDate: '',
+        isArchived: false,
+        createdAt: '',
+        updatedAt: '',
+      },
+      client: cli,
+      organisation: org,
+      analyses: includedAnalyses,
+      samples,
+    });
+
+    if (consistency.hasErrors) {
+      const errorMsg = consistency.findings
+        .filter((f) => f.severity === 'error')
+        .map((f) => f.message[language] || f.message.fr || f.message.en)
+        .join('; ');
+      throw new Error(
+        language === 'fr'
+          ? `L'approbation est impossible en raison d'erreurs critiques : ${errorMsg}`
+          : `Approval failed due to critical consistency errors: ${errorMsg}`
       );
     }
   }

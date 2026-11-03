@@ -65,6 +65,7 @@ export async function exportStudyPackageZip(options: StudyPackageExportOptions):
     analyses,
     samples,
     photos,
+    validateConsistency: true,
   });
 
   const zip = new JSZip();

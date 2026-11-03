@@ -14,6 +14,7 @@ import type {
   HeaderLogos,
 } from '../../../types/geolab';
 import { getStudyTemplate } from '../templates';
+import { checkStudyConsistency } from './studyConsistencyChecker';
 
 export interface CoverBlockData {
   bilingualHeader?: { col1Text: string; col2Text: string };
@@ -139,10 +140,11 @@ export interface BuildDocumentModelParams {
   samples?: GeoLabSample[];
   photos?: StudyPhoto[];
   language?: 'en' | 'fr';
+  validateConsistency?: boolean;
 }
 
 export function buildDocumentModel(params: BuildDocumentModelParams): DocumentModel {
-  const { study, project, client, organisation, analyses, samples = [], photos = [] } = params;
+  const { study, project, client, organisation, analyses, samples = [], photos = [], validateConsistency = false } = params;
   const lang = params.language || study.language || organisation.defaultLanguage || 'en';
 
   // Rule 9: Block approved studies when organisation profile has no company name
@@ -152,6 +154,30 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
         ? 'Veuillez configurer le profil de votre organisation avant de générer des rapports approuvés.'
         : 'Please configure your organisation profile before generating approved reports.'
     );
+  }
+
+  // Stage 3: Consistency validation when requested for approved studies
+  if (study.status === 'approved' && validateConsistency) {
+    const consistency = checkStudyConsistency({
+      study,
+      project,
+      client,
+      organisation,
+      analyses,
+      samples,
+    });
+
+    if (consistency.hasErrors) {
+      const errorDetails = consistency.findings
+        .filter((f) => f.severity === 'error')
+        .map((f) => f.message[lang] || f.message.fr || f.message.en)
+        .join('; ');
+      throw new Error(
+        lang === 'fr'
+          ? `L'exportation de l'étude approuvée est bloquée en raison d'erreurs de cohérence critiques : ${errorDetails}`
+          : `Approved study export is blocked due to critical consistency errors: ${errorDetails}`
+      );
+    }
   }
 
   // Filter analyses included in this study

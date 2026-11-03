@@ -4,8 +4,6 @@ import type {
   StudyReport,
   GeoLabProject,
   GeoLabClient,
-  GeoLabAnalysis,
-  GeoLabSample,
   OrganisationProfile,
 } from '../../types/geolab';
 import {
@@ -26,10 +24,6 @@ import {
   Edit3,
   CheckCircle,
   Clock,
-  Layers,
-  Image as ImageIcon,
-  FileSpreadsheet,
-  AlertTriangle,
 } from 'lucide-react';
 
 interface Props {
@@ -61,7 +55,6 @@ export const StudyReportsListView: React.FC<Props> = ({
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [exportingStudyId, setExportingStudyId] = useState<string | null>(null);
-  const [exportType, setExportType] = useState<'docx' | 'pdf' | 'zip' | null>(null);
 
   const loadData = async () => {
     const s = await db.studyReports.toArray();
@@ -123,7 +116,6 @@ export const StudyReportsListView: React.FC<Props> = ({
 
     try {
       setExportingStudyId(study.id);
-      setExportType('docx');
 
       const allAnalyses = await db.analyses.toArray();
       const includedAnalyses = allAnalyses.filter((a) => (study.includedAnalysisIds || []).includes(a.id));
@@ -146,7 +138,6 @@ export const StudyReportsListView: React.FC<Props> = ({
       alert(`Word export failed: ${err?.message}`);
     } finally {
       setExportingStudyId(null);
-      setExportType(null);
     }
   };
 
@@ -159,7 +150,6 @@ export const StudyReportsListView: React.FC<Props> = ({
 
     try {
       setExportingStudyId(study.id);
-      setExportType('pdf');
 
       const allAnalyses = await db.analyses.toArray();
       const includedAnalyses = allAnalyses.filter((a) => (study.includedAnalysisIds || []).includes(a.id));
@@ -182,7 +172,6 @@ export const StudyReportsListView: React.FC<Props> = ({
       alert(`PDF export failed: ${err?.message}`);
     } finally {
       setExportingStudyId(null);
-      setExportType(null);
     }
   };
 
@@ -190,7 +179,6 @@ export const StudyReportsListView: React.FC<Props> = ({
     e.stopPropagation();
     try {
       setExportingStudyId(study.id);
-      setExportType('zip');
 
       const { blob, filename } = await exportStudyPackageZip({ studyId: study.id });
       downloadBlob(blob, filename);
@@ -198,7 +186,6 @@ export const StudyReportsListView: React.FC<Props> = ({
       alert(`Package export failed: ${err?.message}`);
     } finally {
       setExportingStudyId(null);
-      setExportType(null);
     }
   };
 
