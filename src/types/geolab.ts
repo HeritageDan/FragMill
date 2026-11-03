@@ -234,3 +234,75 @@ export interface ReportBlockDefinition {
   conformityItemsKey?: string;
 }
 
+// -------------------------------------------------------------
+// Study Report Types (FraGeo Lab Studies Engine)
+// -------------------------------------------------------------
+export type ValueProvenance = 'measured' | 'projected' | 'manual';
+
+export interface StudyRevision {
+  index: number;
+  date: string;
+  nature: string;
+  preparedBy?: string;
+  checkedBy?: string;
+  approvedBy?: string;
+  snapshot?: any;
+}
+
+export interface StudyPhoto {
+  id: string;
+  studyId: string;
+  order: number;
+  caption: string;
+  mimeType: string;
+  blob?: Blob | string; // Compressed JPEG binary or Base64
+}
+
+export type StudySectionType =
+  | 'cover'
+  | 'toc'
+  | 'narrative'
+  | 'analysisSummaryTable'
+  | 'analysisDetail'
+  | 'gradingCurves'
+  | 'conformityTable'
+  | 'usageNote'
+  | 'signatureBlock'
+  | 'photoPages'
+  | 'annexTestSheets'
+  | 'dataQualityNotes'
+  | 'pageBreak';
+
+export interface StudySection {
+  id: string;
+  type: StudySectionType;
+  title: { en: string; fr: string };
+  enabled: boolean;
+  content?: string; // Markdown text (headings #, paragraphs, - bullets, **bold**)
+  config?: Record<string, any>;
+}
+
+export interface StudyReport {
+  id: string;
+  projectId: string;
+  title: string;
+  templateId: string;
+  language: 'en' | 'fr';
+  status: 'draft' | 'checked' | 'approved';
+  reportNumber: string;
+  revisions: StudyRevision[];
+  sections: StudySection[];
+  includedAnalysisIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudyTemplate {
+  id: string;
+  name: { en: string; fr: string };
+  description: { en: string; fr: string };
+  acceptedAnalysisTypes: GeoLabTestType[];
+  sections: Omit<StudySection, 'id'>[];
+}
+
+

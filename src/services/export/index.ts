@@ -554,6 +554,20 @@ export async function exportProjectBackupJson(projectId: string): Promise<string
   const runs = await db.segmentationRuns.where('imageId').anyOf(imageIds).toArray();
   const groundTruths = await db.groundTruths.where('blastId').anyOf(blastIds).toArray();
   const millBatches = await db.millBatches.where('blastId').anyOf(blastIds).toArray();
+  let studyReports: any[] = [];
+  let studyPhotos: any[] = [];
+  try {
+    if (db.studyReports) {
+      studyReports = await db.studyReports.where('projectId').equals(projectId).toArray();
+      const studyIds = studyReports.map((s) => s.id);
+      if (db.studyPhotos && studyIds.length > 0) {
+        studyPhotos = await db.studyPhotos.where('studyId').anyOf(studyIds).toArray();
+      }
+    }
+  } catch {
+    studyReports = [];
+    studyPhotos = [];
+  }
 
   const backup = {
     app: 'frageo',
@@ -567,6 +581,8 @@ export async function exportProjectBackupJson(projectId: string): Promise<string
     segmentationRuns: runs,
     groundTruths,
     millBatches,
+    studyReports,
+    studyPhotos,
   };
 
   return JSON.stringify(backup, null, 2);
@@ -583,7 +599,11 @@ export async function importProjectBackupJson(jsonString: string): Promise<strin
     throw new Error('Unsupported application backup origin');
   }
 
-  await db.transaction('rw', [db.projects, db.sites, db.blasts, db.images, db.segmentationRuns, db.groundTruths, db.millBatches], async () => {
+  const tablesToLock: any[] = [db.projects, db.sites, db.blasts, db.images, db.segmentationRuns, db.groundTruths, db.millBatches];
+  if (db.studyReports) tablesToLock.push(db.studyReports);
+  if (db.studyPhotos) tablesToLock.push(db.studyPhotos);
+
+  await db.transaction('rw', tablesToLock, async () => {
     await db.projects.put(data.project);
     for (const s of data.sites || []) await db.sites.put(s);
     for (const b of data.blasts || []) await db.blasts.put(b);
@@ -591,6 +611,12 @@ export async function importProjectBackupJson(jsonString: string): Promise<strin
     for (const r of data.segmentationRuns || []) await db.segmentationRuns.put(r);
     for (const gt of data.groundTruths || []) await db.groundTruths.put(gt);
     for (const mb of data.millBatches || []) await db.millBatches.put(mb);
+    if (db.studyReports && Array.isArray(data.studyReports)) {
+      for (const sr of data.studyReports) await db.studyReports.put(sr);
+    }
+    if (db.studyPhotos && Array.isArray(data.studyPhotos)) {
+      for (const sp of data.studyPhotos) await db.studyPhotos.put(sp);
+    }
   });
 
   return data.project.id;

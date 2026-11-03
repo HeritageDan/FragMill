@@ -15,6 +15,8 @@ import type {
   GeoLabSample,
   GeoLabAnalysis,
   OrganisationProfile,
+  StudyReport,
+  StudyPhoto,
 } from '../types/geolab';
 
 export class FragMillDatabase extends Dexie {
@@ -33,6 +35,10 @@ export class FragMillDatabase extends Dexie {
   geolabProjects!: Table<GeoLabProject, string>;
   samples!: Table<GeoLabSample, string>;
   analyses!: Table<GeoLabAnalysis, string>;
+
+  // FraGeo Lab Study Reports & Photos
+  studyReports!: Table<StudyReport, string>;
+  studyPhotos!: Table<StudyPhoto, string>;
 
   constructor() {
     super('FragMillDB');
@@ -53,6 +59,11 @@ export class FragMillDatabase extends Dexie {
       geolabProjects: 'id, clientId, projectName, isArchived, createdAt',
       samples: 'id, projectId, sampleId, samplingDate, createdAt',
       analyses: 'id, sampleId, testType, status, reportNumber, createdAt',
+    });
+
+    this.version(3).stores({
+      studyReports: 'id, projectId, templateId, status, reportNumber, createdAt, updatedAt',
+      studyPhotos: 'id, studyId, order',
     });
   }
 }

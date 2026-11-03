@@ -8,6 +8,7 @@ import type {
   AnalysisRevision,
 } from '../../types/geolab';
 import type { GeoLabTestDefinition } from '../tests/types';
+import { getTestDefinition } from '../tests';
 import type { ProctorInput, ProctorResults } from '../tests/proctor';
 import type { GrainSizeInput, GrainSizeResults } from '../tests/grainSize';
 import type { WaterContentInput, WaterContentResults } from '../tests/waterContent';
@@ -22,6 +23,18 @@ export interface PdfGenerationOptions {
   language?: 'en' | 'fr';
 }
 
+export interface AnalysisSheetContext {
+  client: GeoLabClient;
+  project: GeoLabProject;
+  sample?: GeoLabSample;
+  orgProfile: OrganisationProfile;
+  testDef?: GeoLabTestDefinition;
+  language?: 'en' | 'fr';
+  isAnnex?: boolean;
+  annexTitle?: string;
+  totalStudyPages?: number;
+}
+
 function hexToRgb(hex: string): [number, number, number] {
   const clean = (hex || '#1e40af').replace('#', '');
   const r = parseInt(clean.substring(0, 2), 16) || 30;
@@ -30,18 +43,28 @@ function hexToRgb(hex: string): [number, number, number] {
   return [r, g, b];
 }
 
-export async function generateGeoLabPdfReport(options: PdfGenerationOptions): Promise<Blob> {
-  const { analysis, client, project, sample, orgProfile, testDef } = options;
-  const lang = options.language || orgProfile.defaultLanguage || 'en';
+export function renderAnalysisSheet(
+  doc: jsPDF,
+  analysis: GeoLabAnalysis,
+  ctx: AnalysisSheetContext
+): { startPage: number; endPage: number } {
+  const { client, project, orgProfile } = ctx;
+  const sample = ctx.sample || {
+    id: analysis.sampleId,
+    projectId: project.id,
+    sampleId: analysis.sampleId,
+    samplingDate: analysis.testedDate || '-',
+    createdAt: '',
+    updatedAt: '',
+  };
+  const testDef = ctx.testDef || getTestDefinition(analysis.testType);
+  const lang = ctx.language || orgProfile.defaultLanguage || 'en';
 
-  // Enforce company name requirement on approved reports
-  if (analysis.status === 'approved' && !orgProfile.companyName?.trim()) {
-    throw new Error(
-      lang === 'fr'
-        ? 'Veuillez configurer le profil de votre organisation avant de générer des rapports approuvés.'
-        : 'Please configure your organisation profile before generating approved reports.'
-    );
+  if (doc.getNumberOfPages() > 0 && ctx.isAnnex) {
+    doc.addPage();
   }
+  const startPage = doc.getNumberOfPages() === 0 ? 1 : doc.getNumberOfPages();
+  const [prR, prG, prB] = hexToRgb(orgProfile.primaryColor);
 
   const isDemo = Boolean(
     analysis.isDemo ||
@@ -51,9 +74,6 @@ export async function generateGeoLabPdfReport(options: PdfGenerationOptions): Pr
     analysis.reportNumber?.startsWith('DEMO-')
   );
   const watermarkText = isDemo ? 'DEMO' : (analysis.status === 'approved' ? '' : 'DRAFT / PROVISOIRE');
-
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const [prR, prG, prB] = hexToRgb(orgProfile.primaryColor);
 
   const pageWidth = 210;
   const pageHeight = 297;
@@ -427,7 +447,38 @@ export async function generateGeoLabPdfReport(options: PdfGenerationOptions): Pr
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
   doc.text(orgProfile.reportFooterText || 'FraGeo Suite - FraGeo Lab', margin, pageHeight - 6.5);
-  doc.text('Page 1 / 1', pageWidth - margin, pageHeight - 6.5, { align: 'right' });
+
+  const pageLabel = ctx.isAnnex
+    ? `Page ${doc.getNumberOfPages()} / ${ctx.totalStudyPages || doc.getNumberOfPages()}`
+    : 'Page 1 / 1';
+  doc.text(pageLabel, pageWidth - margin, pageHeight - 6.5, { align: 'right' });
+
+  return { startPage, endPage: doc.getNumberOfPages() };
+}
+
+export async function generateGeoLabPdfReport(options: PdfGenerationOptions): Promise<Blob> {
+  const { analysis, client, project, sample, orgProfile, testDef } = options;
+  const lang = options.language || orgProfile.defaultLanguage || 'en';
+
+  // Enforce company name requirement on approved reports
+  if (analysis.status === 'approved' && !orgProfile.companyName?.trim()) {
+    throw new Error(
+      lang === 'fr'
+        ? 'Veuillez configurer le profil de votre organisation avant de générer des rapports approuvés.'
+        : 'Please configure your organisation profile before generating approved reports.'
+    );
+  }
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  renderAnalysisSheet(doc, analysis, {
+    client,
+    project,
+    sample,
+    orgProfile,
+    testDef,
+    language: lang,
+    isAnnex: false,
+  });
 
   return doc.output('blob');
 }

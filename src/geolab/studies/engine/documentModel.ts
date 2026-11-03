@@ -1,0 +1,543 @@
+import type {
+  StudyReport,
+  StudyPhoto,
+  StudySectionType,
+  GeoLabProject,
+  GeoLabClient,
+  GeoLabAnalysis,
+  GeoLabSample,
+  OrganisationProfile,
+  ApprovalChainEntry,
+  StudyRevision,
+  GeoLabTestType,
+  ValueProvenance,
+  HeaderLogos,
+} from '../../../types/geolab';
+import { getStudyTemplate } from '../templates';
+
+export interface CoverBlockData {
+  bilingualHeader?: { col1Text: string; col2Text: string };
+  headerLogos?: HeaderLogos;
+  primaryColor: string;
+  companyName: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  accreditationNumber?: string;
+  programmeTitle?: string;
+  lotSection?: string;
+  contractNumber?: string;
+  tenderNumber?: string;
+  financingText?: string;
+  parties?: Array<{ role: string; name: string; contact?: string }>;
+  clientName: string;
+  clientContact?: string;
+  projectName: string;
+  siteLocation?: string;
+  studyTitle: string;
+  reportNumber: string;
+  status: 'draft' | 'checked' | 'approved';
+  isDraftWatermark: boolean;
+  revisions: StudyRevision[];
+  approvalChain: ApprovalChainEntry[];
+}
+
+export interface TocItem {
+  id: string;
+  title: string;
+  level: number;
+}
+
+export interface NarrativeBlockData {
+  id: string;
+  title: string;
+  markdown: string;
+}
+
+export interface AnalysisSummaryRow {
+  analysisId: string;
+  sampleId: string;
+  testType: GeoLabTestType;
+  testLabel: string;
+  standard: string;
+  testedDate: string;
+  keyResultsText: string;
+  status: string;
+}
+
+export interface AnalysisDetailBlockData {
+  analysis: GeoLabAnalysis;
+  sample?: GeoLabSample;
+  testLabel: string;
+  inputs: Array<{ label: string; value: string | number; unit?: string }>;
+  results: Array<{ label: string; value: string | number; unit?: string; provenance?: ValueProvenance }>;
+  chartType?: 'proctor' | 'grain_size';
+  observations?: string;
+}
+
+export interface GradingCurvesBlockData {
+  analyses: GeoLabAnalysis[];
+}
+
+export interface ConformityRow {
+  sampleId: string;
+  testType: string;
+  parameter: string;
+  measured: string | number;
+  specification: string;
+  status: 'conform' | 'non_conform' | 'informative';
+}
+
+export interface PhotoGridItem {
+  id: string;
+  caption: string;
+  blobOrBase64?: Blob | string;
+  mimeType: string;
+}
+
+export interface PhotoPageBlockData {
+  photos: PhotoGridItem[];
+  pageIndex: number;
+  totalPhotoPages: number;
+}
+
+export interface DocumentBlock {
+  id: string;
+  type: StudySectionType;
+  title: string;
+  coverData?: CoverBlockData;
+  tocItems?: TocItem[];
+  narrativeData?: NarrativeBlockData;
+  summaryRows?: AnalysisSummaryRow[];
+  detailData?: AnalysisDetailBlockData;
+  gradingCurvesData?: GradingCurvesBlockData;
+  conformityRows?: ConformityRow[];
+  usageNoteText?: { en: string; fr: string };
+  signatureChain?: ApprovalChainEntry[];
+  photoPageData?: PhotoPageBlockData;
+  annexAnalyses?: GeoLabAnalysis[];
+  dataQualityNotesText?: string;
+}
+
+export interface DocumentModel {
+  study: StudyReport;
+  project: GeoLabProject;
+  client: GeoLabClient;
+  organisation: OrganisationProfile;
+  language: 'en' | 'fr';
+  primaryColor: string;
+  isDraftWatermark: boolean;
+  blocks: DocumentBlock[];
+}
+
+export interface BuildDocumentModelParams {
+  study: StudyReport;
+  project: GeoLabProject;
+  client: GeoLabClient;
+  organisation: OrganisationProfile;
+  analyses: GeoLabAnalysis[];
+  samples?: GeoLabSample[];
+  photos?: StudyPhoto[];
+  language?: 'en' | 'fr';
+}
+
+export function buildDocumentModel(params: BuildDocumentModelParams): DocumentModel {
+  const { study, project, client, organisation, analyses, samples = [], photos = [] } = params;
+  const lang = params.language || study.language || organisation.defaultLanguage || 'en';
+
+  // Rule 9: Block approved studies when organisation profile has no company name
+  if (study.status === 'approved' && !organisation.companyName?.trim()) {
+    throw new Error(
+      lang === 'fr'
+        ? 'Veuillez configurer le profil de votre organisation avant de générer des rapports approuvés.'
+        : 'Please configure your organisation profile before generating approved reports.'
+    );
+  }
+
+  // Filter analyses included in this study
+  const includedAnalyses = analyses.filter((a) =>
+    study.includedAnalysisIds ? study.includedAnalysisIds.includes(a.id) : true
+  );
+
+  // Draft watermark if study is not approved OR if any included analysis is not approved
+  const isDraftWatermark =
+    study.status !== 'approved' ||
+    includedAnalyses.some((a) => a.status !== 'approved');
+
+  const primaryColor = organisation.primaryColor || '#1e40af';
+
+  // Resolve section definitions (from study.sections, or fallback to template)
+  let sectionDefs = study.sections;
+  if (!sectionDefs || sectionDefs.length === 0) {
+    const template = getStudyTemplate(study.templateId) || getStudyTemplate('characterisation_soils');
+    if (template) {
+      sectionDefs = template.sections.map((s, idx) => ({
+        ...s,
+        id: `sec-${idx + 1}`,
+      }));
+    } else {
+      sectionDefs = [];
+    }
+  }
+
+  const blocks: DocumentBlock[] = [];
+  const tocItems: TocItem[] = [];
+
+  // Build the approval chain (only from stored data; never invented names)
+  const approvalChain: ApprovalChainEntry[] =
+    organisation.approvalChain && organisation.approvalChain.length > 0
+      ? organisation.approvalChain
+      : (organisation.signatories || []).map((s, idx) => ({
+          id: `sig-${idx + 1}`,
+          roleLabel: { en: s.role, fr: s.role },
+          name: s.name || '',
+          title: s.title || '',
+          stampOrSignatureBase64: s.stampOrSignatureBase64,
+        }));
+
+  // Helper to extract key results for summary table
+  const getKeyResultsText = (a: GeoLabAnalysis): string => {
+    if (a.testType === 'proctor' && a.computedResults) {
+      const res = a.computedResults;
+      return `w_opm = ${res.opmMoisturePercent ?? '-'} %, ρd_opm = ${res.maxDryDensityGcm3 ?? '-'} g/cm³`;
+    }
+    if (a.testType === 'grain_size' && a.computedResults) {
+      const res = a.computedResults;
+      return `Dmax = ${res.dMaxMm ?? '-'} mm, < 0.063mm = ${res.finesPercent ?? '-'} %, LCPC = ${res.lcpcClassification ?? '-'}`;
+    }
+    if (a.testType === 'water_content' && a.computedResults) {
+      const res = a.computedResults;
+      return `w = ${res.averageWaterContentPercent ?? '-'} %`;
+    }
+    return '-';
+  };
+
+  const testTypeLabels: Record<GeoLabTestType, { en: string; fr: string }> = {
+    proctor: { en: 'Proctor Compaction', fr: 'Compactage Proctor' },
+    grain_size: { en: 'Particle Size Distribution', fr: 'Analyse granulométrique' },
+    water_content: { en: 'Water Content', fr: 'Teneur en eau' },
+  };
+
+  // Process enabled sections in order
+  for (const sec of sectionDefs) {
+    if (sec.enabled === false) continue;
+
+    const blockTitle = sec.title?.[lang] || sec.title?.en || '';
+
+    switch (sec.type) {
+      case 'cover': {
+        const bilingual = organisation.bilingualHeaderBlock || (organisation as any).bilingualHeader;
+        const col1 = bilingual?.col1Text || bilingual?.column1;
+        const col2 = bilingual?.col2Text || bilingual?.column2;
+
+        blocks.push({
+          id: sec.id,
+          type: 'cover',
+          title: blockTitle,
+          coverData: {
+            bilingualHeader: col1 || col2 ? { col1Text: col1 || '', col2Text: col2 || '' } : undefined,
+            headerLogos: organisation.headerLogos || (organisation as any).logos,
+            primaryColor,
+            companyName: organisation.companyName || '',
+            address: organisation.address || undefined,
+            phone: organisation.phone || undefined,
+            email: organisation.email || undefined,
+            accreditationNumber: organisation.accreditationNumber || undefined,
+            programmeTitle: project.programmeTitle || project.programme || undefined,
+            lotSection: project.lotSection || undefined,
+            contractNumber: project.contractNumber || undefined,
+            tenderNumber: project.tenderNumber || undefined,
+            financingText: project.financingText || project.financing || undefined,
+            parties: project.parties && project.parties.length > 0 ? project.parties : undefined,
+            clientName: client.companyName || '',
+            clientContact: client.contactPerson || undefined,
+            projectName: project.projectName || '',
+            siteLocation: project.siteLocation || undefined,
+            studyTitle: study.title || '',
+            reportNumber: study.reportNumber || '',
+            status: study.status,
+            isDraftWatermark,
+            revisions: study.revisions || [],
+            approvalChain,
+          },
+        });
+        break;
+      }
+
+      case 'toc': {
+        blocks.push({
+          id: sec.id,
+          type: 'toc',
+          title: blockTitle,
+          tocItems, // Will be linked
+        });
+        break;
+      }
+
+      case 'narrative': {
+        tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+        blocks.push({
+          id: sec.id,
+          type: 'narrative',
+          title: blockTitle,
+          narrativeData: {
+            id: sec.id,
+            title: blockTitle,
+            markdown: sec.content || '',
+          },
+        });
+        break;
+      }
+
+      case 'analysisSummaryTable': {
+        tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+        const summaryRows: AnalysisSummaryRow[] = includedAnalyses.map((a) => {
+          const sample = samples.find((s) => s.id === a.sampleId);
+          return {
+            analysisId: a.id,
+            sampleId: sample?.sampleId || a.sampleId || '-',
+            testType: a.testType,
+            testLabel: testTypeLabels[a.testType]?.[lang] || a.testType,
+            standard: a.standard || '-',
+            testedDate: a.testedDate || a.createdAt || '-',
+            keyResultsText: getKeyResultsText(a),
+            status: a.status,
+          };
+        });
+
+        blocks.push({
+          id: sec.id,
+          type: 'analysisSummaryTable',
+          title: blockTitle,
+          summaryRows,
+        });
+        break;
+      }
+
+      case 'analysisDetail': {
+        tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+        for (const a of includedAnalyses) {
+          const sample = samples.find((s) => s.id === a.sampleId);
+          const detailBlockId = `${sec.id}-${a.id}`;
+          const itemTitle = `${testTypeLabels[a.testType]?.[lang] || a.testType} - ${sample?.sampleId || a.sampleId}`;
+
+          const inputs: Array<{ label: string; value: string | number; unit?: string }> = [];
+          const results: Array<{ label: string; value: string | number; unit?: string; provenance?: ValueProvenance }> = [];
+
+          if (a.testType === 'proctor' && a.computedResults) {
+            const res = a.computedResults;
+            inputs.push(
+              { label: lang === 'fr' ? 'Volume du moule' : 'Mold Volume', value: a.rawInput?.moldVolumeCm3 || 944, unit: 'cm³' },
+              { label: lang === 'fr' ? 'Énergie de compactage' : 'Compaction Energy', value: a.rawInput?.compactionType || 'Standard' }
+            );
+            results.push(
+              { label: lang === 'fr' ? 'Teneur en eau optimum (w_opm)' : 'Optimum Moisture Content (w_opm)', value: res.opmMoisturePercent ?? '-', unit: '%' },
+              { label: lang === 'fr' ? 'Masse volumique sèche max (ρd_opm)' : 'Maximum Dry Density (ρd_opm)', value: res.maxDryDensityGcm3 ?? '-', unit: 'g/cm³' },
+              { label: lang === 'fr' ? 'Densité à 95% OPM' : '95% OPM Dry Density', value: res.targetDryDensityGcm3 ?? '-', unit: 'g/cm³' }
+            );
+          } else if (a.testType === 'grain_size' && a.computedResults) {
+            const res = a.computedResults;
+            inputs.push(
+              { label: lang === 'fr' ? 'Masse totale sèche' : 'Total Dry Mass', value: a.rawInput?.totalDryMassG || '-', unit: 'g' }
+            );
+            results.push(
+              { label: lang === 'fr' ? 'Diamètre maximal (Dmax)' : 'Maximum Diameter (Dmax)', value: res.dMaxMm ?? '-', unit: 'mm' },
+              { label: lang === 'fr' ? 'Passant à 2 mm (Sable)' : 'Passing 2 mm (Sand)', value: res.passing2mmPercent ?? '-', unit: '%' },
+              { label: lang === 'fr' ? 'Passant à 0,08 mm (Fines)' : 'Passing 0.08 mm (Fines)', value: res.passing008mmPercent ?? '-', unit: '%' },
+              { label: lang === 'fr' ? 'Classification LCPC' : 'LCPC Classification', value: res.lcpcClassification ?? '-' }
+            );
+          } else if (a.testType === 'water_content' && a.computedResults) {
+            results.push(
+              { label: lang === 'fr' ? 'Teneur en eau moyenne (w)' : 'Average Moisture Content (w)', value: a.computedResults.averageWaterContentPercent ?? '-', unit: '%' }
+            );
+          }
+
+          blocks.push({
+            id: detailBlockId,
+            type: 'analysisDetail',
+            title: itemTitle,
+            detailData: {
+              analysis: a,
+              sample,
+              testLabel: testTypeLabels[a.testType]?.[lang] || a.testType,
+              inputs,
+              results,
+              chartType: a.testType === 'proctor' || a.testType === 'grain_size' ? a.testType : undefined,
+              observations: a.observations || undefined,
+            },
+          });
+        }
+        break;
+      }
+
+      case 'gradingCurves': {
+        const grainAnalyses = includedAnalyses.filter((a) => a.testType === 'grain_size');
+        if (grainAnalyses.length > 0) {
+          tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+          blocks.push({
+            id: sec.id,
+            type: 'gradingCurves',
+            title: blockTitle,
+            gradingCurvesData: {
+              analyses: grainAnalyses,
+            },
+          });
+        }
+        break;
+      }
+
+      case 'conformityTable': {
+        tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+        const conformityRows: ConformityRow[] = [];
+        for (const a of includedAnalyses) {
+          const sample = samples.find((s) => s.id === a.sampleId);
+          const sampleName = sample?.sampleId || a.sampleId || '-';
+
+          if (a.testType === 'proctor' && a.computedResults) {
+            conformityRows.push({
+              sampleId: sampleName,
+              testType: 'Proctor',
+              parameter: 'ρd_opm',
+              measured: `${a.computedResults.maxDryDensityGcm3} g/cm³`,
+              specification: '≥ 1.80 g/cm³',
+              status: Number(a.computedResults.maxDryDensityGcm3) >= 1.8 ? 'conform' : 'non_conform',
+            });
+          }
+          if (a.testType === 'grain_size' && a.computedResults) {
+            conformityRows.push({
+              sampleId: sampleName,
+              testType: 'Granulométrie',
+              parameter: '% < 0.08 mm',
+              measured: `${a.computedResults.passing008mmPercent} %`,
+              specification: '≤ 35 %',
+              status: Number(a.computedResults.passing008mmPercent) <= 35 ? 'conform' : 'non_conform',
+            });
+          }
+        }
+
+        blocks.push({
+          id: sec.id,
+          type: 'conformityTable',
+          title: blockTitle,
+          conformityRows,
+        });
+        break;
+      }
+
+      case 'usageNote': {
+        tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+        blocks.push({
+          id: sec.id,
+          type: 'usageNote',
+          title: blockTitle,
+          usageNoteText: {
+            en:
+              'IMPORTANT NOTE ON THE USE OF TEST RESULTS:\n' +
+              'The results presented in this report relate exclusively to the samples tested as received at the laboratory. ' +
+              'Any extrapolation to surrounding geological formations or unverified quarry areas remains under the sole responsibility of the geotechnical design engineer. ' +
+              'This report shall not be reproduced, except in full, without the written approval of the laboratory.',
+            fr:
+              "NOTE IMPORTANTE RELATIVE À L'UTILISATION DES RÉSULTATS :\n" +
+              "Les résultats présentés dans le présent rapport concernent exclusivement les échantillons soumis aux essais tels que réceptionnés au laboratoire. " +
+              "Toute extrapolation aux formations géologiques avoisinantes ou zones d'emprunt non vérifiées relève de la seule responsabilité de la maîtrise d'œuvre. " +
+              "Ce rapport ne doit pas être reproduit partiellement sans l'approbation écrite du laboratoire.",
+          },
+        });
+        break;
+      }
+
+      case 'signatureBlock': {
+        tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+        blocks.push({
+          id: sec.id,
+          type: 'signatureBlock',
+          title: blockTitle,
+          signatureChain: approvalChain,
+        });
+        break;
+      }
+
+      case 'photoPages': {
+        if (photos.length > 0) {
+          tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+          const sortedPhotos = [...photos].sort((a, b) => (a.order || 0) - (b.order || 0));
+          const chunkSize = 6;
+          const totalPhotoPages = Math.ceil(sortedPhotos.length / chunkSize);
+
+          for (let pIdx = 0; pIdx < totalPhotoPages; pIdx++) {
+            const slice = sortedPhotos.slice(pIdx * chunkSize, (pIdx + 1) * chunkSize);
+            blocks.push({
+              id: `${sec.id}-p${pIdx + 1}`,
+              type: 'photoPages',
+              title: `${blockTitle} (${pIdx + 1}/${totalPhotoPages})`,
+              photoPageData: {
+                photos: slice.map((p) => ({
+                  id: p.id,
+                  caption: p.caption || '',
+                  blobOrBase64: p.blob,
+                  mimeType: p.mimeType || 'image/jpeg',
+                })),
+                pageIndex: pIdx + 1,
+                totalPhotoPages,
+              },
+            });
+          }
+        }
+        break;
+      }
+
+      case 'annexTestSheets': {
+        if (includedAnalyses.length > 0) {
+          tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+          blocks.push({
+            id: sec.id,
+            type: 'annexTestSheets',
+            title: blockTitle,
+            annexAnalyses: includedAnalyses,
+          });
+        }
+        break;
+      }
+
+      case 'dataQualityNotes': {
+        tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+        blocks.push({
+          id: sec.id,
+          type: 'dataQualityNotes',
+          title: blockTitle,
+          dataQualityNotesText:
+            lang === 'fr'
+              ? 'Toutes les mesures ont été vérifiées selon les critères de répétabilité de la norme d’essai correspondante. Aucune anomalie n’a été constatée sur les bilans de masse et conditions d’étuvage.'
+              : 'All measurements were verified according to the repeatability criteria of the corresponding test standards. No anomalies were observed regarding mass balance or drying oven conditions.',
+        });
+        break;
+      }
+
+      case 'pageBreak': {
+        blocks.push({
+          id: sec.id,
+          type: 'pageBreak',
+          title: 'Page Break',
+        });
+        break;
+      }
+    }
+  }
+
+  // Update TOC block with the accumulated items
+  const tocBlock = blocks.find((b) => b.type === 'toc');
+  if (tocBlock) {
+    tocBlock.tocItems = tocItems;
+  }
+
+  return {
+    study,
+    project,
+    client,
+    organisation,
+    language: lang,
+    primaryColor,
+    isDraftWatermark,
+    blocks,
+  };
+}
