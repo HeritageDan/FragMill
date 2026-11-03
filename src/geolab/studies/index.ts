@@ -8,4 +8,6 @@ export * from './engine/chartRenderer';
 export * from './engine/studyPdfRenderer';
 export * from './engine/studyWordRenderer';
 export * from './engine/photoUtils';
+export * from './engine/studyService';
+export * from './engine/studyZipExporter';
 export * from './templates';

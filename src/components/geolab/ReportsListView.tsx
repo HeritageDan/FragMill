@@ -18,14 +18,16 @@ import {
   Download,
   CheckCircle,
   Clock,
+  BookOpen,
 } from 'lucide-react';
 
 interface Props {
   language: 'en' | 'fr';
   onSelectAnalysis: (analysisId: string) => void;
+  onNavigateToStudies?: () => void;
 }
 
-export const ReportsListView: React.FC<Props> = ({ language, onSelectAnalysis }) => {
+export const ReportsListView: React.FC<Props> = ({ language, onSelectAnalysis, onNavigateToStudies }) => {
   const [analyses, setAnalyses] = useState<GeoLabAnalysis[]>([]);
   const [samples, setSamples] = useState<GeoLabSample[]>([]);
   const [projects, setProjects] = useState<GeoLabProject[]>([]);
@@ -164,10 +166,22 @@ export const ReportsListView: React.FC<Props> = ({ language, onSelectAnalysis })
       {/* Top Banner */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
         <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5 text-blue-400" />
-            {language === 'fr' ? 'Procès-Verbaux & Rapports d\'Essais' : 'Laboratory Test Reports'}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5 text-blue-400" />
+              {language === 'fr' ? 'Procès-Verbaux & Rapports d\'Essais' : 'Laboratory Test Reports'}
+            </h2>
+            {onNavigateToStudies && (
+              <button
+                onClick={onNavigateToStudies}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 rounded-lg text-xs font-semibold transition"
+                title={language === 'fr' ? 'Accéder au module des rapports d’études' : 'Open study reports module'}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>{language === 'fr' ? 'Études Géotechniques' : 'Study Reports'}</span>
+              </button>
+            )}
+          </div>
           <p className="text-sm text-slate-400 mt-1">
             {language === 'fr'
               ? 'Registre complet des analyses géotechniques, export individuel ou téléchargement groupé en archive ZIP.'

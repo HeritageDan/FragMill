@@ -5,6 +5,8 @@ import { NewAnalysisView } from './NewAnalysisView';
 import { ReportsListView } from './ReportsListView';
 import { AnalysisDetailView } from './AnalysisDetailView';
 import { OrganisationProfileView } from './OrganisationProfileView';
+import { StudyReportsListView } from './StudyReportsListView';
+import { StudyReportEditorView } from './StudyReportEditorView';
 import { seedGeoLabDemoData } from '../../db/geolabSeed';
 import {
   Users,
@@ -14,9 +16,18 @@ import {
   Building2,
   ArrowRightLeft,
   Sparkles,
+  BookOpen,
 } from 'lucide-react';
 
-export type GeoLabTab = 'clients' | 'projects' | 'new_analysis' | 'reports' | 'profile' | 'analysis_detail';
+export type GeoLabTab =
+  | 'clients'
+  | 'projects'
+  | 'new_analysis'
+  | 'reports'
+  | 'studies'
+  | 'study_editor'
+  | 'profile'
+  | 'analysis_detail';
 
 interface Props {
   language: 'en' | 'fr';
@@ -28,6 +39,7 @@ export const GeoLabShell: React.FC<Props> = ({ language, onSwitchToFragMill }) =
   const [selectedSampleIdForNewAnalysis, setSelectedSampleIdForNewAnalysis] = useState<string | undefined>(undefined);
   const [selectedAnalysisIdForDetail, setSelectedAnalysisIdForDetail] = useState<string | null>(null);
   const [selectedClientIdForProjects, setSelectedClientIdForProjects] = useState<string | undefined>(undefined);
+  const [selectedStudyIdForEditor, setSelectedStudyIdForEditor] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
 
   const handleLoadDemo = async () => {
@@ -138,6 +150,21 @@ export const GeoLabShell: React.FC<Props> = ({ language, onSwitchToFragMill }) =
               </button>
 
               <button
+                onClick={() => {
+                  setSelectedStudyIdForEditor(null);
+                  setActiveTab('studies');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  activeTab === 'studies' || activeTab === 'study_editor'
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                {language === 'fr' ? 'Études' : 'Study Reports'}
+              </button>
+
+              <button
                 onClick={() => setActiveTab('profile')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                   activeTab === 'profile'
@@ -192,6 +219,28 @@ export const GeoLabShell: React.FC<Props> = ({ language, onSwitchToFragMill }) =
           <ReportsListView
             language={language}
             onSelectAnalysis={handleViewAnalysis}
+            onNavigateToStudies={() => setActiveTab('studies')}
+          />
+        )}
+
+        {activeTab === 'studies' && (
+          <StudyReportsListView
+            language={language}
+            onSelectStudy={(studyId) => {
+              setSelectedStudyIdForEditor(studyId);
+              setActiveTab('study_editor');
+            }}
+          />
+        )}
+
+        {activeTab === 'study_editor' && selectedStudyIdForEditor && (
+          <StudyReportEditorView
+            studyId={selectedStudyIdForEditor}
+            language={language}
+            onBack={() => {
+              setSelectedStudyIdForEditor(null);
+              setActiveTab('studies');
+            }}
           />
         )}
 
