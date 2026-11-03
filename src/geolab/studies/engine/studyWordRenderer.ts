@@ -243,9 +243,15 @@ export async function generateStudyDocxReport(
   // -------------------------------------------------------------
   children.push(
     new docx.Paragraph({
-      text: lang === 'fr' ? 'SOMMAIRE' : 'TABLE OF CONTENTS',
-      heading: docx.HeadingLevel.HEADING_1,
-      spacing: { after: 180 },
+      children: [
+        new docx.TextRun({
+          text: lang === 'fr' ? 'SOMMAIRE' : 'TABLE OF CONTENTS',
+          bold: true,
+          color: hexPrimary,
+          size: 28, // 14pt (bold, primary color)
+        }),
+      ],
+      spacing: { before: 120, after: 240 }, // 12pt space after
     }),
     new docx.TableOfContents(lang === 'fr' ? 'Sommaire' : 'Table of Contents', {
       hyperlink: true,

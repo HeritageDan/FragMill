@@ -335,6 +335,14 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
     expect(docXml).toMatch(/TOC|w:instrText/i);
     expect(docXml).toContain(mockStudy.title.toUpperCase());
     expect(docXml).toContain('Rapport N° :');
+
+    // Item 7: TOC title paragraph does not have Heading style
+    expect(docXml).toContain('SOMMAIRE');
+    // Extract the paragraph containing SOMMAIRE
+    const sommaireParaMatch = docXml.match(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?SOMMAIRE(?:(?!<\/w:p>)[\s\S])*?<\/w:p>/);
+    expect(sommaireParaMatch).not.toBeNull();
+    const sommairePara = sommaireParaMatch![0];
+    expect(sommairePara).not.toMatch(/<w:pStyle\s+w:val="Heading/i);
   });
 
   it('5. generates PDF where TOC page numbers match actual pages and page count >= 12 for 3 analyses and 12 photos', async () => {
