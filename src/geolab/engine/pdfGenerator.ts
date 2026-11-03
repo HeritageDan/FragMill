@@ -426,7 +426,7 @@ export async function generateGeoLabPdfReport(options: PdfGenerationOptions): Pr
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
-  doc.text(orgProfile.reportFooterText || 'FraGeo Suite - FraGeo Lab', margin, pageHeight - 6.5);
+  doc.text(orgProfile.reportFooterText || 'FraGeo Suite - GeoLab Module', margin, pageHeight - 6.5);
   doc.text('Page 1 / 1', pageWidth - margin, pageHeight - 6.5, { align: 'right' });
 
   return doc.output('blob');
