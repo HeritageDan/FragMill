@@ -1,5 +1,58 @@
 import type { StudyTemplate } from '../../../types/geolab';
 
+export const DEFAULT_NARRATIVES = {
+  introduction: {
+    en:
+      '# 1. INTRODUCTION\n' +
+      'This geotechnical characterisation study presents the synthesis of laboratory identification and compaction tests performed on soil and road materials sampled in the framework of the project.\n\n' +
+      'The main objectives of this investigation are:\n' +
+      '- Verification of physical identification properties (particle size distribution, water content);\n' +
+      '- Determination of standard/modified compaction characteristics (optimum moisture content and maximum dry density);\n' +
+      '- Assessment of conformity with technical project specifications for earthworks and road pavement layers.',
+    fr:
+      '# 1. INTRODUCTION\n' +
+      "La présente étude de caractérisation géotechnique expose la synthèse des essais d'identification et de compactage en laboratoire réalisés sur les sols et matériaux prélevés dans le cadre du projet.\n\n" +
+      "Les objectifs principaux de cette campagne d'essais sont :\n" +
+      "- La vérification des propriétés d'identification physique (granulométrie, teneur en eau) ;\n" +
+      "- La détermination des caractéristiques de compactage Proctor (teneur en eau optimale et masse volumique sèche maximale) ;\n" +
+      "- L'évaluation de la conformité aux spécifications techniques du projet pour les couches de terrassement et de chaussée.",
+  },
+  materials: {
+    en:
+      '# 2. DESCRIPTION OF MATERIALS AND SAMPLING\n' +
+      'Samples were retrieved directly on-site in accordance with applicable geotechnical sampling standards. Each sample was carefully packed, labelled, and transported to the laboratory under controlled conditions.\n\n' +
+      '- Visual identification and macroscopic description were systematically performed upon sample receipt;\n' +
+      '- Sample preparation, quartering, and moisture conditioning conformed to applicable normative requirements.',
+    fr:
+      '# 2. DESCRIPTION DES MATÉRIAUX ET ÉCHANTILLONNAGE\n' +
+      "Les échantillons ont été prélevés in situ conformément aux normes d'échantillonnage géotechnique en vigueur. Chaque prélèvement a été conditionné, étiqueté et transporté au laboratoire dans des conditions contrôlées.\n\n" +
+      "- Une identification visuelle et une description macroscopique ont été systématiquement réalisées dès réception ;\n" +
+      "- La préparation, le quartage et le conditionnement hydrique des échantillons ont été exécutés selon les exigences normatives applicables.",
+  },
+  recommendations: {
+    en:
+      '# 7. GEOTECHNICAL RECOMMENDATIONS\n' +
+      'Based on the synthesized laboratory test results and the geotechnical classification of the tested materials:\n\n' +
+      '- Compaction procedures on-site should target 95% to 98% of the Maximum Dry Density (OPM/OPN) at moisture contents within +/- 2% of the optimum moisture content;\n' +
+      '- Suitable drainage and surface protection measures should be maintained during execution to preserve the natural mechanical stability of compacted layers.',
+    fr:
+      '# 7. RECOMMANDATIONS GÉOTECHNIQUES\n' +
+      "Au vu des résultats d'essais de laboratoire et de la classification géotechnique des matériaux testés :\n\n" +
+      "- Les ateliers de compactage sur chantier devront viser 95 % à 98 % de la densité sèche maximale (OPM/OPN) pour une teneur en eau comprise à +/- 2 % de l'optimum ;\n" +
+      "- Des mesures appropriées de drainage et de protection de surface devront être assurées pendant l'exécution afin de préserver la portance des couches compactées.",
+  },
+  conclusion: {
+    en:
+      '# 8. GENERAL CONCLUSION\n' +
+      'The laboratory testing program was completed in strict accordance with referenced test standards and laboratory quality management procedures.\n\n' +
+      'The measured parameters provide the engineering baseline required for technical approval and geotechnical design verification.',
+    fr:
+      '# 8. CONCLUSION GÉNÉRALE\n' +
+      "Le programme d'essais de laboratoire a été conduit en stricte conformité avec les normes d'essais de référence et les procédures d'assurance qualité du laboratoire.\n\n" +
+      "Les paramètres mesurés fournissent les données de base indispensables pour la validation technique et la justification géotechnique des ouvrages.",
+  },
+};
+
 export const characterisationSoilsTemplate: StudyTemplate = {
   id: 'characterisation_soils',
   name: {
@@ -26,13 +79,7 @@ export const characterisationSoilsTemplate: StudyTemplate = {
       type: 'narrative',
       title: { en: '1. INTRODUCTION', fr: '1. INTRODUCTION' },
       enabled: true,
-      content:
-        '# 1. INTRODUCTION\n' +
-        'This geotechnical characterisation study presents the synthesis of laboratory identification and compaction tests performed on soil and road materials sampled in the framework of the project.\n\n' +
-        'The main objectives of this investigation are:\n' +
-        '- Verification of physical identification properties (particle size distribution, water content);\n' +
-        '- Determination of standard/modified compaction characteristics (optimum moisture content and maximum dry density);\n' +
-        '- Assessment of conformity with technical project specifications for earthworks and road pavement layers.',
+      content: DEFAULT_NARRATIVES.introduction,
     },
     {
       type: 'narrative',
@@ -41,11 +88,7 @@ export const characterisationSoilsTemplate: StudyTemplate = {
         fr: '2. DESCRIPTION DES MATÉRIAUX ET ÉCHANTILLONNAGE',
       },
       enabled: true,
-      content:
-        '# 2. DESCRIPTION OF MATERIALS AND SAMPLING\n' +
-        'Samples were retrieved directly on-site in accordance with applicable geotechnical sampling standards. Each sample was carefully packed, labelled, and transported to the laboratory under controlled conditions.\n\n' +
-        '- Visual identification and macroscopic description were systematically performed upon sample receipt;\n' +
-        '- Sample preparation, quartering, and moisture conditioning conformed to applicable normative requirements.',
+      content: DEFAULT_NARRATIVES.materials,
     },
     {
       type: 'analysisSummaryTable',
@@ -86,11 +129,7 @@ export const characterisationSoilsTemplate: StudyTemplate = {
         fr: '7. RECOMMANDATIONS GÉOTECHNIQUES',
       },
       enabled: true,
-      content:
-        '# 7. GEOTECHNICAL RECOMMENDATIONS\n' +
-        'Based on the synthesized laboratory test results and the geotechnical classification of the tested materials:\n\n' +
-        '- Compaction procedures on-site should target 95% to 98% of the Maximum Dry Density (OPM/OPN) at moisture contents within +/- 2% of the optimum moisture content;\n' +
-        '- Suitable drainage and surface protection measures should be maintained during execution to preserve the natural mechanical stability of compacted layers.',
+      content: DEFAULT_NARRATIVES.recommendations,
     },
     {
       type: 'narrative',
@@ -99,10 +138,7 @@ export const characterisationSoilsTemplate: StudyTemplate = {
         fr: '8. CONCLUSION GÉNÉRALE',
       },
       enabled: true,
-      content:
-        '# 8. GENERAL CONCLUSION\n' +
-        'The laboratory testing program was completed in strict accordance with referenced test standards and laboratory quality management procedures.\n\n' +
-        'The measured parameters provide the engineering baseline required for technical approval and geotechnical design verification.',
+      content: DEFAULT_NARRATIVES.conclusion,
     },
     {
       type: 'usageNote',

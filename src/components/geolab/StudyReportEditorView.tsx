@@ -941,7 +941,11 @@ export const StudyReportEditorView: React.FC<Props> = ({
                           id={`narrative-${section.id}`}
                           disabled={isLocked}
                           rows={6}
-                          value={section.content || ''}
+                          value={
+                            typeof section.content === 'object' && section.content !== null
+                              ? (section.content as any)[lang] || (section.content as any).fr || (section.content as any).en || ''
+                              : section.content || ''
+                          }
                           onChange={(e) => handleNarrativeChange(section.id, e.target.value)}
                           placeholder={
                             lang === 'fr'

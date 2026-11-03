@@ -278,7 +278,7 @@ export interface StudySection {
   type: StudySectionType;
   title: { en: string; fr: string };
   enabled: boolean;
-  content?: string; // Markdown text (headings #, paragraphs, - bullets, **bold**)
+  content?: string | { en: string; fr: string }; // Markdown text (headings #, paragraphs, - bullets, **bold**)
   config?: Record<string, any>;
 }
 

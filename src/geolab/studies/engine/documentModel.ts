@@ -14,6 +14,7 @@ import type {
   HeaderLogos,
 } from '../../../types/geolab';
 import { getStudyTemplate } from '../templates';
+import { DEFAULT_NARRATIVES } from '../templates/characterisationSoils';
 import { checkStudyConsistency } from './studyConsistencyChecker';
 
 export interface CoverBlockData {
@@ -304,6 +305,25 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
 
       case 'narrative': {
         tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+
+        let markdownText = '';
+        if (typeof sec.content === 'object' && sec.content !== null) {
+          markdownText = (sec.content as any)[lang] || (sec.content as any).fr || (sec.content as any).en || '';
+        } else if (typeof sec.content === 'string') {
+          markdownText = sec.content;
+          // Check if sec.content matches an English default narrative in a French study, or vice-versa
+          for (const key of Object.keys(DEFAULT_NARRATIVES) as Array<keyof typeof DEFAULT_NARRATIVES>) {
+            const pair = DEFAULT_NARRATIVES[key];
+            if (lang === 'fr' && markdownText.trim() === pair.en.trim()) {
+              markdownText = pair.fr;
+              break;
+            } else if (lang === 'en' && markdownText.trim() === pair.fr.trim()) {
+              markdownText = pair.en;
+              break;
+            }
+          }
+        }
+
         blocks.push({
           id: sec.id,
           type: 'narrative',
@@ -311,7 +331,7 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
           narrativeData: {
             id: sec.id,
             title: blockTitle,
-            markdown: sec.content || '',
+            markdown: markdownText,
           },
         });
         break;

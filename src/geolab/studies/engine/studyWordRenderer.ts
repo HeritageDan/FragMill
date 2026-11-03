@@ -461,8 +461,8 @@ export async function generateStudyDocxReport(
                 new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Échantillon' : 'Sample', run: { bold: true, color: 'FFFFFF' } })] }),
                 new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Paramètre' : 'Parameter', run: { bold: true, color: 'FFFFFF' } })] }),
                 new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Valeur mesurée' : 'Measured', run: { bold: true, color: 'FFFFFF' } })] }),
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: 'Spécification', run: { bold: true, color: 'FFFFFF' } })] }),
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: 'Statut', run: { bold: true, color: 'FFFFFF' } })] }),
+                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Spécification' : 'Specification', run: { bold: true, color: 'FFFFFF' } })] }),
+                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Statut' : 'Status', run: { bold: true, color: 'FFFFFF' } })] }),
               ],
             }),
             ...block.conformityRows.map((r) =>
@@ -476,7 +476,7 @@ export async function generateStudyDocxReport(
                     shading: { fill: r.status === 'conform' ? 'DCFCE7' : 'FEE2E2' },
                     children: [
                       new docx.Paragraph({
-                        text: r.status === 'conform' ? 'CONFORME' : 'NON CONFORME',
+                        text: r.status === 'conform' ? (lang === 'fr' ? 'CONFORME' : 'CONFORMING') : (lang === 'fr' ? 'NON CONFORME' : 'NON-CONFORMING'),
                         run: { bold: true, color: r.status === 'conform' ? '15803D' : 'B91C1C' },
                       }),
                     ],
@@ -588,7 +588,7 @@ export async function generateStudyDocxReport(
       for (const a of block.annexAnalyses) {
         children.push(
           new docx.Paragraph({
-            text: `Procès-Verbal : ${a.reportNumber} (${a.testType})`,
+            text: lang === 'fr' ? `Procès-Verbal : ${a.reportNumber} (${a.testType})` : `Test Certificate: ${a.reportNumber} (${a.testType})`,
             heading: docx.HeadingLevel.HEADING_2,
             spacing: { before: 180, after: 80 },
           }),
@@ -597,17 +597,17 @@ export async function generateStudyDocxReport(
             rows: [
               new docx.TableRow({
                 children: [
-                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: 'Réf. Rapport', run: { bold: true } })] }),
+                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Réf. Rapport' : 'Report Ref.', run: { bold: true } })] }),
                   new docx.TableCell({ children: [new docx.Paragraph({ text: a.reportNumber })] }),
-                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: 'Norme', run: { bold: true } })] }),
+                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Norme' : 'Standard', run: { bold: true } })] }),
                   new docx.TableCell({ children: [new docx.Paragraph({ text: a.standard })] }),
                 ],
               }),
               new docx.TableRow({
                 children: [
-                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: 'Statut', run: { bold: true } })] }),
+                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Statut' : 'Status', run: { bold: true } })] }),
                   new docx.TableCell({ children: [new docx.Paragraph({ text: a.status.toUpperCase(), run: { bold: true } })] }),
-                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: 'Date essai', run: { bold: true } })] }),
+                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Date essai' : 'Test Date', run: { bold: true } })] }),
                   new docx.TableCell({ children: [new docx.Paragraph({ text: a.testedDate || a.createdAt })] }),
                 ],
               }),

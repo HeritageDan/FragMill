@@ -887,7 +887,12 @@ function renderConformitySection(
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6);
-    doc.text(isConform ? 'CONFORME' : 'NON CONFORME', margin + 168, cursorY + 3.8, { align: 'center' });
+    doc.text(
+      isConform ? (lang === 'fr' ? 'CONFORME' : 'CONFORMING') : (lang === 'fr' ? 'NON CONFORME' : 'NON-CONFORMING'),
+      margin + 168,
+      cursorY + 3.8,
+      { align: 'center' }
+    );
 
     cursorY += 6;
   });
@@ -965,7 +970,7 @@ function renderSignatureBlockSection(
     doc.setFillColor(248, 250, 252);
     doc.roundedRect(boxX, boxY, sigBoxWidth, sigHeight, 1.5, 1.5, 'FD');
 
-    const roleTitle = sig.roleLabel?.[lang] || sig.title || `Signataire ${idx + 1}`;
+    const roleTitle = sig.roleLabel?.[lang] || sig.title || (lang === 'fr' ? `Signataire ${idx + 1}` : `Signatory ${idx + 1}`);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(prR, prG, prB);

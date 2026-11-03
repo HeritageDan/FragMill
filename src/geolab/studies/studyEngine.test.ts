@@ -536,4 +536,80 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
     const enDocXml = await enZip.file('word/document.xml')!.async('text');
     expect(enDocXml).toContain(enLongTitle.toUpperCase());
   });
+
+  it('9. language of default texts: French study contains no default English sentences, and English study contains no default French sentences (Item 4)', async () => {
+    const ENGLISH_DEFAULT_SENTENCES = [
+      'This geotechnical characterisation study presents the synthesis',
+      'Verification of physical identification properties',
+      'Determination of standard/modified compaction characteristics',
+      'Assessment of conformity with technical project specifications',
+      'Samples were retrieved directly on-site in accordance',
+      'Visual identification and macroscopic description were systematically performed',
+      'Sample preparation, quartering, and moisture conditioning',
+      'Based on the synthesized laboratory test results',
+      'Compaction procedures on-site should target 95% to 98%',
+      'Suitable drainage and surface protection measures',
+      'The laboratory testing program was completed in strict accordance',
+      'The measured parameters provide the engineering baseline',
+    ];
+
+    const FRENCH_DEFAULT_SENTENCES = [
+      'La présente étude de caractérisation géotechnique expose la synthèse',
+      "La vérification des propriétés d'identification physique",
+      'La détermination des caractéristiques de compactage Proctor',
+      "L'évaluation de la conformité aux spécifications techniques",
+      "Les échantillons ont été prélevés in situ conformément aux normes",
+      'Une identification visuelle et une description macroscopique',
+      'La préparation, le quartage et le conditionnement hydrique',
+      "Au vu des résultats d'essais de laboratoire",
+      'Les ateliers de compactage sur chantier devront viser 95 % à 98 %',
+      'Des mesures appropriées de drainage et de protection',
+      "Le programme d'essais de laboratoire a été conduit en stricte conformité",
+      'Les paramètres mesurés fournissent les données de base indispensables',
+    ];
+
+    // 1. Generate French study
+    const frModel = buildDocumentModel({
+      study: { ...mockStudy, language: 'fr' },
+      project: mockProject,
+      client: mockClient,
+      organisation: mockOrg,
+      analyses: mockAnalyses.slice(0, 1),
+      samples: mockSamples.slice(0, 1),
+      language: 'fr',
+    });
+
+    const frDocx = await generateStudyDocxReport(frModel);
+    const frZip = await JSZip.loadAsync(await frDocx.arrayBuffer());
+    const frDocXml = (await frZip.file('word/document.xml')!.async('text')).replace(/&apos;/g, "'");
+
+    // NONE of the English default sentences may appear in French document
+    for (const enSentence of ENGLISH_DEFAULT_SENTENCES) {
+      expect(frDocXml).not.toContain(enSentence);
+    }
+    // French sentences MUST appear
+    expect(frDocXml).toContain(FRENCH_DEFAULT_SENTENCES[0]);
+
+    // 2. Generate English study
+    const enModel = buildDocumentModel({
+      study: { ...mockStudy, language: 'en' },
+      project: mockProject,
+      client: mockClient,
+      organisation: mockOrg,
+      analyses: mockAnalyses.slice(0, 1),
+      samples: mockSamples.slice(0, 1),
+      language: 'en',
+    });
+
+    const enDocx = await generateStudyDocxReport(enModel);
+    const enZip = await JSZip.loadAsync(await enDocx.arrayBuffer());
+    const enDocXml = (await enZip.file('word/document.xml')!.async('text')).replace(/&apos;/g, "'");
+
+    // NONE of the French default sentences may appear in English document
+    for (const frSentence of FRENCH_DEFAULT_SENTENCES) {
+      expect(enDocXml).not.toContain(frSentence);
+    }
+    // English sentences MUST appear
+    expect(enDocXml).toContain(ENGLISH_DEFAULT_SENTENCES[0]);
+  });
 });
