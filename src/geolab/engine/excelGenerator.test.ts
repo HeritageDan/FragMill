@@ -394,5 +394,82 @@ describe('GeoLab Excel Generator with Native DrawingML Charts', () => {
     expect(chartXml).toContain('<c:trendlineType val="poly"/>');
     expect(chartXml).toContain('<a:prstDash val="dash"/>'); // Saturation curve is dashed
   });
+
+  it('sheet name matches chart references for both French (Rapport) and English (Report)', async () => {
+    const rawInput = {
+      mouldType: 'cbr' as const,
+      mouldVolumeCm3: 2124,
+      particleDensityGs: 2.82,
+      targetCompactionPercent: 95,
+      points: [
+        { pointIndex: 1, waterContentPercent: 4.3, dryDensityGcm3: 2.115 },
+        { pointIndex: 2, waterContentPercent: 6.7, dryDensityGcm3: 2.213 },
+        { pointIndex: 3, waterContentPercent: 8.2, dryDensityGcm3: 2.21 },
+        { pointIndex: 4, waterContentPercent: 10.5, dryDensityGcm3: 2.129 },
+        { pointIndex: 5, waterContentPercent: 12.0, dryDensityGcm3: 2.04 },
+      ],
+    };
+    const computedResults = proctorTestDefinition.calculate(rawInput);
+
+    const testAnalysis: GeoLabAnalysis = {
+      id: 'analysis-sheet-name-match',
+      sampleId: 'sample-1',
+      testType: 'proctor',
+      standard: 'NF P94-093',
+      reportNumber: 'GL-2026-0099',
+      version: 1,
+      status: 'approved',
+      testedDate: '2026-10-22',
+      rawInput,
+      computedResults,
+      qualityWarnings: [],
+      createdAt: '2026-11-01',
+      updatedAt: '2026-11-01',
+    };
+
+    // 1. French: Expected sheet tab 'Rapport' and chart formulas referencing 'Rapport'!
+    const blobFr = await generateGeoLabExcelReport({
+      analysis: testAnalysis,
+      client: mockClient,
+      project: mockProject,
+      sample: mockSample,
+      orgProfile: mockOrg,
+      testDef: proctorTestDefinition,
+      language: 'fr',
+    });
+
+    const zipFr = await JSZip.loadAsync(await blobFr.arrayBuffer());
+    const wbFrXml = await zipFr.file('xl/workbook.xml')!.async('string');
+    expect(wbFrXml).toContain('<sheet name="Rapport"');
+    expect(wbFrXml).not.toContain('GeoLab Report');
+
+    const chartFrXml = await zipFr.file('xl/charts/chart1.xml')!.async('string');
+    expect(chartFrXml).toContain("'Rapport'!$B$");
+    expect(chartFrXml).toContain("'Rapport'!$D$");
+    expect(chartFrXml).toContain("'Rapport'!$F$");
+    expect(chartFrXml).not.toContain('GeoLab Report');
+
+    // 2. English: Expected sheet tab 'Report' and chart formulas referencing 'Report'!
+    const blobEn = await generateGeoLabExcelReport({
+      analysis: testAnalysis,
+      client: mockClient,
+      project: mockProject,
+      sample: mockSample,
+      orgProfile: mockOrg,
+      testDef: proctorTestDefinition,
+      language: 'en',
+    });
+
+    const zipEn = await JSZip.loadAsync(await blobEn.arrayBuffer());
+    const wbEnXml = await zipEn.file('xl/workbook.xml')!.async('string');
+    expect(wbEnXml).toContain('<sheet name="Report"');
+    expect(wbEnXml).not.toContain('GeoLab Report');
+
+    const chartEnXml = await zipEn.file('xl/charts/chart1.xml')!.async('string');
+    expect(chartEnXml).toContain("'Report'!$B$");
+    expect(chartEnXml).toContain("'Report'!$D$");
+    expect(chartEnXml).toContain("'Report'!$F$");
+    expect(chartEnXml).not.toContain('GeoLab Report');
+  });
 });
 

@@ -327,5 +327,54 @@ describe('GeoLab PDF Generator with Vector Charts and Branding', () => {
     expect(blob.size).toBeGreaterThan(1500);
     expect(blob.type).toBe('application/pdf');
   });
+
+  it('PDF generated with an empty profile contains none of the removed fallback names', async () => {
+    const rawInput = {
+      specimens: [
+        { specimenId: 'A', containerId: 'T1', tareMassG: 45.2, wetSoilPlusTareG: 198.6, drySoilPlusTareG: 183.8 },
+      ],
+    };
+    const computedResults = waterContentTestDefinition.calculate(rawInput);
+
+    const draftAnalysis: GeoLabAnalysis = {
+      id: 'analysis-empty-profile-test',
+      sampleId: 'sample-1',
+      testType: 'water_content',
+      standard: 'NF P94-050',
+      reportNumber: 'GL-2026-EMPTY',
+      version: 1,
+      status: 'draft',
+      testedDate: '2026-10-24',
+      rawInput,
+      computedResults,
+      qualityWarnings: [],
+      createdAt: '2026-11-01',
+      updatedAt: '2026-11-01',
+    };
+
+    const emptyOrgProfile: OrganisationProfile = {
+      ...mockOrg,
+      companyName: 'Test Lab Empty Profile',
+      signatories: [],
+      approvalChain: [],
+    };
+
+    const blob = await generateGeoLabPdfReport({
+      analysis: draftAnalysis,
+      client: mockClient,
+      project: mockProject,
+      sample: mockSample,
+      orgProfile: emptyOrgProfile,
+      testDef: waterContentTestDefinition,
+    });
+
+    const arrayBuffer = await blob.arrayBuffer();
+    const pdfText = Buffer.from(arrayBuffer).toString('latin1');
+
+    // Assert none of the three removed hardcoded fallback signatories are present
+    expect(pdfText).not.toContain('J. Dupont');
+    expect(pdfText).not.toContain('M. Lambert');
+    expect(pdfText).not.toContain('Dr. H. Kemekong');
+  });
 });
 

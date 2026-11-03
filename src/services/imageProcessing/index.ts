@@ -164,7 +164,7 @@ export async function analyzeImageQuality(imageElement: HTMLImageElement): Promi
   const advice: string[] = [];
   if (isArtificialGraphic) {
     advice.push(
-      'Non-geological image / logo detected: This image appears to be a digital graphic, diagram, or logo with vector shapes rather than a rock muck pile. FragMill segments high-contrast outlines and will misidentify letters and icons as rock fragments.'
+      'Non-geological image / logo detected: This image appears to be a digital graphic, diagram, or logo with vector shapes rather than a rock muck pile. FraGeo Blast segments high-contrast outlines and will misidentify letters and icons as rock fragments.'
     );
   }
 

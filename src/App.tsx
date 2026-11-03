@@ -461,7 +461,7 @@ function AppContent() {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white space-y-4">
         <RefreshCw className="w-10 h-10 text-blue-500 animate-spin" />
-        <span className="text-sm font-bold tracking-wide">Loading FragMill Lab Database...</span>
+        <span className="text-sm font-bold tracking-wide">Loading FraGeo Suite Database...</span>
       </div>
     );
   }
@@ -616,7 +616,7 @@ function AppContent() {
 
       <footer className="bg-slate-900 text-slate-400 py-3 text-center text-xs border-t border-slate-800">
         <p>
-          FragMill: Blast-to-Mill Fragmentation Lab &bull; Artisanal &amp; Small-Scale Mining (ASM) Research &bull; Fully Client-Side &amp; Offline Ready
+          FraGeo Suite: Blast-to-Mill &amp; Materials Lab &bull; Fully Client-Side &amp; Offline Ready
         </p>
       </footer>
     </div>
