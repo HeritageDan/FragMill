@@ -12,6 +12,7 @@ import { getTestDefinition } from '../tests';
 import type { ProctorInput, ProctorResults } from '../tests/proctor';
 import type { GrainSizeInput, GrainSizeResults } from '../tests/grainSize';
 import type { WaterContentInput, WaterContentResults } from '../tests/waterContent';
+import { setupUnicodeFont } from './pdfFonts';
 
 export interface PdfGenerationOptions {
   analysis: GeoLabAnalysis;
@@ -470,6 +471,7 @@ export async function generateGeoLabPdfReport(options: PdfGenerationOptions): Pr
   }
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  await setupUnicodeFont(doc);
   renderAnalysisSheet(doc, analysis, {
     client,
     project,

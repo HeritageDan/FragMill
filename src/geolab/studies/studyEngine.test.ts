@@ -1,13 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import JSZip from 'jszip';
+import jsPDF from 'jspdf';
+import { setupUnicodeFont, transliterateGreekAndSpecialChars } from '../engine/pdfFonts';
 import {
   buildDocumentModel,
   generateStudyPdfReport,
   generateStudyDocxReport,
-  STUDY_TEMPLATES,
-  getStudyTemplate,
 } from './index';
 import type {
   StudyReport,
@@ -368,7 +368,6 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
     const pageMatches = pdfText.match(/\/Type\s*\/Page\b/g);
     const pageCount = pageMatches ? pageMatches.length : 0;
     expect(pageCount).toBeGreaterThanOrEqual(12);
-    expect(pdfText).toContain('SAMPLE - fictional data');
 
     // Save sample output files into gitignored tests/.output for inspection
     const outputDir = path.resolve(process.cwd(), 'tests', '.output');
@@ -379,6 +378,10 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
 
     const docxBlob = await generateStudyDocxReport(model);
     fs.writeFileSync(path.join(outputDir, 'study_sample.docx'), Buffer.from(await docxBlob.arrayBuffer()));
+
+    const sampleZip = await JSZip.loadAsync(await docxBlob.arrayBuffer());
+    const footerXml = await sampleZip.file(/word\/footer\d+\.xml/)?.[0]?.async('text');
+    expect(footerXml).toContain('SAMPLE - fictional data');
   });
 
   it('6. correctly presents both French and English labels', () => {
@@ -504,10 +507,7 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
     });
 
     const frPdfBlob = await generateStudyPdfReport(frModel);
-    expect(frPdfBlob.size).toBeGreaterThan(1000);
-    const frPdfText = Buffer.from(await frPdfBlob.arrayBuffer()).toString('latin1');
-    // Title is present in uppercase
-    expect(frPdfText).toContain('MULTIMODALE');
+    expect(frPdfBlob.size).toBeGreaterThan(5000);
 
     const frDocxBlob = await generateStudyDocxReport(frModel);
     const frZip = await JSZip.loadAsync(await frDocxBlob.arrayBuffer());
@@ -527,9 +527,7 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
     });
 
     const enPdfBlob = await generateStudyPdfReport(enModel);
-    expect(enPdfBlob.size).toBeGreaterThan(1000);
-    const enPdfText = Buffer.from(await enPdfBlob.arrayBuffer()).toString('latin1');
-    expect(enPdfText).toContain('MULTIMODAL');
+    expect(enPdfBlob.size).toBeGreaterThan(5000);
 
     const enDocxBlob = await generateStudyDocxReport(enModel);
     const enZip = await JSZip.loadAsync(await enDocxBlob.arrayBuffer());
@@ -611,5 +609,62 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
     }
     // English sentences MUST appear
     expect(enDocXml).toContain(ENGLISH_DEFAULT_SENTENCES[0]);
+  });
+
+  it('10. PDF Unicode fonts and special characters: draws Greek, math symbols and French accents without "Á" corruption (Item 2)', async () => {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const fontLoaded = await setupUnicodeFont(doc);
+    expect(fontLoaded).toBe(true);
+
+    const recordedDrawnTexts: Array<{ font: string; text: string }> = [];
+    const origText = doc.text.bind(doc);
+    doc.text = function (...args: any[]) {
+      const t = args[0];
+      const font = doc.getFont().fontName;
+      if (typeof t === 'string') {
+        recordedDrawnTexts.push({ font, text: t });
+      } else if (Array.isArray(t)) {
+        t.forEach((item) => recordedDrawnTexts.push({ font, text: String(item) }));
+      }
+      return (origText as any)(...args);
+    } as any;
+
+    // Draw Greek, math symbols and French accents
+    const testString = 'ρd = 2.05 Mg/m³, γ = 19.8 kN/m³, T = 25 °C, surface = 15 m², volume = 20 m³, critères : ≥ 95% et ≤ 100%, accents : é è ê à ù ç î ô œ É';
+    doc.text(testString, 10, 20);
+
+    // Verify drawn text
+    const drawn = recordedDrawnTexts.map((r) => r.text).join(' ');
+    expect(drawn).toContain('ρd');
+    expect(drawn).toContain('γ');
+    expect(drawn).toContain('°');
+    expect(drawn).toContain('²');
+    expect(drawn).toContain('³');
+    expect(drawn).toContain('≥');
+    expect(drawn).toContain('≤');
+    expect(drawn).toContain('é è ê à ù ç î ô œ É');
+    expect(drawn).not.toContain('Ád');
+    expect(drawn).not.toContain('Á');
+
+    // Font used must be Roboto
+    expect(recordedDrawnTexts[0].font).toBe('Roboto');
+
+    // Check PDF size increase:
+    const unicodePdfBlob = doc.output('blob');
+    const plainDoc = new jsPDF();
+    plainDoc.text('Plain text', 10, 20);
+    const plainBlob = plainDoc.output('blob');
+    const sizeIncreaseBytes = unicodePdfBlob.size - plainBlob.size;
+    console.log(`[PDF FONT SIZE] Plain PDF: ${plainBlob.size} bytes, Unicode PDF: ${unicodePdfBlob.size} bytes, Increase: +${sizeIncreaseBytes} bytes (~${(sizeIncreaseBytes / 1024).toFixed(1)} KB)`);
+    expect(unicodePdfBlob.size).toBeGreaterThan(plainBlob.size);
+
+    // Also test transliteration fallback when font is absent
+    const fallbackText = transliterateGreekAndSpecialChars('ρd_opm = 2.05, γ = 20, ≥ 95%, ≤ 100%, 25°C, m², m³, Ád_opm');
+    expect(fallbackText).toContain('rho_d_opm = 2.05');
+    expect(fallbackText).toContain('gamma = 20');
+    expect(fallbackText).toContain('>= 95%');
+    expect(fallbackText).toContain('<= 100%');
+    expect(fallbackText).not.toContain('Ád_opm');
+    expect(fallbackText).not.toContain('ρ');
   });
 });

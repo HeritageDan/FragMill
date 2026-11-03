@@ -13,6 +13,7 @@
 import jsPDF from 'jspdf';
 import type { DocumentModel } from './documentModel';
 import { renderAnalysisSheet } from '../../engine/pdfGenerator';
+import { setupUnicodeFont } from '../../engine/pdfFonts';
 import { drawVectorMultiGrainSizeChart } from './chartRenderer';
 import type { ProctorResults } from '../../tests/proctor';
 import type { GrainSizeResults } from '../../tests/grainSize';
@@ -105,6 +106,7 @@ export async function generateStudyPdfReport(
   await yieldToMain();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  await setupUnicodeFont(doc);
 
   // 1. Cover Page (Page 1)
   renderCoverPage(doc, model, prR, prG, prB, lang);
@@ -621,8 +623,8 @@ function renderNarrativeSection(
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
-    } else if (line.startsWith('- ')) {
-      const bulletText = line.replace('- ', '');
+    } else if (line.startsWith('- ') || line.startsWith('• ') || line.startsWith('* ') || /^[\uE000-\uF8FF]\s*/.test(line)) {
+      const bulletText = line.replace(/^(-|\u2022|\*|[\uE000-\uF8FF])\s*/, '');
       doc.setFillColor(prR, prG, prB);
       doc.circle(margin + 2, cursorY - 1, 0.8, 'F');
       const split = doc.splitTextToSize(bulletText, contentWidth - 8);
