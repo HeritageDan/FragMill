@@ -354,20 +354,20 @@ export async function generateGeoLabPdfReport(options: PdfGenerationOptions): Pr
         {
           id: 'sig-1',
           roleLabel: { en: 'Tested by (Technician)', fr: 'Réalisé par (Technicien)' },
-          name: analysis.preparedBy?.name || orgProfile.signatories[0]?.name || 'J. Dupont',
-          title: analysis.preparedBy?.title || orgProfile.signatories[0]?.title || 'Technicien Labo',
+          name: analysis.preparedBy?.name || orgProfile.signatories[0]?.name || '',
+          title: analysis.preparedBy?.title || orgProfile.signatories[0]?.title || '',
         },
         {
           id: 'sig-2',
           roleLabel: { en: 'Checked by (QA)', fr: 'Vérifié par (Qualité)' },
-          name: analysis.checkedBy?.name || orgProfile.signatories[1]?.name || 'M. Lambert',
-          title: analysis.checkedBy?.title || orgProfile.signatories[1]?.title || 'Responsable AQ',
+          name: analysis.checkedBy?.name || orgProfile.signatories[1]?.name || '',
+          title: analysis.checkedBy?.title || orgProfile.signatories[1]?.title || '',
         },
         {
           id: 'sig-3',
           roleLabel: { en: 'Approved by (Director)', fr: 'Approuvé par (Directeur)' },
-          name: analysis.approvedBy?.name || orgProfile.signatories[2]?.name || 'Dr. H. Kemekong',
-          title: analysis.approvedBy?.title || orgProfile.signatories[2]?.title || 'Directeur Technique',
+          name: analysis.approvedBy?.name || orgProfile.signatories[2]?.name || '',
+          title: analysis.approvedBy?.title || orgProfile.signatories[2]?.title || '',
         },
       ];
 
@@ -393,10 +393,12 @@ export async function generateGeoLabPdfReport(options: PdfGenerationOptions): Pr
     doc.setTextColor(71, 85, 105);
     doc.text(roleTitle, boxX + 2.5, boxY + 4);
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(15, 23, 42);
-    doc.text(sig.name || '-', boxX + 2.5, boxY + 8.5);
+    if (sig.name) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(sig.name, boxX + 2.5, boxY + 8.5);
+    }
 
     if (sig.stampOrSignatureBase64) {
       try {

@@ -195,9 +195,9 @@ function buildRevisionTableRows(analysis: GeoLabAnalysis, lang: 'en' | 'fr', sta
           index: analysis.version || 1,
           date: analysis.testedDate,
           natureOfChange: lang === 'fr' ? 'Émission initiale' : 'Initial issue',
-          preparedBy: analysis.preparedBy?.name || 'Technicien Labo',
-          checkedBy: analysis.checkedBy?.name || 'Responsable Qualité',
-          approvedBy: analysis.approvedBy?.name || 'Directeur Technique',
+          preparedBy: analysis.preparedBy?.name || '',
+          checkedBy: analysis.checkedBy?.name || '',
+          approvedBy: analysis.approvedBy?.name || '',
         },
       ];
 
@@ -220,9 +220,9 @@ function buildRevisionTableRows(analysis: GeoLabAnalysis, lang: 'en' | 'fr', sta
       <c r="A${cur}" s="9"><v>${rev.index}</v></c>
       <c r="B${cur}" t="inlineStr" s="9"><is><t>${escapeXml(rev.date)}</t></is></c>
       <c r="C${cur}" t="inlineStr" s="6"><is><t>${escapeXml(rev.natureOfChange)}</t></is></c>
-      <c r="E${cur}" t="inlineStr"><is><t>${escapeXml(rev.preparedBy || '-')}</t></is></c>
-      <c r="F${cur}" t="inlineStr"><is><t>${escapeXml(rev.checkedBy || '-')}</t></is></c>
-      <c r="G${cur}" t="inlineStr"><is><t>${escapeXml(rev.approvedBy || '-')}</t></is></c>
+      <c r="E${cur}" t="inlineStr"><is><t>${escapeXml(rev.preparedBy || '')}</t></is></c>
+      <c r="F${cur}" t="inlineStr"><is><t>${escapeXml(rev.checkedBy || '')}</t></is></c>
+      <c r="G${cur}" t="inlineStr"><is><t>${escapeXml(rev.approvedBy || '')}</t></is></c>
     </row>`;
     cur++;
   });
@@ -242,20 +242,20 @@ function buildSignaturesRows(
         {
           id: 'sig-1',
           roleLabel: { en: 'Tested by', fr: 'Essai réalisé par' },
-          name: analysis.preparedBy?.name || org.signatories[0]?.name || 'Technicien Labo',
-          title: analysis.preparedBy?.title || org.signatories[0]?.title || 'Technicien Géotechnique',
+          name: analysis.preparedBy?.name || org.signatories[0]?.name || '',
+          title: analysis.preparedBy?.title || org.signatories[0]?.title || '',
         },
         {
           id: 'sig-2',
           roleLabel: { en: 'Checked by', fr: 'Vérifié par' },
-          name: analysis.checkedBy?.name || org.signatories[1]?.name || 'Responsable Qualité',
-          title: analysis.checkedBy?.title || org.signatories[1]?.title || 'Responsable AQ',
+          name: analysis.checkedBy?.name || org.signatories[1]?.name || '',
+          title: analysis.checkedBy?.title || org.signatories[1]?.title || '',
         },
         {
           id: 'sig-3',
           roleLabel: { en: 'Approved by', fr: 'Approuvé par' },
-          name: analysis.approvedBy?.name || org.signatories[2]?.name || 'Directeur Technique',
-          title: analysis.approvedBy?.title || org.signatories[2]?.title || 'Directeur Technique',
+          name: analysis.approvedBy?.name || org.signatories[2]?.name || '',
+          title: analysis.approvedBy?.title || org.signatories[2]?.title || '',
         },
       ];
 
@@ -279,7 +279,7 @@ function buildSignaturesRows(
     xml += `<row r="${rowOffset + 1}">`;
     chunk.forEach((sig, idx) => {
       const col = cols[idx];
-      xml += `<c r="${col}${rowOffset + 1}" t="inlineStr" s="6"><is><t>${escapeXml(sig.name || '-')}</t></is></c>`;
+      xml += `<c r="${col}${rowOffset + 1}" t="inlineStr" s="6"><is><t>${escapeXml(sig.name || '')}</t></is></c>`;
     });
     xml += `</row>`;
 
@@ -287,7 +287,7 @@ function buildSignaturesRows(
     xml += `<row r="${rowOffset + 2}">`;
     chunk.forEach((sig, idx) => {
       const col = cols[idx];
-      xml += `<c r="${col}${rowOffset + 2}" t="inlineStr"><is><t>${escapeXml(sig.title || '-')}</t></is></c>`;
+      xml += `<c r="${col}${rowOffset + 2}" t="inlineStr"><is><t>${escapeXml(sig.title || '')}</t></is></c>`;
     });
     xml += `</row>`;
 
