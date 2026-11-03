@@ -83,7 +83,7 @@ export const translations = {
     fail: 'Fail',
     retakeAdvice: 'Field Capture Advice',
     nonGeologicalWarningTitle: 'Non-Geological Image / Logo Detected',
-    nonGeologicalWarningDesc: 'This image appears to be a digital graphic, diagram, or logo rather than a photo of a blasted rock muck pile. FraGeo Blast works on edge contrast and will interpret letters, circles, and graphic icons as rock fragments. Please upload an authentic muck pile photograph.',
+    nonGeologicalWarningDesc: 'This image appears to be a digital graphic, diagram, or logo rather than a photo of a blasted rock muck pile. Fragmill works on edge contrast and will interpret letters, circles, and graphic icons as rock fragments. Please upload an authentic muck pile photograph.',
 
     // Scale
     referenceLengthMm: 'Reference Bar Length (mm):',
@@ -238,7 +238,7 @@ export const translations = {
     statusHighPrecision: 'High Precision',
     statusRecommended: 'Recommended Optimum',
     surfaceBiasNoticeTitle: 'Surface Sampling Bias Advisory:',
-    surfaceBiasNoticeText: 'Manual rock caliper measurements on the muck pile surface inherently oversample visible large boulders and miss obscured interior fines. Physical weighed sieve screening samples (or mechanical trommel test batches) represent the volumetric gold standard and are preferred for calibrating FraGeo Blast.',
+    surfaceBiasNoticeText: 'Manual rock caliper measurements on the muck pile surface inherently oversample visible large boulders and miss obscured interior fines. Physical weighed sieve screening samples (or mechanical trommel test batches) represent the volumetric gold standard and are preferred for calibrating Fragmill.',
 
     // Mine-to-Mill
     mineToMillTitle: 'Mine-to-Mill Comminution & Recovery Lab',
@@ -467,7 +467,7 @@ export const translations = {
     fail: 'Échec',
     retakeAdvice: 'Conseils de Prise de Vue',
     nonGeologicalWarningTitle: 'Image Non-Géologique / Logo Détecté',
-    nonGeologicalWarningDesc: 'Cette image semble être un logo numérique, un schéma ou une illustration plutôt qu’une photo de tas de roches abattues. FraGeo Blast fonctionne par contraste de contours et interprète les lettres, cercles et icônes comme des cailloux. Veuillez téléverser une vraie photo de tir.',
+    nonGeologicalWarningDesc: 'Cette image semble être un logo numérique, un schéma ou une illustration plutôt qu’une photo de tas de roches abattues. Fragmill fonctionne par contraste de contours et interprète les lettres, cercles et icônes comme des cailloux. Veuillez téléverser une vraie photo de tir.',
 
     // Scale
     referenceLengthMm: 'Longueur Réelle de la Mire (mm) :',
@@ -622,7 +622,7 @@ export const translations = {
     statusHighPrecision: 'Haute Précision',
     statusRecommended: 'Optimum Recommandé',
     surfaceBiasNoticeTitle: 'Avertissement sur le Biais d’Échantillonnage de Surface :',
-    surfaceBiasNoticeText: 'Les mesures manuelles au pied à coulisse sur la surface du tas surestiment naturellement les gros blocs visibles et manquent les fines piégées à l’intérieur. Les échantillons de tamisage physique pesé représentent la référence volumétrique absolue et sont recommandés pour étalonner FraGeo Blast.',
+    surfaceBiasNoticeText: 'Les mesures manuelles au pied à coulisse sur la surface du tas surestiment naturellement les gros blocs visibles et manquent les fines piégées à l’intérieur. Les échantillons de tamisage physique pesé représentent la référence volumétrique absolue et sont recommandés pour étalonner Fragmill.',
 
     // Mine-to-Mill
     mineToMillTitle: 'Laboratoire Mine-au-Moulin & Récupération',

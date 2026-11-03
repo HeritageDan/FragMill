@@ -97,7 +97,7 @@ export const NewAnalysisView: React.FC<Props> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `FraGeo_Lab_Template_${selectedTestType}_${language.toUpperCase()}.xlsx`;
+    a.download = `Geolab_Template_${selectedTestType}_${language.toUpperCase()}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   };

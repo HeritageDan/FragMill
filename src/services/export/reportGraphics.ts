@@ -319,7 +319,7 @@ export function renderLogarithmicPassingChart(options: LogCurveOptions): string 
     ctx.fillText(text, legX + 46, legY + yOff + 4);
   };
 
-  drawLegendItem(20, '#2563EB', isFr ? '1. Mesuré Optique (FraGeo Blast)' : '1. Optical Measured (FraGeo Blast)', false);
+  drawLegendItem(20, '#2563EB', isFr ? '1. Mesuré Optique (Fragmill)' : '1. Optical Measured (Fragmill)', false);
   drawLegendItem(42, '#8B5CF6', isFr ? '2. Prédiction Kuz-Ram Cunningham' : '2. Cunningham Kuz-Ram Model', false);
   drawLegendItem(64, '#10B981', isFr ? '3. Vérité Terrain Tamisage Physique' : '3. Physical Sieve Ground Truth', true);
 

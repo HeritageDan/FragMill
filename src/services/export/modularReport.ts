@@ -280,8 +280,8 @@ export async function generateModularVaultPdfReport(
     const p = entry?.payload || {};
 
     const headerTitle = isFr
-      ? `FRAGEO BLAST : ${meta.titleFr.toUpperCase()}`
-      : `FRAGEO BLAST : ${meta.titleEn.toUpperCase()}`;
+      ? `FRAGMILL : ${meta.titleFr.toUpperCase()}`
+      : `FRAGMILL : ${meta.titleEn.toUpperCase()}`;
     const headerSub = isFr
       ? `Projet : ${project.name} | Site : ${site.name} | Tir : ${blast.blastId} | Date : ${blast.dateTime}`
       : `Project: ${project.name} | Site: ${site.name} | Blast ID: ${blast.blastId} | Date: ${blast.dateTime}`;
@@ -1492,7 +1492,7 @@ export async function generateModularVaultPdfReport(
 
   // DEDICATED FINAL PAGE: DATA QUALITY CONTROL & AUDIT TRAIL
   doc.addPage();
-  const qaTitle = isFr ? 'FRAGEO BLAST : CONTRÔLE QUALITÉ & INTÉGRITÉ' : 'FRAGEO BLAST : DATA QUALITY CONTROL & AUDIT';
+  const qaTitle = isFr ? 'FRAGMILL : CONTRÔLE QUALITÉ & INTÉGRITÉ' : 'FRAGMILL : DATA QUALITY CONTROL & AUDIT';
   const qaSub = isFr
     ? `Audit de cohérence physique, détection d'incohérences géotechniques et traçabilité pour le tir ${blast.blastId}`
     : `Physical consistency audit, geotechnical validation checks, and data provenance for blast ${blast.blastId}`;
@@ -1591,8 +1591,8 @@ export async function generateModularVaultPdfReport(
 
   qaY = drawTable(
     isFr
-      ? ['Domaine Analytique FraGeo Blast', 'Provenance de la Donnée', 'Détails Métrologiques', 'Niveau de Certitude']
-      : ['FraGeo Blast Analytical Domain', 'Data Provenance / Source', 'Metrological Details', 'Confidence Level'],
+      ? ['Domaine Analytique Fragmill', 'Provenance de la Donnée', 'Détails Métrologiques', 'Niveau de Certitude']
+      : ['Fragmill Analytical Domain', 'Data Provenance / Source', 'Metrological Details', 'Confidence Level'],
     provenanceRows,
     [48, 44, 56, 34],
     qaY,

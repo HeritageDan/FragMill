@@ -133,8 +133,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
             {isFr ? 'Avertissement de Sécurité Minière Obligatoire :' : 'Mandatory Mining Safety Notice:'}
           </span>
           {isFr
-            ? 'FraGeo Blast est un outil d’aide à la décision technique et d’ingénierie. Toute modification du plan de tir (maille, écartement, charge d’explosif, séquencement) doit obligatoirement être validée par un ingénieur des mines ou un boutefeu qualifié conformément à la réglementation en vigueur (stabilité des gradins, projections, vibrations).'
-            : 'FraGeo Blast is an engineering decision-support tool. Any blast pattern modification (burden, spacing, charge per hole, initiation delays) must be reviewed and approved by a qualified mining engineer or certified blaster in compliance with local statutory safety regulations.'}
+            ? 'Fragmill est un outil d’aide à la décision technique et d’ingénierie. Toute modification du plan de tir (maille, écartement, charge d’explosif, séquencement) doit obligatoirement être validée par un ingénieur des mines ou un boutefeu qualifié conformément à la réglementation en vigueur (stabilité des gradins, projections, vibrations).'
+            : 'Fragmill is an engineering decision-support tool. Any blast pattern modification (burden, spacing, charge per hole, initiation delays) must be reviewed and approved by a qualified mining engineer or certified blaster in compliance with local statutory safety regulations.'}
         </div>
       </div>
 
@@ -198,8 +198,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 </span>
                 <p>
                   {isFr
-                    ? 'Pour économiser l’explosif, l’équipe a utilisé seulement 15 kg d’ANFO par trou. Résultat sur la photo analysée par FraGeo Blast : un P80 de 320 mm. Plus de 20% des blocs dépassent 300 mm.'
-                    : 'To save on explosive costs, the crew loaded only 15 kg of ANFO per hole. FraGeo Blast measured a coarse P80 of 320 mm. Over 20% of the pile consisted of oversize boulders (>300 mm).'}
+                    ? 'Pour économiser l’explosif, l’équipe a utilisé seulement 15 kg d’ANFO par trou. Résultat sur la photo analysée par Fragmill : un P80 de 320 mm. Plus de 20% des blocs dépassent 300 mm.'
+                    : 'To save on explosive costs, the crew loaded only 15 kg of ANFO per hole. Fragmill measured a coarse P80 of 320 mm. Over 20% of the pile consisted of oversize boulders (>300 mm).'}
                 </p>
                 <div className="p-2 bg-red-950/40 border border-red-500/30 rounded text-red-200">
                   <strong>{isFr ? 'Conséquences au moulin :' : 'Plant Consequences:'}</strong>{' '}
@@ -211,12 +211,12 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
 
               <div className="bg-white/10 p-4 rounded-xl border border-white/10 space-y-2">
                 <span className="font-bold text-emerald-300 block text-xs">
-                  {isFr ? '✅ Tir N°3 : Optimisé avec FraGeo Blast Advisor' : '✅ Blast #3: Optimized via FraGeo Blast Advisor'}
+                  {isFr ? '✅ Tir N°3 : Optimisé avec Fragmill Blast Advisor' : '✅ Blast #3: Optimized via Fragmill Blast Advisor'}
                 </span>
                 <p>
                   {isFr
-                    ? 'Guidée par le conseiller de tir, l’équipe a resserré la maille (B=2.2m, S=2.5m) avec 24 kg d’ANFO. FraGeo Blast mesure un P80 idéal de 155 mm avec moins de 2% de hors-gabarit.'
-                    : 'Guided by FraGeo Blast Advisor, the blaster adjusted burden to 2.2m and spacing to 2.5m with 24 kg ANFO. FraGeo Blast measured a smooth P80 of 155 mm with under 2% oversize.'}
+                    ? 'Guidée par le conseiller de tir, l’équipe a resserré la maille (B=2.2m, S=2.5m) avec 24 kg d’ANFO. Fragmill mesure un P80 idéal de 155 mm avec moins de 2% de hors-gabarit.'
+                    : 'Guided by Fragmill Blast Advisor, the blaster adjusted burden to 2.2m and spacing to 2.5m with 24 kg ANFO. Fragmill measured a smooth P80 of 155 mm with under 2% oversize.'}
                 </p>
                 <div className="p-2 bg-emerald-950/40 border border-emerald-500/30 rounded text-emerald-200">
                   <strong>{isFr ? 'Gains spectaculaires :' : 'Dramatic Gains:'}</strong>{' '}
@@ -384,7 +384,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 {isFr ? 'Niveau Industriel Supérieur' : 'Industrial Tier-1'}
               </span>
               <span className="text-xs text-blue-200 font-semibold">
-                {isFr ? 'Les 4 Piliers d’Ingénierie Avancée FraGeo Blast' : 'The 4 Core Pillars of Advanced Mining Engineering'}
+                {isFr ? 'Les 4 Piliers d’Ingénierie Avancée Fragmill' : 'The 4 Core Pillars of Advanced Mining Engineering'}
               </span>
             </div>
             <h3 className="text-lg font-black text-white">
@@ -394,7 +394,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
             </h3>
             <p className="text-xs text-slate-300 leading-relaxed">
               {isFr
-                ? 'Ces 4 modules innovants hissent FraGeo Blast au standard des géants miniers tout en restant utilisables sur une simple tablette autonome dans les exploitations artisanales et semi-mécanisées.'
+                ? 'Ces 4 modules innovants hissent Fragmill au standard des géants miniers tout en restant utilisables sur une simple tablette autonome dans les exploitations artisanales et semi-mécanisées.'
                 : 'These 4 innovative modules bring cutting-edge mine engineering to your pit tablet, operating 100% offline without cloud subscriptions or expensive external hardware.'}
             </p>
           </div>
@@ -434,7 +434,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                   </>
                 ) : (
                   <>
-                    <strong>FraGeo Solution:</strong> Import georeferenced UAV orthomosaics. FraGeo Blast applies <strong>3D ellipsoidal stereology</strong> to reconstruct true rock volumes and corrects for hidden fines, mapping spatial fragmentation gradients across crest, center, and toe sectors.
+                    <strong>FraGeo Solution:</strong> Import georeferenced UAV orthomosaics. Fragmill applies <strong>3D ellipsoidal stereology</strong> to reconstruct true rock volumes and corrects for hidden fines, mapping spatial fragmentation gradients across crest, center, and toe sectors.
                   </>
                 )}
               </p>
@@ -530,15 +530,15 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                   </>
                 ) : (
                   <>
-                    <strong>FraGeo Solution:</strong> Step through blast progression millisecond-by-millisecond (V-echelon, row-by-row, electronic). FraGeo Blast predicts ground vibration (Peak Particle Velocity via USBM equations) at village distances and scans bench face profiles to flag dangerous flyrock underburden zones in bright red.
+                    <strong>FraGeo Solution:</strong> Step through blast progression millisecond-by-millisecond (V-echelon, row-by-row, electronic). Fragmill predicts ground vibration (Peak Particle Velocity via USBM equations) at village distances and scans bench face profiles to flag dangerous flyrock underburden zones in bright red.
                   </>
                 )}
               </p>
               <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-purple-900">
                 <strong>{isFr ? 'Exemple réel :' : 'Real Example:'}</strong>{' '}
                 {isFr
-                  ? 'Pour un tir situé à 450 m du camp des travailleurs, le tir simultané classique produisait 28 mm/s de vibration (fissures aux murs). Le passage en V-échelon (17ms entre trous, 42ms entre rangées) simulé dans FraGeo Blast a réduit la vibration à 7.4 mm/s (conforme aux normes internationales < 10 mm/s) avec zéro projection.'
-                  : 'At 450m from camp facilities, simultaneous rows created 28 mm/s PPV. Switching to FraGeo Blast simulated V-echelon delays dropped vibrations to 7.4 mm/s (well below the 10 mm/s statutory ceiling) with zero flyrock.'}
+                  ? 'Pour un tir situé à 450 m du camp des travailleurs, le tir simultané classique produisait 28 mm/s de vibration (fissures aux murs). Le passage en V-échelon (17ms entre trous, 42ms entre rangées) simulé dans Fragmill a réduit la vibration à 7.4 mm/s (conforme aux normes internationales < 10 mm/s) avec zéro projection.'
+                  : 'At 450m from camp facilities, simultaneous rows created 28 mm/s PPV. Switching to Fragmill simulated V-echelon delays dropped vibrations to 7.4 mm/s (well below the 10 mm/s statutory ceiling) with zero flyrock.'}
               </div>
             </div>
           </div>
@@ -574,7 +574,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
               <p>
                 {isFr ? (
                   <>
-                    <strong>La solution FraGeo :</strong> Le jumeau numérique calcule l’énergie de concassage et de broyage selon la 3ème théorie de Bond et le modèle de Morrell (Mic, Mih). Il démontre comment l’onde de choc du tir crée des micro-fissures invisibles à l’intérieur des grains de quartz, ce qui facilite leur broyage et libère les micro-particules d’or emprisonnées dans la pyrite. FraGeo Blast trace la courbe en U du coût total d’exploitation pour trouver le point d’équilibre parfait (Sweet-Spot P80).
+                    <strong>La solution FraGeo :</strong> Le jumeau numérique calcule l’énergie de concassage et de broyage selon la 3ème théorie de Bond et le modèle de Morrell (Mic, Mih). Il démontre comment l’onde de choc du tir crée des micro-fissures invisibles à l’intérieur des grains de quartz, ce qui facilite leur broyage et libère les micro-particules d’or emprisonnées dans la pyrite. Fragmill trace la courbe en U du coût total d’exploitation pour trouver le point d’équilibre parfait (Sweet-Spot P80).
                   </>
                 ) : (
                   <>
@@ -711,8 +711,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                   </span>
                   <p className="text-[11px] text-slate-500">
                     {isFr
-                      ? 'Total des kilowattheures consommés divisé par la masse de minerai traitée. FraGeo Blast calcule en direct la consommation du concasseur et du broyeur.'
-                      : 'Kilowatt-hours divided by dry ore tonnes milled. FraGeo Blast computes crushing and milling power draw per tonne processed.'}
+                      ? 'Total des kilowattheures consommés divisé par la masse de minerai traitée. Fragmill calcule en direct la consommation du concasseur et du broyeur.'
+                      : 'Kilowatt-hours divided by dry ore tonnes milled. Fragmill computes crushing and milling power draw per tonne processed.'}
                   </p>
                 </div>
 
@@ -760,8 +760,8 @@ export const HelpView: React.FC<HelpViewProps> = ({ lang = 'en' }) => {
                 </span>
                 <p>
                   {isFr
-                    ? 'Dans la pratique minière, personne ne connaît exactement la valeur théorique du facteur de roche A d’un gisement. FraGeo Blast résout ce problème : à chaque tir analysé par photo, un algorithme d’échantillonnage de Metropolis-Hastings (MCMC) compare la granulométrie réelle observée au modèle théorique et met à jour automatiquement la valeur exacte du facteur de roche pour votre mine spécifique, avec un intervalle de confiance à 95% !'
-                    : 'In real mining, site geological factor A cannot be directly measured with a ruler. FraGeo Blast solves this: as you record blasts, Metropolis-Hastings MCMC compares measured photographic X50 to model predictions and calibrates the exact rock factor A for your pit with full 95% credible intervals!'}
+                    ? 'Dans la pratique minière, personne ne connaît exactement la valeur théorique du facteur de roche A d’un gisement. Fragmill résout ce problème : à chaque tir analysé par photo, un algorithme d’échantillonnage de Metropolis-Hastings (MCMC) compare la granulométrie réelle observée au modèle théorique et met à jour automatiquement la valeur exacte du facteur de roche pour votre mine spécifique, avec un intervalle de confiance à 95% !'
+                    : 'In real mining, site geological factor A cannot be directly measured with a ruler. Fragmill solves this: as you record blasts, Metropolis-Hastings MCMC compares measured photographic X50 to model predictions and calibrates the exact rock factor A for your pit with full 95% credible intervals!'}
                 </p>
               </div>
             </div>

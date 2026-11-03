@@ -18,29 +18,6 @@ function getSourceFiles(dir, fileList = []) {
   return fileList;
 }
 
-const allowedPatterns = [
-  /['"]FragMillDB['"]/,
-  /['"]fragmill_[a-zA-Z0-9_]+['"]/,
-  /STORAGE_KEY\s*=\s*['"]fragmill_/,
-  /['"]fragmill['"]\s*\|\s*['"]geolab['"]/,
-  /['"]fragmill['"]/,
-  /['"]geolab['"]/,
-  /['"]geolab_organisation_profile['"]/,
-  /\bgeolabProjects\b/,
-  /\bGeoLab(TestType|Analysis|Project|Client|Sample|Signatory|StandardRef|TestDefinition|Tab|Shell|Module)\b/,
-  /\b(GEOLAB_TESTS_REGISTRY|GEOLAB_TEST_LIST|getTestDefinition|generateGeoLabExcelReport|generateGeoLabPdfReport|generateGeoLabNarrative|exportProjectReportsZip|seedGeoLabDemoData)\b/,
-  /\b(FragMillDatabase|onSwitchToFragMill)\b/,
-  /local:\/\/fragmill-/,
-  /fragmill\|frageo/i,
-  /^\s*\/\//,
-  /^\s*\*/,
-  /\/\*[\s\S]*?\*\//,
-  /from\s+['"].*geolab.*['"]/,
-  /}\s+from\s+['"].*geolab.*['"]/,
-  /import\s+.*['"].*geolab.*['"]/,
-  /throw\s+new\s+Error\([^)]*GeoLab/,
-];
-
 const srcDir = path.resolve(__dirname, '../src');
 const files = getSourceFiles(srcDir);
 const violations = [];
@@ -52,38 +29,24 @@ for (const filePath of files) {
 
   lines.forEach((rawLine, index) => {
     const line = rawLine.trim();
-    if (/(fragmill|geolab)/i.test(line)) {
-      let isAllowed = false;
-      for (const pattern of allowedPatterns) {
-        if (pattern.test(line)) {
-          const userVisibleLeak =
-            /<[^>]*>[^<]*(FragMill|GeoLab)[^<]*<\/[^>]*>/i.test(line) ||
-            /['"][^'"]*(FragMill|GeoLab)\s+(Study|Report|Lab|Modele|Template)[^'"]*['"]/i.test(line) ||
-            /title\s*=\s*['"][^'"]*(FragMill|GeoLab)[^'"]*['"]/i.test(line);
-
-          if (!userVisibleLeak) {
-            isAllowed = true;
-            break;
-          }
-        }
-      }
-
-      if (!isAllowed) {
-        violations.push({
-          file: relativePath,
-          line: index + 1,
-          text: line,
-        });
-      }
+    if (/^(\/\/|\*|\/\*)/.test(line)) {
+      return;
+    }
+    if (/(frageo\s+blast|frageo\s+lab)/i.test(line)) {
+      violations.push({
+        file: relativePath,
+        line: index + 1,
+        text: line,
+      });
     }
   });
 }
 
 if (violations.length > 0) {
-  console.error(`Found ${violations.length} user-visible "FragMill" or "GeoLab" strings outside legacy internal identifiers:`);
+  console.error(`Found ${violations.length} user-visible "FraGeo Blast" or "FraGeo Lab" strings:`);
   violations.forEach((v) => console.error(`  - ${v.file}:${v.line}: "${v.text}"`));
   process.exit(1);
 } else {
-  console.log(`Scan passed! Zero user-visible "FragMill" or "GeoLab" strings found in ${files.length} source files.`);
+  console.log(`Scan passed! Zero "FraGeo Blast" or "FraGeo Lab" strings found in ${files.length} source files.`);
   process.exit(0);
 }

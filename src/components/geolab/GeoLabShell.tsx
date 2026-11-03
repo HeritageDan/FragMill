@@ -72,10 +72,10 @@ export const GeoLabShell: React.FC<Props> = ({ language, onSwitchToFragMill }) =
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-black text-white text-base shadow">
-                  FGL
+                  GL
                 </div>
                 <div>
-                  <h1 className="text-base font-bold text-white leading-tight">FraGeo Lab</h1>
+                  <h1 className="text-base font-bold text-white leading-tight">Geolab</h1>
                   <p className="text-[10px] text-blue-400 font-medium">
                     {language === 'fr' ? 'Laboratoire Géotechnique & Sols' : 'Geotechnical Soil Testing Lab'}
                   </p>
@@ -86,10 +86,10 @@ export const GeoLabShell: React.FC<Props> = ({ language, onSwitchToFragMill }) =
               <button
                 onClick={onSwitchToFragMill}
                 className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-semibold border border-slate-700 transition shadow-sm ml-2"
-                title={language === 'fr' ? 'Basculer vers FraGeo Blast' : 'Switch back to FraGeo Blast'}
+                title={language === 'fr' ? 'Basculer vers Fragmill' : 'Switch back to Fragmill'}
               >
                 <ArrowRightLeft className="w-3.5 h-3.5 text-blue-400" />
-                <span>FraGeo Blast</span>
+                <span>Fragmill</span>
               </button>
             </div>
 

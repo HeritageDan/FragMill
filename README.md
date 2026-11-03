@@ -7,8 +7,8 @@
 ## Overview
 
 **FraGeo Suite** is an open-source, production-grade geotechnical and mining engineering suite comprising two core modules:
-- **FraGeo Blast** (formerly FragMill): Post-blast muck pile fragmentation measurement from photographs, blast design optimization, 3D initiation sequencing, comminution digital twin (Bond & Morrell), and gold recovery modeling.
-- **FraGeo Lab** (formerly GeoLab): Geotechnical materials testing laboratory suite for Proctor compaction (NF P94-093 / ASTM D698 / D1557), Particle Size Distribution (NF P94-056 / ASTM D422), and Natural Water Content (NF P94-050).
+- **Fragmill**: Post-blast muck pile fragmentation measurement from photographs, blast design optimization, 3D initiation sequencing, comminution digital twin (Bond & Morrell), and gold recovery modeling.
+- **Geolab**: Geotechnical materials testing laboratory suite for Proctor compaction (NF P94-093 / ASTM D698 / D1557), Particle Size Distribution (NF P94-056 / ASTM D422), and Natural Water Content (NF P94-050).
 
 Developed specifically for research and field operations in mining, quarrying, and civil infrastructure, FraGeo Suite provides an accessible alternative to expensive commercial desktop software. It requires **no server backend**, operates **100% offline** in remote mine pits, laboratories, and field camps, and runs directly inside any modern web browser on smartphones, tablets, or laptops.
 
@@ -21,7 +21,7 @@ Developed specifically for research and field operations in mining, quarrying, a
 
 FraGeo Suite is organized into two dedicated modules switchable via the top navigation bar:
 
-### 1. FraGeo Blast (Blast-to-Mill Module)
+### 1. Fragmill (Blast-to-Mill Module)
 - **Field Mode**: 5-step touch-friendly wizard for rugged in-pit tablets. Guides the operator from blast geometry entry to photo quality evaluation, 2-tap scale calibration, local WASM segmentation, and instant $P_{20}, P_{50}, P_{80}$ curve generation.
 - **Blast Workspace (`blast`)**:
   - *Record & Images*: Blast geometry, 3-deck charging profiles, rock mass characterization, and optical particle size distribution (PSD).
@@ -35,7 +35,7 @@ FraGeo Suite is organized into two dedicated modules switchable via the top navi
 - **Report Vault (`reports`)**: Modular report builder bundling up to 9 specialized technical sections into a single consolidated, publication-ready PDF report with active-blast isolation and dynamic section counters.
 - **Experimental Modules (`experimental`)**: Opt-in toggle under Settings: features UAV Drone 3D photogrammetry and real-time Conveyor Belt Edge Vision.
 
-### 2. FraGeo Lab (Materials Testing Laboratory Module)
+### 2. Geolab (Materials Testing Laboratory Module)
 - **Sample & Project Management**: Client and project hierarchy with multi-criteria search, sample logging, depth intervals, and sample status tracking.
 - **Proctor Compaction (NF P94-093 / ASTM D698 / D1557)**:
   - Selectable polynomial curve fitting methods: Quadratic (degree 2), Cubic (degree 3), Quartic (degree 4 with interpolation warning), and Manual override.

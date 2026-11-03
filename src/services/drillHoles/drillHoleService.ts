@@ -1204,8 +1204,8 @@ export function downloadOptimizedNextBlastExcel(
         delayMs,
         'Electronic i-kon',
         isFr
-          ? `Design optimisé par FraGeo Blast Advisor (P80 cible ${rec.predictedP80Mm || 180}mm)`
-          : `FraGeo Blast Advisor Optimized Design (Target P80 ${rec.predictedP80Mm || 180}mm)`,
+          ? `Design optimisé par Fragmill Blast Advisor (P80 cible ${rec.predictedP80Mm || 180}mm)`
+          : `Fragmill Blast Advisor Optimized Design (Target P80 ${rec.predictedP80Mm || 180}mm)`,
       ]);
       holeIdx++;
     }

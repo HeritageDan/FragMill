@@ -446,7 +446,7 @@ export function renderAnalysisSheet(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
-  doc.text(orgProfile.reportFooterText || 'FraGeo Suite - FraGeo Lab', margin, pageHeight - 6.5);
+  doc.text(orgProfile.reportFooterText || 'FraGeo Suite - Geolab', margin, pageHeight - 6.5);
 
   const pageLabel = ctx.isAnnex
     ? `Page ${doc.getNumberOfPages()} / ${ctx.totalStudyPages || doc.getNumberOfPages()}`

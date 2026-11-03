@@ -434,7 +434,7 @@ export function exportBlastWorkbookXlsx(blast: Blast, run: SegmentationRun, lang
     ['Blocs Hors-Gabarit (>300mm) %', run.metrics.oversizePercent],
     ['Fines (<25mm) %', run.metrics.finesPercent],
   ] : [
-    ['FRAGEO BLAST ANALYSIS SUMMARY'],
+    ['FRAGMILL ANALYSIS SUMMARY'],
     ['Blast ID', blast.blastId],
     ['Date & Time', blast.dateTime],
     ['Rock Type', blast.rockMass.rockType],
@@ -490,7 +490,7 @@ export function exportCocoDatasetJson(
 ): string {
   const coco = {
     info: {
-      description: 'FraGeo Blast Post-Blast Rock Fragmentation Dataset',
+      description: 'Fragmill Post-Blast Rock Fragmentation Dataset',
       version: '1.0',
       year: new Date().getFullYear(),
       contributor: project.name,
