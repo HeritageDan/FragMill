@@ -484,4 +484,56 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
     expect(progressCalls.length).toBeGreaterThan(0);
     expect(durationMs).toBeLessThan(30000); // Must complete under 30s
   }, 45000);
+
+  it('8. cover title banner: wraps and fully contains 120-character titles in both French and English in PDF and Word', async () => {
+    const frLongTitle = "ÉTUDE GÉOTECHNIQUE ET GÉOLOGIQUE DES MATÉRIAUX POUR LA CONSTRUCTION D'UNE PLATEFORME INDUSTRIELLE MULTIMODALE INTERNATIONALE"; // 124 chars
+    const enLongTitle = "GEOTECHNICAL AND GEOLOGICAL MATERIALS INVESTIGATION REPORT FOR THE CONSTRUCTION OF HIGHWAY AND MULTIMODAL PLATFORM PROJECT"; // 123 chars
+
+    expect(frLongTitle.length).toBeGreaterThanOrEqual(120);
+    expect(enLongTitle.length).toBeGreaterThanOrEqual(120);
+
+    // 1. French PDF & Word
+    const frModel = buildDocumentModel({
+      study: { ...mockStudy, title: frLongTitle, language: 'fr' },
+      project: mockProject,
+      client: mockClient,
+      organisation: mockOrg,
+      analyses: mockAnalyses.slice(0, 1),
+      samples: mockSamples.slice(0, 1),
+      language: 'fr',
+    });
+
+    const frPdfBlob = await generateStudyPdfReport(frModel);
+    expect(frPdfBlob.size).toBeGreaterThan(1000);
+    const frPdfText = Buffer.from(await frPdfBlob.arrayBuffer()).toString('latin1');
+    // Title is present in uppercase
+    expect(frPdfText).toContain('MULTIMODALE');
+
+    const frDocxBlob = await generateStudyDocxReport(frModel);
+    const frZip = await JSZip.loadAsync(await frDocxBlob.arrayBuffer());
+    const frDocXml = await frZip.file('word/document.xml')!.async('text');
+    // In Word XML, apostrophe is escaped as &apos;
+    expect(frDocXml.replace(/&apos;/g, "'")).toContain(frLongTitle.toUpperCase());
+
+    // 2. English PDF & Word
+    const enModel = buildDocumentModel({
+      study: { ...mockStudy, title: enLongTitle, language: 'en' },
+      project: mockProject,
+      client: mockClient,
+      organisation: mockOrg,
+      analyses: mockAnalyses.slice(0, 1),
+      samples: mockSamples.slice(0, 1),
+      language: 'en',
+    });
+
+    const enPdfBlob = await generateStudyPdfReport(enModel);
+    expect(enPdfBlob.size).toBeGreaterThan(1000);
+    const enPdfText = Buffer.from(await enPdfBlob.arrayBuffer()).toString('latin1');
+    expect(enPdfText).toContain('MULTIMODAL');
+
+    const enDocxBlob = await generateStudyDocxReport(enModel);
+    const enZip = await JSZip.loadAsync(await enDocxBlob.arrayBuffer());
+    const enDocXml = await enZip.file('word/document.xml')!.async('text');
+    expect(enDocXml).toContain(enLongTitle.toUpperCase());
+  });
 });

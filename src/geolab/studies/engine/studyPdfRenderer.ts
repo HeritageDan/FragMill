@@ -317,30 +317,75 @@ function renderCoverPage(
     cursorY += 3;
   }
 
-  // 2. Study Title Banner (in primary color)
+  // 2. Study Title Banner (in primary color, wrapping & responsive height)
+  const bannerInnerWidth = contentWidth - 12; // 6mm padding each side
+  let titleFontSize = 15;
+  let titleLines: string[] = [];
+
+  // Shrink font size down to minimum (10pt) if needed to fit comfortably
+  while (titleFontSize >= 10) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(titleFontSize);
+    titleLines = doc.splitTextToSize(coverData.studyTitle.toUpperCase(), bannerInnerWidth);
+    if (titleLines.length <= 2) break;
+    if (titleFontSize === 10) break;
+    titleFontSize -= 1;
+  }
+  // Cap at max 4 lines
+  if (titleLines.length > 4) {
+    titleLines = titleLines.slice(0, 4);
+    if (titleLines[3].length > 3) {
+      titleLines[3] = titleLines[3].slice(0, -3) + '...';
+    }
+  }
+
+  const lineSpacing = titleFontSize * 0.42;
+  const titleBlockHeight = titleLines.length * lineSpacing;
+  const subtitleHeight = 5;
+  const reportNoHeight = 5;
+  const bannerTopPadding = 5;
+  const bannerBottomPadding = 5;
+  const bannerSpacing = 2.5;
+
+  const bannerHeight =
+    bannerTopPadding + titleBlockHeight + bannerSpacing + subtitleHeight + bannerSpacing + reportNoHeight + bannerBottomPadding;
+
   doc.setFillColor(prR, prG, prB);
-  doc.roundedRect(margin, cursorY, contentWidth, 28, 2, 2, 'F');
+  doc.roundedRect(margin, cursorY, contentWidth, bannerHeight, 2, 2, 'F');
 
+  let bannerCursorY = cursorY + bannerTopPadding + titleFontSize * 0.35;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
+  doc.setFontSize(titleFontSize);
   doc.setTextColor(255, 255, 255);
-  doc.text(coverData.studyTitle.toUpperCase(), pageWidth / 2, cursorY + 11, { align: 'center' });
 
+  titleLines.forEach((line) => {
+    doc.text(line, pageWidth / 2, bannerCursorY, { align: 'center' });
+    bannerCursorY += lineSpacing;
+  });
+
+  bannerCursorY += bannerSpacing;
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(241, 245, 249);
   doc.text(
-    lang === 'fr' ? 'RAPPORT GÉOTECHNIQUE D\'ÉTUDE DE SOLS ET MATÉRIAUX' : 'GEOTECHNICAL MATERIALS INVESTIGATION STUDY',
+    lang === 'fr' ? "RAPPORT GÉOTECHNIQUE D'ÉTUDE DE SOLS ET MATÉRIAUX" : 'GEOTECHNICAL MATERIALS INVESTIGATION STUDY',
     pageWidth / 2,
-    cursorY + 18,
+    bannerCursorY,
     { align: 'center' }
   );
 
+  bannerCursorY += reportNoHeight;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(255, 255, 255);
-  doc.text(`Rapport N° : ${coverData.reportNumber || 'N/A'}`, pageWidth / 2, cursorY + 24, { align: 'center' });
-  cursorY += 34;
+  doc.text(
+    lang === 'fr' ? `Rapport N° : ${coverData.reportNumber || 'N/A'}` : `Report No: ${coverData.reportNumber || 'N/A'}`,
+    pageWidth / 2,
+    bannerCursorY,
+    { align: 'center' }
+  );
+
+  cursorY += bannerHeight + 6;
 
   // 3. Project Information Block (only stored data; never placeholders)
   doc.setFillColor(248, 250, 252);

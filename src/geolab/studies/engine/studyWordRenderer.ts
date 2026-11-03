@@ -118,7 +118,10 @@ export async function generateStudyDocxReport(
       );
     }
 
-    // Title Box
+    // Title Box (with responsive font sizing for long titles)
+    const titleLen = cover.studyTitle.length;
+    const wordTitleSize = titleLen > 90 ? 24 : titleLen > 50 ? 28 : 32;
+
     children.push(
       new docx.Table({
         width: { size: 100, type: docx.WidthType.PERCENTAGE },
@@ -132,7 +135,7 @@ export async function generateStudyDocxReport(
                   new docx.Paragraph({
                     text: cover.studyTitle.toUpperCase(),
                     alignment: docx.AlignmentType.CENTER,
-                    run: { color: 'FFFFFF', bold: true, size: 32 },
+                    run: { color: 'FFFFFF', bold: true, size: wordTitleSize },
                   }),
                   new docx.Paragraph({
                     text:
@@ -144,7 +147,7 @@ export async function generateStudyDocxReport(
                     run: { color: 'F1F5F9', size: 20 },
                   }),
                   new docx.Paragraph({
-                    text: `Rapport N° : ${cover.reportNumber || 'N/A'}`,
+                    text: lang === 'fr' ? `Rapport N° : ${cover.reportNumber || 'N/A'}` : `Report No: ${cover.reportNumber || 'N/A'}`,
                     alignment: docx.AlignmentType.CENTER,
                     spacing: { before: 80 },
                     run: { color: 'FFFFFF', bold: true, size: 22 },
