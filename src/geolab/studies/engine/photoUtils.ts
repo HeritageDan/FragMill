@@ -127,3 +127,4 @@ export async function compressStudyPhoto(
     img.src = srcUrl;
   });
 }
+

@@ -117,8 +117,7 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
   zip.file('_rels/.rels', getGlobalRelsXml());
 
   // xl/workbook.xml
-  const sheetName = lang === 'fr' ? 'Rapport' : 'Report';
-  zip.file('xl/workbook.xml', getWorkbookXml(sheetName));
+  zip.file('xl/workbook.xml', getWorkbookXml());
 
   // xl/_rels/workbook.xml.rels
   zip.file('xl/_rels/workbook.xml.rels', getWorkbookRelsXml());
@@ -497,7 +496,6 @@ function buildProctorChartXml(
   fitMethod: ProctorFitMethod = 'quadratic',
   polyOrder: number = 2
 ): string {
-  const sheetName = lang === 'fr' ? 'Rapport' : 'Report';
   const chartTitle = lang === 'fr' ? 'COURBE PROCTOR ET SATURATION' : 'PROCTOR COMPACTION CURVE';
   const ser1Title = lang === 'fr' ? 'Points Proctor' : 'Proctor Points';
   const ser2Title = lang === 'fr' ? 'Ligne de Saturation (Sr=100%)' : 'Saturation Line (Sr=100%)';
@@ -545,12 +543,12 @@ function buildProctorChartXml(
           </c:trendline>
           <c:xVal>
             <c:numRef>
-              <c:f>'${sheetName}'!$B$${startRow}:$B$${endRow}</c:f>
+              <c:f>'GeoLab Report'!$B$${startRow}:$B$${endRow}</c:f>
             </c:numRef>
           </c:xVal>
           <c:yVal>
             <c:numRef>
-              <c:f>'${sheetName}'!$D$${startRow}:$D$${endRow}</c:f>
+              <c:f>'GeoLab Report'!$D$${startRow}:$D$${endRow}</c:f>
             </c:numRef>
           </c:yVal>
           <c:smooth val="0"/>
@@ -571,12 +569,12 @@ function buildProctorChartXml(
           <c:marker><c:symbol val="none"/></c:marker>
           <c:xVal>
             <c:numRef>
-              <c:f>'${sheetName}'!$F$${startRow}:$F$${endRow}</c:f>
+              <c:f>'GeoLab Report'!$F$${startRow}:$F$${endRow}</c:f>
             </c:numRef>
           </c:xVal>
           <c:yVal>
             <c:numRef>
-              <c:f>'${sheetName}'!$D$${startRow}:$D$${endRow}</c:f>
+              <c:f>'GeoLab Report'!$D$${startRow}:$D$${endRow}</c:f>
             </c:numRef>
           </c:yVal>
           <c:smooth val="1"/>
@@ -758,7 +756,6 @@ function buildGrainSizeSheet(
 }
 
 function buildGrainSizeChartXml(startRow: number, endRow: number, lang: 'en' | 'fr'): string {
-  const sheetName = lang === 'fr' ? 'Rapport' : 'Report';
   const chartTitle = lang === 'fr' ? 'COURBE GRANULOMÉTRIQUE' : 'PARTICLE SIZE DISTRIBUTION';
   const serTitle = lang === 'fr' ? 'Passant cumulé' : 'Cumulative Passing';
   const xTitle = lang === 'fr' ? 'Dimension des mailles d (mm)' : 'Sieve opening d (mm)';
@@ -779,12 +776,12 @@ function buildGrainSizeChartXml(startRow: number, endRow: number, lang: 'en' | '
           <c:marker><c:symbol val="circle"/><c:size val="5"/></c:marker>
           <c:xVal>
             <c:numRef>
-              <c:f>'${sheetName}'!$A$${startRow}:$A$${endRow}</c:f>
+              <c:f>'GeoLab Report'!$A$${startRow}:$A$${endRow}</c:f>
             </c:numRef>
           </c:xVal>
           <c:yVal>
             <c:numRef>
-              <c:f>'${sheetName}'!$E$${startRow}:$E$${endRow}</c:f>
+              <c:f>'GeoLab Report'!$E$${startRow}:$E$${endRow}</c:f>
             </c:numRef>
           </c:yVal>
           <c:smooth val="0"/>
@@ -1009,7 +1006,7 @@ function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean): string {
       <xdr:to><xdr:col>13</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>23</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
       <xdr:graphicFrame macro="">
         <xdr:nvGraphicFramePr>
-          <xdr:cNvPr id="2" name="Chart"/>
+          <xdr:cNvPr id="2" name="GeoLab Chart"/>
           <xdr:cNvGraphicFramePr/>
         </xdr:nvGraphicFramePr>
         <xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>
@@ -1070,11 +1067,11 @@ function getGlobalRelsXml(): string {
 </Relationships>`;
 }
 
-function getWorkbookXml(sheetName: string = 'Rapport'): string {
+function getWorkbookXml(): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="${escapeXml(sheetName)}" sheetId="1" r:id="rId1"/>
+    <sheet name="GeoLab Report" sheetId="1" r:id="rId1"/>
   </sheets>
 </workbook>`;
 }

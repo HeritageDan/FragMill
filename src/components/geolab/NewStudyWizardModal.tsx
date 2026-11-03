@@ -481,3 +481,4 @@ export const NewStudyWizardModal: React.FC<Props> = ({
     </div>
   );
 };
+

@@ -10,3 +10,4 @@ export const STUDY_TEMPLATES: StudyTemplate[] = [
 export function getStudyTemplate(id: string): StudyTemplate | undefined {
   return STUDY_TEMPLATES.find((t) => t.id === id);
 }
+
