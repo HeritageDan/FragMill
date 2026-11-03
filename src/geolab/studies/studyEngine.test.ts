@@ -667,4 +667,91 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
     expect(fallbackText).not.toContain('Ád_opm');
     expect(fallbackText).not.toContain('ρ');
   });
+
+  it('11. table of contents page numbers: measured two-pass render ensures every TOC number equals the page where that heading text was drawn (Item 1)', async () => {
+    const model = buildDocumentModel({
+      study: mockStudy,
+      project: mockProject,
+      client: mockClient,
+      organisation: mockOrg,
+      analyses: mockAnalyses.slice(0, 3),
+      samples: mockSamples.slice(0, 3),
+      photos: mockPhotos.slice(0, 12),
+      language: 'fr',
+    });
+
+    const recordedDrawnTexts: Array<{ page: number; text: string }> = [];
+
+    const pdfBlob = await generateStudyPdfReport(model, {
+      onDocCreated: (doc, pass) => {
+        if (pass === 2) {
+          const origText = doc.text.bind(doc);
+          doc.text = function (...args: any[]) {
+            const page = doc.getCurrentPageInfo().pageNumber;
+            const t = args[0];
+            if (typeof t === 'string') {
+              recordedDrawnTexts.push({ page, text: t });
+            } else if (Array.isArray(t)) {
+              t.forEach((item) => recordedDrawnTexts.push({ page, text: String(item) }));
+            }
+            return (origText as any)(...args);
+          } as any;
+        }
+      },
+    });
+
+    expect(pdfBlob.size).toBeGreaterThan(5000);
+
+    const tocBlock = model.blocks.find((b) => b.type === 'toc')!;
+    expect(tocBlock).toBeDefined();
+    const tocItems = tocBlock.tocItems || [];
+    expect(tocItems.length).toBeGreaterThanOrEqual(10);
+
+    const tocVsActualTable: Array<{ itemTitle: string; tocReportedPage: number; actualHeadingPage: number }> = [];
+
+    for (const item of tocItems) {
+      // Find where item.title was drawn on TOC page (page 2)
+      const tocEntryIndex = recordedDrawnTexts.findIndex(
+        (r) => r.page === 2 && r.text.trim().toLowerCase() === item.title.trim().toLowerCase()
+      );
+      expect(tocEntryIndex).toBeGreaterThan(-1);
+
+      // In renderTocPage, after the title and dots, the page number is drawn right-aligned on page 2
+      let reportedPageNum: number | undefined;
+      for (let i = tocEntryIndex + 1; i < recordedDrawnTexts.length; i++) {
+        if (recordedDrawnTexts[i].page !== 2) break;
+        if (/^\d+$/.test(recordedDrawnTexts[i].text.trim())) {
+          reportedPageNum = parseInt(recordedDrawnTexts[i].text.trim(), 10);
+          break;
+        }
+      }
+      expect(reportedPageNum).toBeDefined();
+
+      // Find where the heading text was drawn in the body of the document (page > 2)
+      const targetTitle = item.title.trim().toUpperCase();
+      const actualDrawings = recordedDrawnTexts.filter(
+        (r) =>
+          r.page > 2 &&
+          (r.text.trim().toUpperCase() === targetTitle ||
+            r.text.trim().toUpperCase().startsWith(targetTitle))
+      );
+
+      expect(actualDrawings.length).toBeGreaterThan(0);
+      const actualHeadingPage = actualDrawings[0].page;
+
+      tocVsActualTable.push({
+        itemTitle: item.title,
+        tocReportedPage: reportedPageNum!,
+        actualHeadingPage,
+      });
+
+      console.log(`[ITEM CHECK] "${item.title}" -> TOC: ${reportedPageNum}, Actual: ${actualHeadingPage}`);
+
+      // ASSERT that every TOC number equals the page where that heading text was drawn
+      expect(reportedPageNum).toBe(actualHeadingPage);
+    }
+
+    console.log('\n[TOC-VERSUS-ACTUAL-PAGE TABLE]');
+    console.table(tocVsActualTable);
+  });
 });

@@ -26,6 +26,13 @@ export interface PdfRenderProgress {
 
 export interface PdfRenderOptions {
   onProgress?: (progress: PdfRenderProgress) => void;
+  onDocCreated?: (doc: jsPDF, pass: 1 | 2) => void;
+}
+
+export function calculateTocPageCount(itemCount: number): number {
+  if (itemCount <= 0) return 0;
+  if (itemCount <= 28) return 1;
+  return 1 + Math.ceil((itemCount - 28) / 29);
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -37,6 +44,111 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 const yieldToMain = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+function renderStudyDocumentBlocks(
+  doc: jsPDF,
+  model: DocumentModel,
+  prR: number,
+  prG: number,
+  prB: number,
+  lang: 'en' | 'fr',
+  totalStudyPages: number,
+  onProgress?: (progress: PdfRenderProgress) => void,
+  isPass1: boolean = false
+): Record<string, number> {
+  const sectionPageMap: Record<string, number> = {};
+  const tocBlock = model.blocks.find((b) => b.type === 'toc');
+  const tocItems = tocBlock?.tocItems || [];
+
+  const recordBlockPage = (blockId: string, pageNum: number) => {
+    if (sectionPageMap[blockId] === undefined) {
+      sectionPageMap[blockId] = pageNum;
+    }
+    for (const item of tocItems) {
+      if (sectionPageMap[item.id] === undefined) {
+        if (blockId === item.id || blockId.startsWith(item.id + '-') || blockId.startsWith(item.id + '_')) {
+          sectionPageMap[item.id] = pageNum;
+        }
+      }
+    }
+  };
+
+  let blockIdx = 0;
+  for (const block of model.blocks) {
+    blockIdx++;
+    if (block.type === 'cover' || block.type === 'toc') continue;
+
+    if (!isPass1 && blockIdx % 3 === 0) {
+      onProgress?.({
+        current: 2 + Math.floor((blockIdx / model.blocks.length) * 2),
+        total: 4,
+        message: `${lang === 'fr' ? 'Section :' : 'Section:'} ${block.title}`,
+      });
+    }
+
+    if (block.type === 'pageBreak') {
+      doc.addPage();
+      continue;
+    }
+
+    if (block.type === 'narrative' && block.narrativeData) {
+      doc.addPage();
+      recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
+      renderNarrativeSection(doc, block.narrativeData, prR, prG, prB);
+    } else if (block.type === 'analysisSummaryTable' && block.summaryRows) {
+      doc.addPage();
+      recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
+      renderSummaryTableSection(doc, block.title, block.summaryRows, prR, prG, prB, lang);
+    } else if (block.type === 'analysisDetail' && block.detailData) {
+      doc.addPage();
+      recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
+      renderAnalysisDetailSection(doc, block.detailData, prR, prG, prB, lang);
+    } else if (block.type === 'gradingCurves' && block.gradingCurvesData) {
+      doc.addPage();
+      recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
+      renderGradingCurvesSection(doc, block.title, block.gradingCurvesData.analyses, prR, prG, prB, lang);
+    } else if (block.type === 'conformityTable' && block.conformityRows) {
+      doc.addPage();
+      recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
+      renderConformitySection(doc, block.title, block.conformityRows, prR, prG, prB, lang);
+    } else if (block.type === 'usageNote' && block.usageNoteText) {
+      doc.addPage();
+      recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
+      renderUsageNoteSection(doc, block.title, block.usageNoteText, prR, prG, prB, lang);
+    } else if (block.type === 'signatureBlock' && block.signatureChain) {
+      doc.addPage();
+      recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
+      renderSignatureBlockSection(doc, block.title, block.signatureChain, prR, prG, prB, lang);
+    } else if (block.type === 'photoPages' && block.photoPageData) {
+      doc.addPage();
+      recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
+      renderPhotoPageSection(doc, block.title, block.photoPageData, prR, prG, prB, lang);
+    } else if (block.type === 'annexTestSheets' && block.annexAnalyses) {
+      for (let i = 0; i < block.annexAnalyses.length; i++) {
+        const a = block.annexAnalyses[i];
+        const pageBefore = doc.getNumberOfPages() + 1;
+        renderAnalysisSheet(doc, a, {
+          client: model.client,
+          project: model.project,
+          orgProfile: model.organisation,
+          language: lang,
+          isAnnex: true,
+          annexTitle: i === 0 ? block.title : undefined,
+          totalStudyPages,
+        });
+        if (i === 0) {
+          recordBlockPage(block.id, pageBefore);
+        }
+      }
+    } else if (block.type === 'dataQualityNotes' && block.dataQualityNotesText) {
+      doc.addPage();
+      recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
+      renderDataQualityNotesSection(doc, block.title, block.dataQualityNotesText, prR, prG, prB, lang);
+    }
+  }
+
+  return sectionPageMap;
+}
 
 export async function generateStudyPdfReport(
   model: DocumentModel,
@@ -50,131 +162,75 @@ export async function generateStudyPdfReport(
   const pageHeight = 297;
   const margin = 14;
 
+  const tocBlock = model.blocks.find((b) => b.type === 'toc');
+  const tocItems = tocBlock?.tocItems || [];
+  const tocPageCount = calculateTocPageCount(tocItems.length);
+
   // -------------------------------------------------------------
-  // PASS 1: Layout & Page Calculation (determine exact page for each section)
+  // PASS 1: Measured Layout Pass (determine exact real page numbers)
   // -------------------------------------------------------------
-  onProgress?.({ current: 1, total: 4, message: lang === 'fr' ? 'Calcul de la mise en page...' : 'Calculating document layout...' });
+  onProgress?.({ current: 1, total: 4, message: lang === 'fr' ? 'Mesure de la pagination...' : 'Measuring document layout...' });
   await yieldToMain();
 
-  const sectionPageMap: Record<string, number> = {};
-  let simulatedPage = 1; // Page 1: Cover
-  sectionPageMap['cover'] = 1;
+  const doc1 = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  await setupUnicodeFont(doc1);
+  options?.onDocCreated?.(doc1, 1);
 
-  // Page 2: Table of Contents
-  simulatedPage = 2;
-  sectionPageMap['toc'] = 2;
+  // 1. Cover Page (Page 1)
+  renderCoverPage(doc1, model, prR, prG, prB, lang);
 
-  // Simulate subsequent pages
-  for (const block of model.blocks) {
-    if (block.type === 'cover' || block.type === 'toc') continue;
-
-    if (block.type === 'pageBreak') {
-      simulatedPage++;
-      continue;
-    }
-
-    if (block.type === 'annexTestSheets') {
-      sectionPageMap[block.id] = simulatedPage + 1;
-      const count = block.annexAnalyses?.length || 0;
-      simulatedPage += count; // 1 page per test sheet
-      continue;
-    }
-
-    if (block.type === 'photoPages') {
-      simulatedPage++;
-      sectionPageMap[block.id] = simulatedPage;
-      continue;
-    }
-
-    if (block.type === 'analysisDetail') {
-      simulatedPage++;
-      sectionPageMap[block.id] = simulatedPage;
-      continue;
-    }
-
-    // Standard sections: each starts on a new page or continues
-    simulatedPage++;
-    sectionPageMap[block.id] = simulatedPage;
+  // 2. Reserve TOC pages so pagination does not shift between passes
+  for (let i = 0; i < tocPageCount; i++) {
+    doc1.addPage();
   }
 
-  const estimatedTotalPages = simulatedPage;
+  // 3. Render body blocks to measure exact starting page numbers
+  const measuredPageMap = renderStudyDocumentBlocks(
+    doc1,
+    model,
+    prR,
+    prG,
+    prB,
+    lang,
+    0,
+    undefined,
+    true
+  );
+  measuredPageMap['cover'] = 1;
+  measuredPageMap['toc'] = 2;
+  const totalMeasuredPages = doc1.getNumberOfPages();
 
   // -------------------------------------------------------------
-  // PASS 2: Real Document Assembly
+  // PASS 2: Real Document Assembly (with measured TOC numbers)
   // -------------------------------------------------------------
   onProgress?.({ current: 2, total: 4, message: lang === 'fr' ? 'Génération du rapport PDF...' : 'Rendering PDF report...' });
   await yieldToMain();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   await setupUnicodeFont(doc);
+  options?.onDocCreated?.(doc, 2);
 
   // 1. Cover Page (Page 1)
   renderCoverPage(doc, model, prR, prG, prB, lang);
 
-  // 2. Table of Contents (Page 2)
-  doc.addPage();
-  renderTocPage(doc, model, sectionPageMap, prR, prG, prB, lang);
+  // 2. Table of Contents (Page 2 ...)
+  if (tocPageCount > 0) {
+    doc.addPage();
+    renderTocPage(doc, model, measuredPageMap, prR, prG, prB, lang);
+  }
 
   // 3. Body Sections
-  let blockIdx = 0;
-  for (const block of model.blocks) {
-    blockIdx++;
-    if (block.type === 'cover' || block.type === 'toc') continue;
-
-    if (blockIdx % 3 === 0) {
-      onProgress?.({
-        current: 2 + Math.floor((blockIdx / model.blocks.length) * 2),
-        total: 4,
-        message: `${lang === 'fr' ? 'Section :' : 'Section:'} ${block.title}`,
-      });
-      await yieldToMain();
-    }
-
-    if (block.type === 'pageBreak') {
-      doc.addPage();
-      continue;
-    }
-
-    if (block.type === 'narrative' && block.narrativeData) {
-      doc.addPage();
-      renderNarrativeSection(doc, block.narrativeData, prR, prG, prB);
-    } else if (block.type === 'analysisSummaryTable' && block.summaryRows) {
-      doc.addPage();
-      renderSummaryTableSection(doc, block.title, block.summaryRows, prR, prG, prB, lang);
-    } else if (block.type === 'analysisDetail' && block.detailData) {
-      doc.addPage();
-      renderAnalysisDetailSection(doc, block.detailData, prR, prG, prB, lang);
-    } else if (block.type === 'gradingCurves' && block.gradingCurvesData) {
-      doc.addPage();
-      renderGradingCurvesSection(doc, block.title, block.gradingCurvesData.analyses, prR, prG, prB, lang);
-    } else if (block.type === 'conformityTable' && block.conformityRows) {
-      doc.addPage();
-      renderConformitySection(doc, block.title, block.conformityRows, prR, prG, prB, lang);
-    } else if (block.type === 'usageNote' && block.usageNoteText) {
-      doc.addPage();
-      renderUsageNoteSection(doc, block.title, block.usageNoteText, prR, prG, prB, lang);
-    } else if (block.type === 'signatureBlock' && block.signatureChain) {
-      doc.addPage();
-      renderSignatureBlockSection(doc, block.title, block.signatureChain, prR, prG, prB, lang);
-    } else if (block.type === 'photoPages' && block.photoPageData) {
-      doc.addPage();
-      renderPhotoPageSection(doc, block.title, block.photoPageData, prR, prG, prB, lang);
-    } else if (block.type === 'annexTestSheets' && block.annexAnalyses) {
-      for (const a of block.annexAnalyses) {
-        renderAnalysisSheet(doc, a, {
-          client: model.client,
-          project: model.project,
-          orgProfile: model.organisation,
-          language: lang,
-          isAnnex: true,
-          totalStudyPages: estimatedTotalPages,
-        });
-      }
-    } else if (block.type === 'dataQualityNotes' && block.dataQualityNotesText) {
-      doc.addPage();
-      renderDataQualityNotesSection(doc, block.title, block.dataQualityNotesText, prR, prG, prB, lang);
-    }
-  }
+  renderStudyDocumentBlocks(
+    doc,
+    model,
+    prR,
+    prG,
+    prB,
+    lang,
+    totalMeasuredPages,
+    onProgress,
+    false
+  );
 
   // -------------------------------------------------------------
   // PASS 3: Running Furniture (Header Logos, Colored Rules, Footers & Watermark)
@@ -541,7 +597,12 @@ function renderTocPage(
   const tocBlock = model.blocks.find((b) => b.type === 'toc');
   const items = tocBlock?.tocItems || [];
 
-  items.forEach((item) => {
+  items.forEach((item, idx) => {
+    if (idx > 0 && cursorY > 265) {
+      doc.addPage();
+      cursorY = 28;
+    }
+
     const pageNum = sectionPageMap[item.id] || 2;
     const titleText = item.title;
 
@@ -700,6 +761,7 @@ function renderAnalysisDetailSection(
     analysis: any;
     sample?: any;
     testLabel: string;
+    sectionTitle?: string;
     inputs: Array<{ label: string; value: string | number; unit?: string }>;
     results: Array<{ label: string; value: string | number; unit?: string }>;
     chartType?: 'proctor' | 'grain_size';
@@ -713,6 +775,18 @@ function renderAnalysisDetailSection(
   const margin = 14;
   const contentWidth = 210 - margin * 2;
   let cursorY = 28;
+
+  if (detail.sectionTitle) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(prR, prG, prB);
+    doc.text(detail.sectionTitle.toUpperCase(), margin, cursorY);
+    cursorY += 4;
+
+    doc.setFillColor(prR, prG, prB);
+    doc.rect(margin, cursorY, 20, 1, 'F');
+    cursorY += 8;
+  }
 
   // Title
   doc.setFont('helvetica', 'bold');
