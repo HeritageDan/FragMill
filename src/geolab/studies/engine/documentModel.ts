@@ -71,6 +71,7 @@ export interface AnalysisDetailBlockData {
   analysis: GeoLabAnalysis;
   sample?: GeoLabSample;
   testLabel: string;
+  sectionTitle?: string;
   inputs: Array<{ label: string; value: string | number; unit?: string }>;
   results: Array<{ label: string; value: string | number; unit?: string; provenance?: ValueProvenance }>;
   chartType?: 'proctor' | 'grain_size';
@@ -364,6 +365,7 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
 
       case 'analysisDetail': {
         tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+        let isFirstDetail = true;
         for (const a of includedAnalyses) {
           const sample = samples.find((s) => s.id === a.sampleId);
           const detailBlockId = `${sec.id}-${a.id}`;
@@ -408,12 +410,14 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
               analysis: a,
               sample,
               testLabel: testTypeLabels[a.testType]?.[lang] || a.testType,
+              sectionTitle: isFirstDetail ? blockTitle : undefined,
               inputs,
               results,
               chartType: a.testType === 'proctor' || a.testType === 'grain_size' ? a.testType : undefined,
               observations: a.observations || undefined,
             },
           });
+          isFirstDetail = false;
         }
         break;
       }
