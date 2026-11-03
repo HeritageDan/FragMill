@@ -6,7 +6,7 @@ export function generateInputTemplateXlsx(testType: GeoLabTestType, lang: 'en' |
   const testDef = getTestDefinition(testType);
   const wb = xlsx.utils.book_new();
 
-  const titleRow = [`GeoLab - ${testDef.name[lang]} (${testDef.defaultStandard})`];
+  const titleRow = [`FraGeo Lab - ${testDef.name[lang]} (${testDef.defaultStandard})`];
   const blankRow = [''];
   const instructionsRow = [
     lang === 'fr'

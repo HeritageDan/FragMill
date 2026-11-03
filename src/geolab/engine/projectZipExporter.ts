@@ -64,7 +64,7 @@ export async function exportProjectReportsZip(options: ProjectZipExportOptions):
 
   const zipBlob = await zip.generateAsync({ type: 'blob' });
   const sanitizedProjectName = project.projectName.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const filename = `${sanitizedProjectName}_GeoLab_Reports.zip`;
+  const filename = `${sanitizedProjectName}_FraGeo_Lab_Reports.zip`;
 
   return { blob: zipBlob, filename, count: projectAnalyses.length };
 }

@@ -375,7 +375,7 @@ export const DrillHolesManager: React.FC<DrillHolesManagerProps> = ({
                           className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold flex-1 flex items-center justify-center gap-1 shadow-xs transition"
                         >
                           <CheckCircle2 className="w-3 h-3" />
-                          <span>{isFrench ? 'Charger dans FragMill' : 'Load Pattern'}</span>
+                          <span>{isFrench ? 'Charger dans FraGeo Blast' : 'Load Pattern'}</span>
                         </button>
                         <button
                           type="button"

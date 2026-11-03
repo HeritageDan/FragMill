@@ -131,7 +131,7 @@ describe('GeoLab Excel Generator with Native DrawingML Charts', () => {
 
     // Verify SheetJS can read the workbook
     const wb = xlsx.read(new Uint8Array(arrayBuffer), { type: 'array' });
-    expect(wb.SheetNames).toContain('GeoLab Report');
+    expect(wb.SheetNames).toContain('Rapport');
   });
 
   it('generates valid Grain Size Excel workbook with log scale DrawingML chart', async () => {

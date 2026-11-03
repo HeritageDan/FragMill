@@ -310,7 +310,7 @@ export const ReportVaultProvider: React.FC<ReportVaultProviderProps> = ({
         const a = document.createElement('a');
         a.href = url;
         const dateStr = new Date().toISOString().slice(0, 10);
-        a.download = `FRAGMILL_Rapport_Complet_${blast.blastId}_${dateStr}.pdf`;
+        a.download = `FraGeo_Rapport_Complet_${blast.blastId}_${dateStr}.pdf`;
         a.click();
         URL.revokeObjectURL(url);
       } catch (err) {
@@ -355,7 +355,7 @@ export const ReportVaultProvider: React.FC<ReportVaultProviderProps> = ({
         a.href = url;
         const meta = REPORT_SECTIONS_REGISTRY[key];
         const safeName = (meta.tabNameEn || key).replace(/\s+/g, '_');
-        a.download = `FRAGMILL_${safeName}_${blast.blastId}.pdf`;
+        a.download = `FraGeo_${safeName}_${blast.blastId}.pdf`;
         a.click();
         URL.revokeObjectURL(url);
       } catch (err) {

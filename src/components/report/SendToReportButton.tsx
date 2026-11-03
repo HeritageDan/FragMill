@@ -57,7 +57,7 @@ export const SendToReportButton: React.FC<SendToReportButtonProps> = ({
       stageSection(sectionKey, payload, summaryFr, summaryEn);
       const defaultProj: Project = project || {
         id: 'proj-1',
-        name: isFr ? 'Étude FragMill' : 'FragMill Study',
+        name: isFr ? 'Étude FraGeo Blast' : 'FraGeo Blast Study',
         description: 'Complete Mining & Milling Optimization',
         createdAt: Date.now(),
         updatedAt: Date.now(),
