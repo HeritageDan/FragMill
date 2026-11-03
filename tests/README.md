@@ -19,4 +19,3 @@ Both documents are automatically watermarked/footered with:
 `SAMPLE - fictional data`
 
 The `tests/.output/` folder is gitignored to avoid checking large binary artifacts into version control.
-

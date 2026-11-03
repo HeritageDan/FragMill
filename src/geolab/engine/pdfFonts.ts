@@ -72,4 +72,3 @@ export async function setupUnicodeFont(doc: jsPDF): Promise<boolean> {
     return false;
   }
 }
-

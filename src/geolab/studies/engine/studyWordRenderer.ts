@@ -450,7 +450,7 @@ export async function generateStudyDocxReport(
             })
           );
         }
-      } catch { }
+      } catch {}
     } else if (block.type === 'conformityTable' && block.conformityRows) {
       children.push(
         new docx.Table({
