@@ -1151,7 +1151,7 @@ function getCorePropsXml(reportNumber: string, companyName: string): string {
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <dc:title>${escapeXml(reportNumber)} - Geotechnical Test Report</dc:title>
   <dc:creator>${escapeXml(companyName)}</dc:creator>
-  <cp:lastModifiedBy>FraGeo Suite - GeoLab Module</cp:lastModifiedBy>
+  <cp:lastModifiedBy>FraGeo Suite - FraGeo Lab</cp:lastModifiedBy>
   <dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified>
 </cp:coreProperties>`;
@@ -1160,7 +1160,7 @@ function getCorePropsXml(reportNumber: string, companyName: string): string {
 function getAppPropsXml(): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
-  <Application>FraGeo Suite - GeoLab Module</Application>
+  <Application>FraGeo Suite - FraGeo Lab</Application>
   <DocSecurity>0</DocSecurity>
 </Properties>`;
 }
