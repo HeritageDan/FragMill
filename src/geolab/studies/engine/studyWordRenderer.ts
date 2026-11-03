@@ -721,7 +721,7 @@ export async function generateStudyDocxReport(
                 },
                 children: [
                   new docx.TextRun({
-                    text: `${model.project.projectName} • ${model.study.reportNumber || model.study.title}`,
+                    text: `${model.project.projectName} • ${model.study.reportNumber || model.study.title}${model.isSampleDocument ? ' • SAMPLE - fictional data' : ''}`,
                     size: 16,
                     color: '94A3B8',
                   }),

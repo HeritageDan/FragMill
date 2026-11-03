@@ -230,7 +230,8 @@ export async function generateStudyPdfReport(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(148, 163, 184);
-    doc.text(`${model.project.projectName} • ${model.study.reportNumber || model.study.title}`, margin, pageHeight - 7);
+    const sampleSuffix = model.isSampleDocument ? ' • SAMPLE - fictional data' : '';
+    doc.text(`${model.project.projectName} • ${model.study.reportNumber || model.study.title}${sampleSuffix}`, margin, pageHeight - 7);
     doc.text(`Page ${p} / ${totalPages}`, pageWidth - margin, pageHeight - 7, { align: 'right' });
   }
 

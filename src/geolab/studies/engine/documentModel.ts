@@ -128,6 +128,7 @@ export interface DocumentModel {
   language: 'en' | 'fr';
   primaryColor: string;
   isDraftWatermark: boolean;
+  isSampleDocument?: boolean;
   blocks: DocumentBlock[];
 }
 
@@ -141,6 +142,7 @@ export interface BuildDocumentModelParams {
   photos?: StudyPhoto[];
   language?: 'en' | 'fr';
   validateConsistency?: boolean;
+  isSampleDocument?: boolean;
 }
 
 export function buildDocumentModel(params: BuildDocumentModelParams): DocumentModel {
@@ -564,6 +566,7 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
     language: lang,
     primaryColor,
     isDraftWatermark,
+    isSampleDocument: Boolean(params.isSampleDocument),
     blocks,
   };
 }

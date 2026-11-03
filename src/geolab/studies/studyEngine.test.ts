@@ -347,6 +347,7 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
       samples: mockSamples,
       photos: mockPhotos,
       language: 'fr',
+      isSampleDocument: true,
     });
 
     const pdfBlob = await generateStudyPdfReport(model);
@@ -359,9 +360,10 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
     const pageMatches = pdfText.match(/\/Type\s*\/Page\b/g);
     const pageCount = pageMatches ? pageMatches.length : 0;
     expect(pageCount).toBeGreaterThanOrEqual(12);
+    expect(pdfText).toContain('SAMPLE - fictional data');
 
-    // Save sample output files for inspection as required by prompt
-    const outputDir = path.resolve(process.cwd(), 'tests', 'output');
+    // Save sample output files into gitignored tests/.output for inspection
+    const outputDir = path.resolve(process.cwd(), 'tests', '.output');
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
