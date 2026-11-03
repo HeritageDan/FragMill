@@ -810,4 +810,73 @@ describe('FraGeo Lab Studies Engine - Stage 1', () => {
     expect(afterPageCount).toBeLessThan(beforePageCount);
     expect(avgLinesPerPageAfter).toBeGreaterThan(avgLinesPerPageBefore);
   });
+
+  it('13. branding verification: generated Study PDF, Word document, and Test-Sheet PDF contain "FraGeo Lab" and zero "Geolab" or "GeoLab" (Item 0.a)', async () => {
+    const model = buildDocumentModel({
+      study: mockStudy,
+      project: mockProject,
+      client: mockClient,
+      organisation: mockOrg,
+      analyses: mockAnalyses.slice(0, 1),
+      samples: mockSamples.slice(0, 1),
+      language: 'fr',
+    });
+
+    const recordedPdfTexts: string[] = [];
+    await generateStudyPdfReport(model, {
+      onDocCreated: (doc, pass) => {
+        if (pass === 2) {
+          const origText = doc.text.bind(doc);
+          doc.text = function (...args: any[]) {
+            const t = args[0];
+            if (typeof t === 'string') recordedPdfTexts.push(t);
+            else if (Array.isArray(t)) t.forEach((item) => recordedPdfTexts.push(String(item)));
+            return (origText as any)(...args);
+          } as any;
+        }
+      },
+    });
+
+    // 1. Verify Study PDF contains "FraGeo Lab"
+    const allPdfText = recordedPdfTexts.join(' ');
+    expect(allPdfText).toContain('FraGeo Lab');
+    // Fails if standalone "Geolab" or "GeoLab" appears in drawn text
+    expect(allPdfText).not.toMatch(/\bgeolab\b/i);
+
+    // 2. Verify Study Word document contains "FraGeo Lab" and no "Geolab"
+    const docxBlob = await generateStudyDocxReport(model);
+    const zip = await JSZip.loadAsync(await docxBlob.arrayBuffer());
+    const docXml = await zip.file('word/document.xml')!.async('text');
+    let footersXml = '';
+    const footerFiles = Object.keys(zip.files).filter((k) => k.startsWith('word/footer'));
+    for (const f of footerFiles) {
+      footersXml += await zip.file(f)!.async('text');
+    }
+    const combinedWordXml = docXml + ' ' + footersXml;
+    expect(combinedWordXml).toContain('FraGeo Lab');
+    expect(combinedWordXml).not.toMatch(/\bgeolab\b/i);
+
+    // 3. Verify Test-Sheet PDF uses "FraGeo Lab" and no "Geolab"
+    const sheetDoc = new jsPDF();
+    const recordedSheetTexts: string[] = [];
+    const origSheetText = sheetDoc.text.bind(sheetDoc);
+    sheetDoc.text = function (...args: any[]) {
+      const t = args[0];
+      if (typeof t === 'string') recordedSheetTexts.push(t);
+      else if (Array.isArray(t)) t.forEach((item) => recordedSheetTexts.push(String(item)));
+      return (origSheetText as any)(...args);
+    } as any;
+
+    const { renderAnalysisSheet } = await import('../engine/pdfGenerator');
+    renderAnalysisSheet(sheetDoc, mockAnalyses[0], {
+      client: mockClient,
+      project: mockProject,
+      orgProfile: mockOrg,
+      language: 'fr',
+    });
+
+    const allSheetText = recordedSheetTexts.join(' ');
+    expect(allSheetText).toContain('FraGeo Lab');
+    expect(allSheetText).not.toMatch(/\bgeolab\b/i);
+  });
 });

@@ -610,7 +610,7 @@ function renderCoverPage(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(148, 163, 184);
-  doc.text(`${coverData.companyName || 'FraGeo Suite'} • Geolab`, margin, pageHeight - 7);
+  doc.text(`${coverData.companyName || 'FraGeo Suite'} • FraGeo Lab`, margin, pageHeight - 7);
   doc.text(coverData.reportNumber || 'Study Report', pageWidth - margin, pageHeight - 7, { align: 'right' });
 }
 

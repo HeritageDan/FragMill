@@ -302,6 +302,24 @@ describe('FraGeo Lab Studies Engine - Stage 3', () => {
       });
       expect(resSameMat.findings.some((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')).toBe(true);
       expect(resSameMat.findings.find((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')?.severity).toBe('warning');
+
+      // Item 0.b: analyses with no material type (__unspecified__) must NOT be compared with each other
+      const unspecifiedMatAnalyses: GeoLabAnalysis[] = [
+        { ...mockAnalyses[0], id: 'a1', sampleId: 'samp-none-1', rawInput: {}, computedResults: { solidDensityMgM3: 2.50 } },
+        { ...mockAnalyses[0], id: 'a2', sampleId: 'samp-none-2', rawInput: {}, computedResults: { solidDensityMgM3: 2.85 } },
+      ];
+      const resUnspecified = checkStudyConsistency({
+        study: { ...mockStudy, includedAnalysisIds: ['a1', 'a2'] },
+        project: mockProject,
+        organisation: mockOrg,
+        analyses: unspecifiedMatAnalyses,
+        samples: [
+          { id: 'samp-none-1', projectId: mockProject.id, sampleId: 'SN1', materialType: '', samplingDate: '2026-01-01', createdAt: '', updatedAt: '' },
+          { id: 'samp-none-2', projectId: mockProject.id, sampleId: 'SN2', materialType: undefined, samplingDate: '2026-01-01', createdAt: '', updatedAt: '' },
+        ],
+        valueProvenances: { a1: 'measured', a2: 'measured' },
+      });
+      expect(resUnspecified.findings.some((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')).toBe(false);
     });
 
     it('Rule 2: Water content / Proctor consistency', () => {

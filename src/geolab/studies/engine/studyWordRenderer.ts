@@ -237,6 +237,34 @@ export async function generateStudyDocxReport(
       })
     );
 
+    // Cover Page Footer rule and FraGeo Lab branding
+    children.push(
+      new docx.Paragraph({
+        spacing: { before: 240 },
+        border: {
+          top: {
+            color: hexPrimary,
+            space: 4,
+            style: docx.BorderStyle.SINGLE,
+            size: 6,
+          },
+        },
+        children: [
+          new docx.TextRun({
+            text: `${cover.companyName || 'FraGeo Suite'} • FraGeo Lab`,
+            size: 14,
+            color: '94A3B8',
+          }),
+          new docx.TextRun({
+            text: `\t${cover.reportNumber || 'Study Report'}`,
+            size: 14,
+            color: '94A3B8',
+          }),
+        ],
+        tabStops: [{ type: docx.TabStopType.RIGHT, position: docx.convertMillimetersToTwip(174) }],
+      })
+    );
+
     // Page Break after Cover Page
     children.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
   }
@@ -730,7 +758,7 @@ export async function generateStudyDocxReport(
                 },
                 children: [
                   new docx.TextRun({
-                    text: `${model.project.projectName} • ${model.study.reportNumber || model.study.title}${model.isSampleDocument ? ' • SAMPLE - fictional data' : ''}`,
+                    text: `${model.project.projectName} • ${model.study.reportNumber || model.study.title}${model.isSampleDocument ? ' • SAMPLE - fictional data' : ''} • FraGeo Lab`,
                     size: 16,
                     color: '94A3B8',
                   }),

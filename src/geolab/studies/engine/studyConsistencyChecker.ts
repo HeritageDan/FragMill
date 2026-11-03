@@ -84,6 +84,11 @@ export function checkStudyConsistency(params: ConsistencyCheckParams): Consisten
   });
 
   densitiesByMaterial.forEach((items, matKey) => {
+    // Analyses with no material type must NOT be compared with each other; skip them
+    if (matKey === '__unspecified__') {
+      return;
+    }
+
     if (items.length >= 2) {
       const values = items.map((i) => i.density);
       const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
@@ -91,7 +96,7 @@ export function checkStudyConsistency(params: ConsistencyCheckParams): Consisten
       const stdDev = Math.sqrt(variance);
 
       if (stdDev > 0.05) {
-        const matDisplay = matKey === '__unspecified__' ? '' : ` (${matKey})`;
+        const matDisplay = ` (${matKey})`;
         findings.push({
           ruleCode: 'DIVERGENT_SPECIFIC_GRAVITY',
           severity: 'warning',
