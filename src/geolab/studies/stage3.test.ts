@@ -277,14 +277,14 @@ describe('FraGeo Lab Studies Engine - Stage 3', () => {
         { ...mockAnalyses[0], id: 'a1', sampleId: 'samp-1', computedResults: { solidDensityMgM3: 2.50 } },
         { ...mockAnalyses[0], id: 'a2', sampleId: 'samp-2', computedResults: { solidDensityMgM3: 2.85 } },
       ];
-      const resDiffMat = checkStudyConsistency({
-        study: { ...mockStudy, includedAnalysisIds: ['a1', 'a2'] },
-        project: mockProject,
-        organisation: mockOrg,
-        analyses: diffMaterialAnalyses,
-        samples: mockSamples, // samp-1 is 'Graveleux latéritique', samp-2 is 'Sable argileux'
-        valueProvenances: { a1: 'measured', a2: 'measured' },
-      });
+        const resDiffMat = checkStudyConsistency({
+          study: { ...mockStudy, includedAnalysisIds: ['a1', 'a2'] },
+          project: mockProject,
+          organisation: mockOrg,
+          analyses: diffMaterialAnalyses,
+          samples: mockSamples, // samp-1 is 'Graveleux latéritique', samp-2 is 'Sable argileux'
+          valueProvenances: { a1: 'measured', a2: 'measured' },
+        });
       expect(resDiffMat.findings.some((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')).toBe(false);
 
       // Warning: same material with divergent specific gravity (std dev > 0.05) DOES produce a finding
@@ -292,14 +292,14 @@ describe('FraGeo Lab Studies Engine - Stage 3', () => {
         { ...mockAnalyses[0], id: 'a1', sampleId: 'samp-1', computedResults: { solidDensityMgM3: 2.50 } },
         { ...mockAnalyses[0], id: 'a2', sampleId: 'samp-1', computedResults: { solidDensityMgM3: 2.85 } },
       ];
-      const resSameMat = checkStudyConsistency({
-        study: { ...mockStudy, includedAnalysisIds: ['a1', 'a2'] },
-        project: mockProject,
-        organisation: mockOrg,
-        analyses: sameMaterialFail,
-        samples: mockSamples,
-        valueProvenances: { a1: 'measured', a2: 'measured' },
-      });
+        const resSameMat = checkStudyConsistency({
+          study: { ...mockStudy, includedAnalysisIds: ['a1', 'a2'] },
+          project: mockProject,
+          organisation: mockOrg,
+          analyses: sameMaterialFail,
+          samples: mockSamples,
+          valueProvenances: { a1: 'measured', a2: 'measured' },
+        });
       expect(resSameMat.findings.some((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')).toBe(true);
       expect(resSameMat.findings.find((f) => f.ruleCode === 'DIVERGENT_SPECIFIC_GRAVITY')?.severity).toBe('warning');
     });
@@ -325,14 +325,14 @@ describe('FraGeo Lab Studies Engine - Stage 3', () => {
         { ...mockAnalyses[0], id: 'a1', computedResults: { opmMoisturePercent: 11.2 } },
         { ...mockAnalyses[0], id: 'a2', testType: 'water_content', computedResults: { waterContentPercent: 30.0 } },
       ];
-      const resHighDiff = checkStudyConsistency({
-        study: { ...mockStudy, includedAnalysisIds: ['a1', 'a2'] },
-        project: mockProject,
-        organisation: mockOrg,
-        analyses: highDiffAnalyses,
-        samples: mockSamples,
-        valueProvenances: { a1: 'measured', a2: 'measured' },
-      });
+        const resHighDiff = checkStudyConsistency({
+          study: { ...mockStudy, includedAnalysisIds: ['a1', 'a2'] },
+          project: mockProject,
+          organisation: mockOrg,
+          analyses: highDiffAnalyses,
+          samples: mockSamples,
+          valueProvenances: { a1: 'measured', a2: 'measured' },
+        });
       const finding = resHighDiff.findings.find((f) => f.ruleCode === 'PROCTOR_MOISTURE_DIVERGENCE');
       expect(finding).toBeDefined();
       expect(finding?.severity).toBe('info');

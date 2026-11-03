@@ -176,15 +176,6 @@ export function renderAnalysisSheet(
 
   cursorY += 18;
 
-  // Annex Title (when embedded as study report annex)
-  if (ctx.annexTitle) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(prR, prG, prB);
-    doc.text(ctx.annexTitle.toUpperCase(), margin, cursorY + 1.5);
-    cursorY += 6;
-  }
-
   // Title Banner with Form Code
   const formCode = orgProfile.formCodes?.[testDef.id];
   const formCodeText = formCode ? ` [${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${formCode}]` : '';
