@@ -6,8 +6,22 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    host: true,
-    port: 5173,
+    host: '0.0.0.0',
+    port: parseInt(process.env.PORT || '3000', 10),
+    strictPort: false,
+    allowedHosts: true,
+    cors: true,
+  },
+  preview: {
+    host: '0.0.0.0',
+    port: parseInt(process.env.PORT || '8080', 10),
+    strictPort: false,
+    allowedHosts: true,
+    cors: true,
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'dexie', 'dexie-react-hooks'],
+    exclude: ['xlsx', 'docx', 'jspdf'],
   },
   build: {
     chunkSizeWarningLimit: 1000,
