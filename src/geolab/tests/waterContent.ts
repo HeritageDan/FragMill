@@ -301,5 +301,20 @@ export const waterContentTestDefinition: GeoLabTestDefinition<WaterContentInput,
     numberOfSpecimens: results.specimens.length,
     dryingTemperatureC: input.dryingTemperatureC || 105,
   }),
+
+  keyResults: (results: WaterContentResults, lang: 'en' | 'fr') => [
+    {
+      label: lang === 'fr' ? 'Teneur en eau moyenne (w)' : 'Average Moisture Content (w)',
+      value: results.meanWaterContentPercent ?? '-',
+      unit: '%',
+      provenance: 'measured',
+    },
+    {
+      label: lang === 'fr' ? 'Écart entre prises' : 'Difference between specimens',
+      value: results.differenceBetweenSpecimensPercent ?? '-',
+      unit: '%',
+      provenance: 'measured',
+    },
+  ],
 };
 

@@ -301,9 +301,11 @@ export function renderAnalysisSheet(
   } else if (testDef.id === 'grain_size') {
     renderGrainSizePdfSection(doc, analysis as GeoLabAnalysis<GrainSizeInput, GrainSizeResults>, margin, cursorY, contentWidth, lang, prR, prG, prB);
     cursorY += 105;
-  } else {
+  } else if (testDef.id === 'water_content') {
     renderWaterContentPdfSection(doc, analysis as GeoLabAnalysis<WaterContentInput, WaterContentResults>, margin, cursorY, contentWidth, lang, prR, prG, prB);
     cursorY += 75;
+  } else {
+    cursorY = renderGenericTestPdfSection(doc, analysis, testDef, margin, cursorY, contentWidth, lang, prR, prG, prB);
   }
 
   // -------------------------------------------------------------
@@ -931,5 +933,148 @@ function renderWaterContentPdfSection(
 
     tableY += 6;
   });
+}
+
+function renderGenericTestPdfSection(
+  doc: jsPDF,
+  analysis: GeoLabAnalysis,
+  testDef: GeoLabTestDefinition,
+  startX: number,
+  startY: number,
+  totalWidth: number,
+  lang: 'en' | 'fr',
+  prR: number,
+  prG: number,
+  prB: number
+): number {
+  let cursorY = startY;
+
+  // 1. Key Results KPI Box
+  const keyResults = testDef.keyResults ? testDef.keyResults(analysis.computedResults, lang) : [];
+  if (keyResults.length > 0) {
+    const kpiH = Math.max(18, 10 + Math.ceil(keyResults.length / 2) * 6);
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(prR, prG, prB);
+    doc.roundedRect(startX, cursorY, totalWidth, kpiH, 1.5, 1.5, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(prR, prG, prB);
+    doc.text(
+      lang === 'fr' ? 'RÉSULTATS DE L’ESSAI' : 'COMPUTED TEST RESULTS',
+      startX + 4,
+      cursorY + 5
+    );
+
+    let resY = cursorY + 11;
+    keyResults.forEach((kr, idx) => {
+      const colX = startX + 4 + (idx % 2) * (totalWidth / 2);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`${kr.label} :`, colX, resY);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${kr.value}${kr.unit ? ' ' + kr.unit : ''}`, colX + 50, resY);
+
+      if (idx % 2 === 1 || idx === keyResults.length - 1) {
+        resY += 5.5;
+      }
+    });
+
+    cursorY += kpiH + 5;
+  }
+
+  // 2. Input Parameters Box (if parameters exist)
+  const params = testDef.inputSchema?.parameters || [];
+  if (params.length > 0 && analysis.rawInput) {
+    const paramItems: Array<{ label: string; value: string }> = [];
+    params.forEach((p) => {
+      const val = analysis.rawInput[p.key];
+      if (val !== undefined && val !== null && val !== '') {
+        paramItems.push({
+          label: p.label[lang] || p.key,
+          value: `${val}${p.unit ? ' ' + p.unit : ''}`,
+        });
+      }
+    });
+
+    if (paramItems.length > 0) {
+      const pH = Math.max(14, 8 + Math.ceil(paramItems.length / 2) * 5);
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(startX, cursorY, totalWidth, pH, 1, 1, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(prR, prG, prB);
+      doc.text(lang === 'fr' ? 'PARAMÈTRES D’ESSAI' : 'TEST PARAMETERS', startX + 3, cursorY + 4);
+
+      let py = cursorY + 9;
+      paramItems.forEach((pi, idx) => {
+        const colX = startX + 4 + (idx % 2) * (totalWidth / 2);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`${pi.label} :`, colX, py);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.setTextColor(15, 23, 42);
+        doc.text(pi.value, colX + 48, py);
+
+        if (idx % 2 === 1 || idx === paramItems.length - 1) {
+          py += 5;
+        }
+      });
+
+      cursorY += pH + 5;
+    }
+  }
+
+  // 3. Raw Data Table (if schema table defined)
+  const tableDef = testDef.inputSchema?.table;
+  const tableData = tableDef ? analysis.rawInput?.[tableDef.key] : null;
+  if (tableDef && Array.isArray(tableData) && tableData.length > 0) {
+    const cols = tableDef.columns || [];
+    const colW = totalWidth / Math.max(1, cols.length);
+
+    // Header
+    doc.setFillColor(prR, prG, prB);
+    doc.rect(startX, cursorY, totalWidth, 6, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+    cols.forEach((c, idx) => {
+      doc.text(c.label[lang] || c.key, startX + idx * colW + 2, cursorY + 4);
+    });
+
+    cursorY += 6;
+
+    // Rows
+    tableData.forEach((row, rIdx) => {
+      doc.setFillColor(rIdx % 2 === 0 ? 255 : 248, rIdx % 2 === 0 ? 255 : 250, rIdx % 2 === 0 ? 255 : 252);
+      doc.rect(startX, cursorY, totalWidth, 5.5, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.line(startX, cursorY + 5.5, startX + totalWidth, cursorY + 5.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(15, 23, 42);
+      cols.forEach((c, cIdx) => {
+        const val = row[c.key];
+        const valStr = val !== undefined && val !== null ? String(val) : '-';
+        doc.text(valStr, startX + cIdx * colW + 2, cursorY + 3.8);
+      });
+
+      cursorY += 5.5;
+    });
+
+    cursorY += 4;
+  }
+
+  return cursorY;
 }
 

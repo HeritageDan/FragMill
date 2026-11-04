@@ -63,7 +63,19 @@ export const characterisationSoilsTemplate: StudyTemplate = {
     en: 'Comprehensive geotechnical characterisation report with summary tables, grading envelopes, Proctor curves, conformity assessment, and test certificates.',
     fr: 'Rapport complet de caractérisation géotechnique avec tableaux récapitulatifs, fuseaux granulométriques, courbes Proctor, conformité et procès-verbaux.',
   },
-  acceptedAnalysisTypes: ['proctor', 'grain_size', 'water_content'],
+  acceptedAnalysisTypes: [
+    'proctor',
+    'grain_size',
+    'water_content',
+    'specific_gravity',
+    'bulk_density',
+    'sand_equivalent',
+    'los_angeles',
+    'micro_deval',
+    'flakiness',
+    'surface_cleanliness',
+    'methylene_blue',
+  ],
   sections: [
     {
       type: 'cover',

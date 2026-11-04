@@ -480,41 +480,54 @@ export async function generateStudyDocxReport(
         }
       } catch {}
     } else if (block.type === 'conformityTable' && block.conformityRows) {
-      children.push(
-        new docx.Table({
-          width: { size: 100, type: docx.WidthType.PERCENTAGE },
-          rows: [
-            new docx.TableRow({
-              children: [
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Échantillon' : 'Sample', run: { bold: true, color: 'FFFFFF' } })] }),
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Paramètre' : 'Parameter', run: { bold: true, color: 'FFFFFF' } })] }),
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Valeur mesurée' : 'Measured', run: { bold: true, color: 'FFFFFF' } })] }),
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Spécification' : 'Specification', run: { bold: true, color: 'FFFFFF' } })] }),
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Statut' : 'Status', run: { bold: true, color: 'FFFFFF' } })] }),
-              ],
-            }),
-            ...block.conformityRows.map((r) =>
+      if (block.conformityRows.length === 0) {
+        children.push(
+          new docx.Paragraph({
+            text:
+              lang === 'fr'
+                ? 'Aucune spécification technique de conformité définie pour ce projet.'
+                : 'No technical conformity specifications defined for this project.',
+            spacing: { after: 200 },
+            run: { italics: true, color: '64748B', size: 18 },
+          })
+        );
+      } else {
+        children.push(
+          new docx.Table({
+            width: { size: 100, type: docx.WidthType.PERCENTAGE },
+            rows: [
               new docx.TableRow({
                 children: [
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: r.sampleId })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: r.parameter })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: String(r.measured) })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: r.specification })] }),
-                  new docx.TableCell({
-                    shading: { fill: r.status === 'conform' ? 'DCFCE7' : 'FEE2E2' },
-                    children: [
-                      new docx.Paragraph({
-                        text: r.status === 'conform' ? (lang === 'fr' ? 'CONFORME' : 'CONFORMING') : (lang === 'fr' ? 'NON CONFORME' : 'NON-CONFORMING'),
-                        run: { bold: true, color: r.status === 'conform' ? '15803D' : 'B91C1C' },
-                      }),
-                    ],
-                  }),
+                  new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Échantillon' : 'Sample', run: { bold: true, color: 'FFFFFF' } })] }),
+                  new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Paramètre' : 'Parameter', run: { bold: true, color: 'FFFFFF' } })] }),
+                  new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Valeur mesurée' : 'Measured', run: { bold: true, color: 'FFFFFF' } })] }),
+                  new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Spécification' : 'Specification', run: { bold: true, color: 'FFFFFF' } })] }),
+                  new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Statut' : 'Status', run: { bold: true, color: 'FFFFFF' } })] }),
                 ],
-              })
-            ),
-          ],
-        })
-      );
+              }),
+              ...block.conformityRows.map((r) =>
+                new docx.TableRow({
+                  children: [
+                    new docx.TableCell({ children: [new docx.Paragraph({ text: r.sampleId })] }),
+                    new docx.TableCell({ children: [new docx.Paragraph({ text: r.parameter })] }),
+                    new docx.TableCell({ children: [new docx.Paragraph({ text: String(r.measured) })] }),
+                    new docx.TableCell({ children: [new docx.Paragraph({ text: r.specification })] }),
+                    new docx.TableCell({
+                      shading: { fill: r.status === 'conform' ? 'DCFCE7' : 'FEE2E2' },
+                      children: [
+                        new docx.Paragraph({
+                          text: r.status === 'conform' ? (lang === 'fr' ? 'CONFORME' : 'CONFORMING') : (lang === 'fr' ? 'NON CONFORME' : 'NON-CONFORMING'),
+                          run: { bold: true, color: r.status === 'conform' ? '15803D' : 'B91C1C' },
+                        }),
+                      ],
+                    }),
+                  ],
+                })
+              ),
+            ],
+          })
+        );
+      }
     } else if (block.type === 'usageNote' && block.usageNoteText) {
       children.push(
         new docx.Table({

@@ -4,7 +4,7 @@ import { proctorTestDefinition } from './proctor';
 import { grainSizeTestDefinition } from './grainSize';
 import { waterContentTestDefinition } from './waterContent';
 
-export const GEOLAB_TESTS_REGISTRY: Record<GeoLabTestType, GeoLabTestDefinition> = {
+export const GEOLAB_TESTS_REGISTRY: Partial<Record<GeoLabTestType, GeoLabTestDefinition>> = {
   proctor: proctorTestDefinition,
   grain_size: grainSizeTestDefinition,
   water_content: waterContentTestDefinition,

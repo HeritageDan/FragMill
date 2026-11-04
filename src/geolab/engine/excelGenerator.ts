@@ -8,6 +8,7 @@ import type {
   AnalysisRevision,
 } from '../../types/geolab';
 import type { GeoLabTestDefinition } from '../tests/types';
+import { getTestDefinition } from '../tests/index';
 import type { ProctorInput, ProctorResults, ProctorFitMethod } from '../tests/proctor';
 import type { GrainSizeInput, GrainSizeResults } from '../tests/grainSize';
 import type { WaterContentInput, WaterContentResults } from '../tests/waterContent';
@@ -182,7 +183,10 @@ function buildTestSheetAndChart(
   if (testType === 'grain_size') {
     return buildGrainSizeSheet(analysis, client, project, sample, org, lang, watermark);
   }
-  return buildWaterContentSheet(analysis, client, project, sample, org, lang, watermark);
+  if (testType === 'water_content') {
+    return buildWaterContentSheet(analysis, client, project, sample, org, lang, watermark);
+  }
+  return buildGenericSheet(analysis, client, project, sample, org, lang, watermark);
 }
 
 // -------------------------------------------------------------
@@ -962,6 +966,173 @@ function buildWaterContentSheet(
     ${rowsXml}
   </sheetData>
   <pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/>
+  <drawing r:id="rId1"/>
+</worksheet>`;
+
+  return { sheetXml, chartXml: null, hasChart: false };
+}
+
+// -------------------------------------------------------------
+// GENERIC TEST EXCEL (DATA-DRIVEN)
+// -------------------------------------------------------------
+function buildGenericSheet(
+  analysis: GeoLabAnalysis,
+  client: GeoLabClient,
+  project: GeoLabProject,
+  sample: GeoLabSample,
+  org: OrganisationProfile,
+  lang: 'en' | 'fr',
+  watermark: string
+) {
+  const testDef = getTestDefinition(analysis.testType);
+  const formCode = (org.formCodes as any)?.[analysis.testType] || 'LAB-FOR-GEN';
+  const accreditationLabel = org.accreditationNumber?.trim()
+    ? `${lang === 'fr' ? "N° d'agrément / d'accréditation : " : 'Agrément / Accreditation no.: '}${escapeXml(org.accreditationNumber)}`
+    : '';
+
+  let rowsXml = '';
+  // Row 1: Org Header
+  rowsXml += `<row r="1" ht="28">
+    <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
+    ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
+  </row>`;
+
+  // Row 2: Document Title & Form Code
+  const titleText = (testDef.name[lang] || testDef.name.en).toUpperCase();
+  rowsXml += `<row r="2" ht="24">
+    <c r="A2" t="inlineStr" s="3"><is><t>${escapeXml(titleText)} - ${escapeXml(analysis.standard)}</t></is></c>
+    <c r="G2" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
+  </row>`;
+
+  // Row 3: Meta & Watermark
+  rowsXml += `<row r="3">
+    <c r="A3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'N° Rapport :' : 'Report No:'} ${escapeXml(analysis.reportNumber)} (v${analysis.version})</t></is></c>
+    <c r="D3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'Date :' : 'Date:'} ${escapeXml(analysis.testedDate)}</t></is></c>
+    ${watermark ? `<c r="G3" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
+  </row>
+  <row r="4"/>
+  <row r="5">
+    <c r="A5" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Client :' : 'Client:'}</t></is></c>
+    <c r="B5" t="inlineStr"><is><t>${escapeXml(client.companyName)}</t></is></c>
+    <c r="D5" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Échantillon :' : 'Sample ID:'}</t></is></c>
+    <c r="E5" t="inlineStr"><is><t>${escapeXml(sample.sampleId)}</t></is></c>
+  </row>
+  <row r="6">
+    <c r="A6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Projet :' : 'Project:'}</t></is></c>
+    <c r="B6" t="inlineStr"><is><t>${escapeXml(project.programmeTitle || project.programme ? `${project.projectName} / ${project.programmeTitle || project.programme}` : project.projectName)}</t></is></c>
+    <c r="D6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Matériau :' : 'Material:'}</t></is></c>
+    <c r="E6" t="inlineStr"><is><t>${escapeXml(sample.materialType || '-')}</t></is></c>
+  </row>
+  <row r="7">
+    <c r="A7" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Site / Lieu :' : 'Site Location:'}</t></is></c>
+    <c r="B7" t="inlineStr"><is><t>${escapeXml(project.siteLocation)}</t></is></c>
+    <c r="D7" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Marché / Lot :' : 'Contract / Lot:'}</t></is></c>
+    <c r="E7" t="inlineStr"><is><t>${escapeXml(project.contractNumber || project.referenceNumber || '-')}${project.lotSection ? ` / ${escapeXml(project.lotSection)}` : ''}</t></is></c>
+  </row>`;
+
+  let curRow = 8;
+
+  // Parameters Section
+  if (testDef.inputSchema.parameters && testDef.inputSchema.parameters.length > 0) {
+    curRow++;
+    rowsXml += `<row r="${curRow}">
+      <c r="A${curRow}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'PARAMÈTRES D\'ESSAI' : 'TEST PARAMETERS'}</t></is></c>
+    </row>`;
+    for (const param of testDef.inputSchema.parameters) {
+      curRow++;
+      const val = (analysis.rawInput as any)?.[param.key] ?? param.defaultValue ?? '';
+      rowsXml += `<row r="${curRow}">
+        <c r="A${curRow}" t="inlineStr" s="6"><is><t>${escapeXml(param.label[lang] || param.label.en)}</t></is></c>
+        <c r="B${curRow}" ${typeof val === 'number' ? `s="7"><v>${val}</v>` : `t="inlineStr"><is><t>${escapeXml(val)}</t></is>`}</c>
+        ${param.unit ? `<c r="C${curRow}" t="inlineStr"><is><t>${escapeXml(param.unit)}</t></is></c>` : ''}
+      </row>`;
+    }
+  }
+
+  // Data Table Section
+  if (testDef.inputSchema.table) {
+    const tableDef = testDef.inputSchema.table;
+    const tableRows = ((analysis.rawInput as any)?.[tableDef.key] as any[]) || [];
+    curRow += 2;
+    rowsXml += `<row r="${curRow}">
+      <c r="A${curRow}" t="inlineStr" s="8"><is><t>${escapeXml((tableDef.label[lang] || tableDef.label.en).toUpperCase())}</t></is></c>
+    </row>`;
+    curRow++;
+    const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    rowsXml += `<row r="${curRow}" ht="20">`;
+    tableDef.columns.forEach((col, idx) => {
+      const colLetter = colLetters[idx] || 'A';
+      const colTitle = `${col.label[lang] || col.label.en}${col.unit ? ` (${col.unit})` : ''}`;
+      rowsXml += `<c r="${colLetter}${curRow}" t="inlineStr" s="8"><is><t>${escapeXml(colTitle)}</t></is></c>`;
+    });
+    rowsXml += `</row>`;
+
+    tableRows.forEach((rowObj) => {
+      curRow++;
+      rowsXml += `<row r="${curRow}">`;
+      tableDef.columns.forEach((col, idx) => {
+        const colLetter = colLetters[idx] || 'A';
+        const val = rowObj[col.key];
+        if (typeof val === 'number') {
+          rowsXml += `<c r="${colLetter}${curRow}" s="7"><v>${val}</v></c>`;
+        } else {
+          rowsXml += `<c r="${colLetter}${curRow}" t="inlineStr"><is><t>${escapeXml(val ?? '')}</t></is></c>`;
+        }
+      });
+      rowsXml += `</row>`;
+    });
+  }
+
+  // Key Results Section
+  if (analysis.computedResults) {
+    curRow += 2;
+    rowsXml += `<row r="${curRow}">
+      <c r="A${curRow}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'RÉSULTATS DE L\'ESSAI' : 'TEST RESULTS'}</t></is></c>
+    </row>`;
+    const keyRes = testDef.keyResults(analysis.computedResults, lang);
+    keyRes.forEach((res) => {
+      curRow++;
+      rowsXml += `<row r="${curRow}">
+        <c r="A${curRow}" t="inlineStr" s="6"><is><t>${escapeXml(res.label)}</t></is></c>
+        <c r="B${curRow}" ${typeof res.value === 'number' ? `s="7"><v>${res.value}</v>` : `t="inlineStr"><is><t>${escapeXml(res.value)}</t></is>`}</c>
+        ${res.unit ? `<c r="C${curRow}" t="inlineStr"><is><t>${escapeXml(res.unit)}</t></is></c>` : ''}
+      </row>`;
+    });
+  }
+
+  // Revision Table
+  curRow += 2;
+  const { xml: revXml, nextRow: afterRevRow } = buildRevisionTableRows(analysis, lang, curRow);
+  rowsXml += revXml;
+
+  // Observations / Signatures
+  const obsRow = afterRevRow + 1;
+  rowsXml += `
+  <row r="${obsRow}">
+    <c r="A${obsRow}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Observations :' : 'Observations:'}</t></is></c>
+    <c r="B${obsRow}" t="inlineStr"><is><t>${escapeXml(analysis.observations || analysis.aiNarrative || (lang === 'fr' ? 'Conforme aux exigences normatives.' : 'Complies with standard requirements.'))}</t></is></c>
+  </row>`;
+
+  rowsXml += buildSignaturesRows(analysis, org, lang, obsRow + 2);
+
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetPr>
+    <pageSetUpPr fitToPage="1"/>
+  </sheetPr>
+  <cols>
+    <col min="1" max="1" width="32" customWidth="1"/>
+    <col min="2" max="2" width="22" customWidth="1"/>
+    <col min="3" max="3" width="20" customWidth="1"/>
+    <col min="4" max="4" width="22" customWidth="1"/>
+    <col min="5" max="5" width="22" customWidth="1"/>
+    <col min="6" max="6" width="20" customWidth="1"/>
+    <col min="7" max="7" width="24" customWidth="1"/>
+  </cols>
+  <sheetData>
+    ${rowsXml}
+  </sheetData>
+  <pageSetup orientation="portrait" paperSize="9" fitToWidth="1" fitToHeight="0"/>
   <drawing r:id="rId1"/>
 </worksheet>`;
 

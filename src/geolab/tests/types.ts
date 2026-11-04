@@ -3,7 +3,15 @@ import type {
   StandardBody,
   QualityWarning,
   ReportBlockDefinition,
+  ValueProvenance,
 } from '../../types/geolab';
+
+export interface KeyResultItem {
+  label: string;
+  value: string | number;
+  unit?: string;
+  provenance?: ValueProvenance;
+}
 
 export interface FormFieldDefinition {
   key: string;
@@ -65,5 +73,6 @@ export interface GeoLabTestDefinition<TInput = any, TResults = any> {
   specLimits?: any;
   reportLayout: ReportBlockDefinition[];
   aiPromptContext: (input: TInput, results: TResults) => Record<string, any>;
+  keyResults: (results: TResults, lang: 'en' | 'fr') => KeyResultItem[];
 }
 

@@ -1050,6 +1050,20 @@ function renderConformitySection(
   doc.rect(margin, cursorY, 20, 1, 'F');
   cursorY += 10;
 
+  if (rows.length === 0) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      lang === 'fr'
+        ? 'Aucune spécification technique de conformité définie pour ce projet.'
+        : 'No technical conformity specifications defined for this project.',
+      margin,
+      cursorY
+    );
+    return cursorY + 8;
+  }
+
   drawConformityTableHeader(doc, margin, contentWidth, cursorY, prR, prG, prB, lang);
   cursorY += 6;
 

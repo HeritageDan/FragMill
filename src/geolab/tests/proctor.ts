@@ -655,4 +655,25 @@ export const proctorTestDefinition: GeoLabTestDefinition<ProctorInput, ProctorRe
       compactionPercent: p.compactionPercentOfOpm,
     })),
   }),
+
+  keyResults: (results: ProctorResults, lang: 'en' | 'fr') => [
+    {
+      label: lang === 'fr' ? 'Teneur en eau optimum (w_opm)' : 'Optimum Moisture Content (w_opm)',
+      value: results.opmMoisturePercent ?? '-',
+      unit: '%',
+      provenance: 'measured',
+    },
+    {
+      label: lang === 'fr' ? 'Masse volumique sèche max (ρd_opm)' : 'Maximum Dry Density (ρd_opm)',
+      value: results.maxDryDensityGcm3 ?? '-',
+      unit: 'g/cm³',
+      provenance: 'measured',
+    },
+    {
+      label: lang === 'fr' ? 'Densité à 95% OPM' : '95% OPM Dry Density',
+      value: results.targetDryDensityGcm3 ?? '-',
+      unit: 'g/cm³',
+      provenance: 'measured',
+    },
+  ],
 };

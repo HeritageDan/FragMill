@@ -1,6 +1,17 @@
 export type GeoLabModule = 'fragmill' | 'geolab';
 
-export type GeoLabTestType = 'proctor' | 'grain_size' | 'water_content';
+export type GeoLabTestType =
+  | 'proctor'
+  | 'grain_size'
+  | 'water_content'
+  | 'specific_gravity'
+  | 'bulk_density'
+  | 'sand_equivalent'
+  | 'los_angeles'
+  | 'micro_deval'
+  | 'flakiness'
+  | 'surface_cleanliness'
+  | 'methylene_blue';
 
 export type AnalysisStatus = 'draft' | 'checked' | 'approved';
 
@@ -79,6 +90,7 @@ export interface GeoLabClient {
   taxRegistrationNumber?: string;
   isArchived: boolean;
   isDemo?: boolean;
+  specLimits?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
@@ -100,6 +112,7 @@ export interface GeoLabProject {
   startDate: string;
   isArchived: boolean;
   isDemo?: boolean;
+  specLimits?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }

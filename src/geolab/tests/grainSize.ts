@@ -488,4 +488,30 @@ export const grainSizeTestDefinition: GeoLabTestDefinition<GrainSizeInput, Grain
     uscsClassification: results.uscsClassification,
     isConformEnvelope: results.isConformEnvelope,
   }),
+
+  keyResults: (results: GrainSizeResults, lang: 'en' | 'fr') => [
+    {
+      label: lang === 'fr' ? 'Diamètre effectif (D60)' : 'Effective Diameter (D60)',
+      value: results.d60Mm ?? '-',
+      unit: 'mm',
+      provenance: 'measured',
+    },
+    {
+      label: lang === 'fr' ? 'Passant à 2 mm (Sable)' : 'Passing 2 mm (Sand)',
+      value: results.passing2mmPercent ?? '-',
+      unit: '%',
+      provenance: 'measured',
+    },
+    {
+      label: lang === 'fr' ? 'Passant à 0,08 mm (Fines)' : 'Passing 0.08 mm (Fines)',
+      value: results.passing008mmPercent ?? '-',
+      unit: '%',
+      provenance: 'measured',
+    },
+    {
+      label: lang === 'fr' ? 'Classification LCPC' : 'LCPC Classification',
+      value: results.lcpcClassification ?? '-',
+      provenance: 'measured',
+    },
+  ],
 };

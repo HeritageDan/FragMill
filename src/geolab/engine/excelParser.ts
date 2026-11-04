@@ -1,5 +1,6 @@
 import * as xlsx from 'xlsx';
 import type { GeoLabTestType, QualityWarning } from '../../types/geolab';
+import type { GeoLabTestDefinition } from '../tests/types';
 import { getTestDefinition } from '../tests/index';
 
 export interface CellValidationError {
@@ -98,6 +99,8 @@ export async function parseAndValidateUploadedExcel(
     rawInput = parseGrainSizeSheet(ws, targetSheetName, errors);
   } else if (testType === 'water_content') {
     rawInput = parseWaterContentSheet(ws, targetSheetName, errors);
+  } else {
+    rawInput = parseGenericSheet(ws, targetSheetName, testDef, errors);
   }
 
   if (errors.length > 0 || !rawInput) {
@@ -467,3 +470,184 @@ function parseWaterContentSheet(ws: xlsx.WorkSheet, sheetName: string, errors: C
     specimens,
   };
 }
+
+function parseGenericSheet(
+  ws: xlsx.WorkSheet,
+  sheetName: string,
+  testDef: GeoLabTestDefinition,
+  errors: CellValidationError[]
+): any {
+  const data = xlsx.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '' });
+  const rawInput: Record<string, any> = {};
+
+  // 1. Parse parameters
+  for (const param of testDef.inputSchema.parameters) {
+    let found = false;
+    const labelEn = (param.label.en || '').toLowerCase().trim();
+    const labelFr = (param.label.fr || '').toLowerCase().trim();
+    const key = param.key.toLowerCase().trim();
+
+    for (let r = 0; r < Math.min(data.length, 30); r++) {
+      const row = data[r];
+      if (!row || row.length === 0) continue;
+      const cellText = String(row[0] || '').toLowerCase().trim();
+      if (!cellText) continue;
+
+      if (
+        cellText === labelEn ||
+        cellText === labelFr ||
+        cellText === key ||
+        (labelEn.length > 4 && cellText.includes(labelEn)) ||
+        (labelFr.length > 4 && cellText.includes(labelFr))
+      ) {
+        const val = row[1];
+        if (param.type === 'number') {
+          const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+          if (!isNaN(num)) {
+            rawInput[param.key] = num;
+            found = true;
+          }
+        } else {
+          if (val !== undefined && val !== null && String(val).trim() !== '') {
+            rawInput[param.key] = String(val).trim();
+            found = true;
+          }
+        }
+        if (found) break;
+      }
+    }
+
+    if (!found) {
+      if (param.defaultValue !== undefined) {
+        rawInput[param.key] = param.defaultValue;
+      } else if (param.required) {
+        errors.push({
+          sheet: sheetName,
+          cell: 'A5',
+          message: {
+            en: `Missing required parameter: ${param.label.en}`,
+            fr: `Paramètre obligatoire manquant : ${param.label.fr}`,
+          },
+        });
+      }
+    }
+  }
+
+  // 2. Parse table if defined
+  if (testDef.inputSchema.table) {
+    const tableDef = testDef.inputSchema.table;
+    const tableKey = tableDef.key;
+    const columns = tableDef.columns;
+    let tableHeaderIdx = -1;
+
+    // Search for table header row
+    for (let r = 0; r < data.length; r++) {
+      const row = data[r];
+      if (!row || row.length < columns.length) continue;
+      let matchCount = 0;
+      for (let c = 0; c < columns.length; c++) {
+        const col = columns[c];
+        const colText = String(row[c] || '').toLowerCase().trim();
+        const en = (col.label.en || '').toLowerCase().trim();
+        const fr = (col.label.fr || '').toLowerCase().trim();
+        const k = col.key.toLowerCase().trim();
+        if (colText.includes(en) || colText.includes(fr) || colText.includes(k)) {
+          matchCount++;
+        }
+      }
+      if (matchCount >= Math.min(2, columns.length)) {
+        tableHeaderIdx = r;
+        break;
+      }
+    }
+
+    // Fallback: search for table label row
+    if (tableHeaderIdx === -1) {
+      const labelEn = (tableDef.label.en || '').toLowerCase().trim();
+      const labelFr = (tableDef.label.fr || '').toLowerCase().trim();
+      for (let r = 0; r < data.length; r++) {
+        const firstCell = String(data[r]?.[0] || '').toLowerCase().trim();
+        if (firstCell && (firstCell.includes(labelEn) || firstCell.includes(labelFr))) {
+          if (r + 1 < data.length) {
+            tableHeaderIdx = r + 1;
+            break;
+          }
+        }
+      }
+    }
+
+    if (tableHeaderIdx === -1) {
+      errors.push({
+        sheet: sheetName,
+        cell: 'A10',
+        message: {
+          en: `Could not locate data table header: ${tableDef.label.en}`,
+          fr: `En-tête du tableau de données introuvable : ${tableDef.label.fr}`,
+        },
+      });
+      return null;
+    }
+
+    const rows: any[] = [];
+    for (let r = tableHeaderIdx + 1; r < data.length; r++) {
+      const row = data[r];
+      if (!row || row.length === 0) continue;
+      const nonEmpty = row.some((c: any) => c !== '' && c !== null && c !== undefined);
+      if (!nonEmpty) continue;
+
+      const firstCell = String(row[0] || '').trim();
+      if (
+        firstCell.startsWith('---') ||
+        firstCell.toLowerCase().includes('historique') ||
+        firstCell.toLowerCase().includes('revision')
+      ) {
+        break;
+      }
+
+      const rowObj: Record<string, any> = {};
+      let hasData = false;
+
+      for (let c = 0; c < columns.length; c++) {
+        const col = columns[c];
+        const val = row[c];
+        if (col.type === 'number') {
+          const num = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+          if (!isNaN(num)) {
+            rowObj[col.key] = num;
+            hasData = true;
+          } else if (col.defaultValue !== undefined) {
+            rowObj[col.key] = col.defaultValue;
+          }
+        } else {
+          if (val !== undefined && val !== null && String(val).trim() !== '') {
+            rowObj[col.key] = String(val).trim();
+            hasData = true;
+          } else if (col.defaultValue !== undefined) {
+            rowObj[col.key] = col.defaultValue;
+          }
+        }
+      }
+
+      if (hasData) {
+        rows.push(rowObj);
+      }
+    }
+
+    if (rows.length < tableDef.minRows) {
+      errors.push({
+        sheet: sheetName,
+        cell: `A${tableHeaderIdx + 2}`,
+        message: {
+          en: `Found fewer than required minimum rows (${rows.length} < ${tableDef.minRows}) in ${tableDef.label.en}.`,
+          fr: `Moins de lignes que le minimum requis (${rows.length} < ${tableDef.minRows}) dans ${tableDef.label.fr}.`,
+        },
+      });
+      return null;
+    }
+
+    rawInput[tableKey] = rows;
+  }
+
+  return rawInput;
+}
+

@@ -16,6 +16,7 @@ import type {
 import { getStudyTemplate } from '../templates';
 import { DEFAULT_NARRATIVES } from '../templates/characterisationSoils';
 import { checkStudyConsistency } from './studyConsistencyChecker';
+import { getTestDefinition } from '../../tests/index';
 
 export interface CoverBlockData {
   bilingualHeader?: { col1Text: string; col2Text: string };
@@ -227,25 +228,30 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
 
   // Helper to extract key results for summary table
   const getKeyResultsText = (a: GeoLabAnalysis): string => {
-    if (a.testType === 'proctor' && a.computedResults) {
-      const res = a.computedResults;
-      return `w_opm = ${res.opmMoisturePercent ?? '-'} %, ρd_opm = ${res.maxDryDensityGcm3 ?? '-'} g/cm³`;
-    }
-    if (a.testType === 'grain_size' && a.computedResults) {
-      const res = a.computedResults;
-      return `Dmax = ${res.dMaxMm ?? '-'} mm, < 0.063mm = ${res.finesPercent ?? '-'} %, LCPC = ${res.lcpcClassification ?? '-'}`;
-    }
-    if (a.testType === 'water_content' && a.computedResults) {
-      const res = a.computedResults;
-      return `w = ${res.averageWaterContentPercent ?? '-'} %`;
+    if (!a.computedResults) return '-';
+    try {
+      const def = getTestDefinition(a.testType);
+      if (def?.keyResults) {
+        const items = def.keyResults(a.computedResults, lang);
+        if (items && items.length > 0) {
+          return items
+            .map((item) => `${item.label} : ${item.value}${item.unit ? ' ' + item.unit : ''}`)
+            .join(' | ');
+        }
+      }
+    } catch {
+      // fallback
     }
     return '-';
   };
 
-  const testTypeLabels: Record<GeoLabTestType, { en: string; fr: string }> = {
-    proctor: { en: 'Proctor Compaction', fr: 'Compactage Proctor' },
-    grain_size: { en: 'Particle Size Distribution', fr: 'Analyse granulométrique' },
-    water_content: { en: 'Water Content', fr: 'Teneur en eau' },
+  const getTestLabel = (testType: GeoLabTestType): string => {
+    try {
+      const def = getTestDefinition(testType);
+      return def?.name?.[lang] || testType;
+    } catch {
+      return testType;
+    }
   };
 
   // Process enabled sections in order
@@ -346,7 +352,7 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
             analysisId: a.id,
             sampleId: sample?.sampleId || a.sampleId || '-',
             testType: a.testType,
-            testLabel: testTypeLabels[a.testType]?.[lang] || a.testType,
+            testLabel: getTestLabel(a.testType),
             standard: a.standard || '-',
             testedDate: a.testedDate || a.createdAt || '-',
             keyResultsText: getKeyResultsText(a),
@@ -369,37 +375,33 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
         for (const a of includedAnalyses) {
           const sample = samples.find((s) => s.id === a.sampleId);
           const detailBlockId = `${sec.id}-${a.id}`;
-          const itemTitle = `${testTypeLabels[a.testType]?.[lang] || a.testType} - ${sample?.sampleId || a.sampleId}`;
+          let def: any;
+          try {
+            def = getTestDefinition(a.testType);
+          } catch {
+            // fallback
+          }
+
+          const testLabel = def?.name?.[lang] || getTestLabel(a.testType);
+          const itemTitle = `${testLabel} - ${sample?.sampleId || a.sampleId}`;
 
           const inputs: Array<{ label: string; value: string | number; unit?: string }> = [];
-          const results: Array<{ label: string; value: string | number; unit?: string; provenance?: ValueProvenance }> = [];
+          if (def?.inputSchema?.parameters && a.rawInput) {
+            for (const p of def.inputSchema.parameters) {
+              const val = a.rawInput[p.key];
+              if (val !== undefined && val !== null && val !== '') {
+                inputs.push({
+                  label: p.label?.[lang] || p.key,
+                  value: val,
+                  unit: p.unit,
+                });
+              }
+            }
+          }
 
-          if (a.testType === 'proctor' && a.computedResults) {
-            const res = a.computedResults;
-            inputs.push(
-              { label: lang === 'fr' ? 'Volume du moule' : 'Mold Volume', value: a.rawInput?.moldVolumeCm3 || 944, unit: 'cm³' },
-              { label: lang === 'fr' ? 'Énergie de compactage' : 'Compaction Energy', value: a.rawInput?.compactionType || 'Standard' }
-            );
-            results.push(
-              { label: lang === 'fr' ? 'Teneur en eau optimum (w_opm)' : 'Optimum Moisture Content (w_opm)', value: res.opmMoisturePercent ?? '-', unit: '%' },
-              { label: lang === 'fr' ? 'Masse volumique sèche max (ρd_opm)' : 'Maximum Dry Density (ρd_opm)', value: res.maxDryDensityGcm3 ?? '-', unit: 'g/cm³' },
-              { label: lang === 'fr' ? 'Densité à 95% OPM' : '95% OPM Dry Density', value: res.targetDryDensityGcm3 ?? '-', unit: 'g/cm³' }
-            );
-          } else if (a.testType === 'grain_size' && a.computedResults) {
-            const res = a.computedResults;
-            inputs.push(
-              { label: lang === 'fr' ? 'Masse totale sèche' : 'Total Dry Mass', value: a.rawInput?.totalDryMassG || '-', unit: 'g' }
-            );
-            results.push(
-              { label: lang === 'fr' ? 'Diamètre maximal (Dmax)' : 'Maximum Diameter (Dmax)', value: res.dMaxMm ?? '-', unit: 'mm' },
-              { label: lang === 'fr' ? 'Passant à 2 mm (Sable)' : 'Passing 2 mm (Sand)', value: res.passing2mmPercent ?? '-', unit: '%' },
-              { label: lang === 'fr' ? 'Passant à 0,08 mm (Fines)' : 'Passing 0.08 mm (Fines)', value: res.passing008mmPercent ?? '-', unit: '%' },
-              { label: lang === 'fr' ? 'Classification LCPC' : 'LCPC Classification', value: res.lcpcClassification ?? '-' }
-            );
-          } else if (a.testType === 'water_content' && a.computedResults) {
-            results.push(
-              { label: lang === 'fr' ? 'Teneur en eau moyenne (w)' : 'Average Moisture Content (w)', value: a.computedResults.averageWaterContentPercent ?? '-', unit: '%' }
-            );
+          let results: Array<{ label: string; value: string | number; unit?: string; provenance?: ValueProvenance }> = [];
+          if (def?.keyResults && a.computedResults) {
+            results = def.keyResults(a.computedResults, lang);
           }
 
           blocks.push({
@@ -409,7 +411,7 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
             detailData: {
               analysis: a,
               sample,
-              testLabel: testTypeLabels[a.testType]?.[lang] || a.testType,
+              testLabel,
               sectionTitle: isFirstDetail ? blockTitle : undefined,
               inputs,
               results,
@@ -441,29 +443,56 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
       case 'conformityTable': {
         tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
         const conformityRows: ConformityRow[] = [];
+        const projectLimits = (project as any).specLimits || {};
+
         for (const a of includedAnalyses) {
           const sample = samples.find((s) => s.id === a.sampleId);
           const sampleName = sample?.sampleId || a.sampleId || '-';
-
-          if (a.testType === 'proctor' && a.computedResults) {
-            conformityRows.push({
-              sampleId: sampleName,
-              testType: 'Proctor',
-              parameter: 'ρd_opm',
-              measured: `${a.computedResults.maxDryDensityGcm3} g/cm³`,
-              specification: '≥ 1.80 g/cm³',
-              status: Number(a.computedResults.maxDryDensityGcm3) >= 1.8 ? 'conform' : 'non_conform',
-            });
+          let def: any;
+          try {
+            def = getTestDefinition(a.testType);
+          } catch {
+            // fallback
           }
-          if (a.testType === 'grain_size' && a.computedResults) {
-            conformityRows.push({
-              sampleId: sampleName,
-              testType: 'Granulométrie',
-              parameter: '% < 0.08 mm',
-              measured: `${a.computedResults.passing008mmPercent} %`,
-              specification: '≤ 35 %',
-              status: Number(a.computedResults.passing008mmPercent) <= 35 ? 'conform' : 'non_conform',
-            });
+          const testLabel = def?.name?.[lang] || getTestLabel(a.testType);
+
+          const limitsForTest = projectLimits[a.testType];
+          if (limitsForTest && a.computedResults) {
+            for (const [paramKey, limitConfig] of Object.entries<any>(limitsForTest)) {
+              const measuredVal = a.computedResults[paramKey];
+              if (measuredVal !== undefined && measuredVal !== null) {
+                let status: 'conform' | 'non_conform' | 'informative' = 'conform';
+                let specStr = limitConfig.specification || '';
+                const numVal = typeof measuredVal === 'number' ? measuredVal : parseFloat(measuredVal);
+
+                if (!isNaN(numVal)) {
+                  if (typeof limitConfig.min === 'number' && numVal < limitConfig.min) {
+                    status = 'non_conform';
+                  }
+                  if (typeof limitConfig.max === 'number' && numVal > limitConfig.max) {
+                    status = 'non_conform';
+                  }
+                  if (!specStr) {
+                    if (limitConfig.min !== undefined && limitConfig.max !== undefined) {
+                      specStr = `[${limitConfig.min} ; ${limitConfig.max}]`;
+                    } else if (limitConfig.min !== undefined) {
+                      specStr = `≥ ${limitConfig.min}`;
+                    } else if (limitConfig.max !== undefined) {
+                      specStr = `≤ ${limitConfig.max}`;
+                    }
+                  }
+                }
+
+                conformityRows.push({
+                  sampleId: sampleName,
+                  testType: testLabel,
+                  parameter: limitConfig.label?.[lang] || paramKey,
+                  measured: `${measuredVal}${limitConfig.unit ? ' ' + limitConfig.unit : ''}`,
+                  specification: specStr,
+                  status,
+                });
+              }
+            }
           }
         }
 
