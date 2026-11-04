@@ -770,10 +770,10 @@ function renderGrainSizePdfSection(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(r.sieveMm.toFixed(2), startX + 3, tableY + 3.8);
-    doc.text(r.retainedMassG.toFixed(1), startX + 26, tableY + 3.8);
-    doc.text(r.retainedPercent.toFixed(1), startX + 46, tableY + 3.8);
-    doc.text(r.passingPercent.toFixed(1), startX + 66, tableY + 3.8);
+    doc.text((r.sieveMm ?? 0).toFixed(2), startX + 3, tableY + 3.8);
+    doc.text((r.retainedMassG ?? 0).toFixed(1), startX + 26, tableY + 3.8);
+    doc.text(((r.retainedPercent ?? (r as any).cumulatedRetainedPercent ?? (r as any).cumulativeRetainedPercent) ?? 0).toFixed(1), startX + 46, tableY + 3.8);
+    doc.text((r.passingPercent ?? 0).toFixed(1), startX + 66, tableY + 3.8);
 
     tableY += 5;
   });

@@ -121,7 +121,7 @@ export const methyleneBlueTestDefinition: GeoLabTestDefinition<
 
   calculate: (input: MethyleneBlueInput): MethyleneBlueResults => {
     const mode = input.mode || 'soils';
-    const m0 = input.sampleDryMassG || 30;
+    const m0 = input.sampleDryMassG !== undefined ? input.sampleDryMassG : 30;
     const v1 = input.dyeSolutionVolumeV1Ml || 0;
     const c = input.solutionConcentrationC ?? 1.0;
     const frac = input.fractionTested || (mode === 'soils' ? '0/5 mm' : '0/2 mm');
