@@ -67,6 +67,8 @@ export function renderAnalysisSheet(
   const startPage = doc.getNumberOfPages() === 0 ? 1 : doc.getNumberOfPages();
   const [prR, prG, prB] = hexToRgb(orgProfile.primaryColor);
 
+  doc.setLineHeightFactor(1.5);
+
   const isDemo = Boolean(
     analysis.isDemo ||
     project.isDemo ||
@@ -82,10 +84,16 @@ export function renderAnalysisSheet(
   const contentWidth = pageWidth - margin * 2;
   let cursorY = 12;
 
-  // Watermark (DEMO or DRAFT)
+  // Watermark (DEMO or DRAFT) - drawn first with high transparency so it stays cleanly behind all text
   if (watermarkText) {
     doc.saveGraphicsState();
-    doc.setTextColor(230, 230, 230);
+    try {
+      if (typeof (doc as any).setGState === 'function' && (doc as any).GState) {
+        doc.setGState(new (doc as any).GState({ opacity: 0.12 }));
+      }
+    } catch {}
+    // Light pastel sky blue
+    doc.setTextColor(186, 230, 253);
     doc.setFontSize(watermarkText === 'DEMO' ? 70 : 50);
     doc.setFont('helvetica', 'bold');
     doc.text(watermarkText, pageWidth / 2, pageHeight / 2, {
@@ -139,13 +147,16 @@ export function renderAnalysisSheet(
   const textRightLimit = centerLogo ? pageWidth / 2 - 14 : (rightLogo ? pageWidth - margin - 85 : pageWidth - margin - 70);
   const leftTextMaxW = Math.max(40, textRightLimit - textLeft);
 
+  let leftY = cursorY + 4;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
+  doc.setFontSize(11);
   doc.setTextColor(prR, prG, prB);
-  doc.text(orgProfile.companyName || '', textLeft, cursorY + 4, { maxWidth: leftTextMaxW });
+  const companyLines = doc.splitTextToSize(orgProfile.companyName || '', leftTextMaxW);
+  doc.text(companyLines, textLeft, leftY);
+  leftY += companyLines.length * 4.2;
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
+  doc.setFontSize(7);
   doc.setTextColor(90, 100, 115);
   const contactParts = [
     orgProfile.address,
@@ -153,34 +164,46 @@ export function renderAnalysisSheet(
     orgProfile.email,
   ].filter(Boolean);
   if (contactParts.length > 0) {
-    doc.text(contactParts.join(' | '), textLeft, cursorY + 8.5, { maxWidth: leftTextMaxW });
+    const contactLines = doc.splitTextToSize(contactParts.join(' | '), leftTextMaxW);
+    doc.text(contactLines, textLeft, leftY);
+    leftY += contactLines.length * 3.4;
   }
   if (orgProfile.accreditationNumber?.trim()) {
     const accLabel = lang === 'fr' ? "N° d'agrément / d'accréditation : " : 'Agrément / Accreditation no.: ';
-    doc.text(`${accLabel}${orgProfile.accreditationNumber}`, textLeft, cursorY + 12.5, { maxWidth: leftTextMaxW });
+    const accLines = doc.splitTextToSize(`${accLabel}${orgProfile.accreditationNumber}`, leftTextMaxW);
+    doc.text(accLines, textLeft, leftY);
+    leftY += accLines.length * 3.4;
   }
 
   // Right-aligned report number and status (offset to the left of rightLogo to prevent text-to-logo overlap)
   const textRight = rightLogo ? pageWidth - margin - 25 : pageWidth - margin;
   const rightTextMaxW = centerLogo ? (textRight - (pageWidth / 2 + 14)) : 70;
 
+  let rightY = cursorY + 4;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
+  doc.setFontSize(9);
   doc.setTextColor(30, 41, 59);
-  doc.text(`${lang === 'fr' ? 'N° Rapport' : 'Report No'}: ${analysis.reportNumber}`, textRight, cursorY + 4, { align: 'right', maxWidth: rightTextMaxW });
+  const repNoLines = doc.splitTextToSize(`${lang === 'fr' ? 'N° Rapport' : 'Report No'}: ${analysis.reportNumber}`, rightTextMaxW);
+  doc.text(repNoLines, textRight, rightY, { align: 'right' });
+  rightY += repNoLines.length * 4;
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.text(`Version: v${analysis.version} | Date: ${analysis.testedDate}`, textRight, cursorY + 8.5, { align: 'right', maxWidth: rightTextMaxW });
+  doc.setFontSize(7);
+  const verDateLines = doc.splitTextToSize(`Version: v${analysis.version} | Date: ${analysis.testedDate}`, rightTextMaxW);
+  doc.text(verDateLines, textRight, rightY, { align: 'right' });
+  rightY += verDateLines.length * 3.4;
 
   const statusLabel = analysis.status === 'approved'
     ? (lang === 'fr' ? 'APPROUVÉ / DÉFINITIF' : 'APPROVED / FINAL')
     : (lang === 'fr' ? 'BROUILLON (NON AUDITÉ)' : 'DRAFT (UNAUDITED)');
   doc.setTextColor(analysis.status === 'approved' ? 16 : 220, analysis.status === 'approved' ? 185 : 38, analysis.status === 'approved' ? 129 : 38);
   doc.setFont('helvetica', 'bold');
-  doc.text(statusLabel, textRight, cursorY + 13, { align: 'right', maxWidth: rightTextMaxW });
+  const statusLines = doc.splitTextToSize(statusLabel, rightTextMaxW);
+  doc.text(statusLines, textRight, rightY, { align: 'right' });
+  rightY += statusLines.length * 3.4;
 
-  cursorY += 18;
+  const logoH = (leftLogo || centerLogo || rightLogo) ? 17 : 0;
+  cursorY = Math.max(cursorY + logoH, leftY, rightY) + 3;
 
   // Annex Title (when embedded as study report annex)
   if (ctx.annexTitle) {
@@ -492,6 +515,7 @@ export async function generateGeoLabPdfReport(options: PdfGenerationOptions): Pr
   }
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  doc.setLineHeightFactor(1.5);
   await setupUnicodeFont(doc);
   renderAnalysisSheet(doc, analysis, {
     client,
@@ -1058,36 +1082,55 @@ function renderGenericTestPdfSection(
   if (tableDef && Array.isArray(tableData) && tableData.length > 0) {
     const cols = tableDef.columns || [];
     const colW = totalWidth / Math.max(1, cols.length);
+    const cellPad = 1.5;
+    const innerColW = colW - cellPad * 2;
 
-    // Header
-    doc.setFillColor(prR, prG, prB);
-    doc.rect(startX, cursorY, totalWidth, 6, 'F');
+    // Header with word wrapping and dynamic height
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
+    doc.setFontSize(6.5);
+    const headerLinesList = cols.map((c) => {
+      const lbl = c.label[lang] || c.key;
+      return doc.splitTextToSize(lbl, innerColW);
+    });
+    const maxHdrLines = Math.max(1, ...headerLinesList.map((hl) => hl.length));
+    const headerH = Math.max(6, maxHdrLines * 2.8 + 2.5);
+
+    doc.setFillColor(prR, prG, prB);
+    doc.rect(startX, cursorY, totalWidth, headerH, 'F');
     doc.setTextColor(255, 255, 255);
-    cols.forEach((c, idx) => {
-      doc.text(c.label[lang] || c.key, startX + idx * colW + 2, cursorY + 4);
+    cols.forEach((_, idx) => {
+      const colX = startX + idx * colW + cellPad;
+      const hl = headerLinesList[idx];
+      doc.text(hl, colX, cursorY + 3.2);
     });
 
-    cursorY += 6;
+    cursorY += headerH;
 
-    // Rows
+    // Rows with word wrapping and dynamic row height
     tableData.forEach((row, rIdx) => {
-      doc.setFillColor(rIdx % 2 === 0 ? 255 : 248, rIdx % 2 === 0 ? 255 : 250, rIdx % 2 === 0 ? 255 : 252);
-      doc.rect(startX, cursorY, totalWidth, 5.5, 'F');
-      doc.setDrawColor(226, 232, 240);
-      doc.line(startX, cursorY + 5.5, startX + totalWidth, cursorY + 5.5);
-
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(15, 23, 42);
-      cols.forEach((c, cIdx) => {
+      doc.setFontSize(6.5);
+      const rowLinesList = cols.map((c) => {
         const val = row[c.key];
         const valStr = val !== undefined && val !== null ? String(val) : '-';
-        doc.text(valStr, startX + cIdx * colW + 2, cursorY + 3.8);
+        return doc.splitTextToSize(valStr, innerColW);
+      });
+      const maxRowLines = Math.max(1, ...rowLinesList.map((rl) => rl.length));
+      const rowH = Math.max(5.5, maxRowLines * 2.8 + 2);
+
+      doc.setFillColor(rIdx % 2 === 0 ? 255 : 248, rIdx % 2 === 0 ? 255 : 250, rIdx % 2 === 0 ? 255 : 252);
+      doc.rect(startX, cursorY, totalWidth, rowH, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.line(startX, cursorY + rowH, startX + totalWidth, cursorY + rowH);
+
+      doc.setTextColor(15, 23, 42);
+      cols.forEach((_, cIdx) => {
+        const colX = startX + cIdx * colW + cellPad;
+        const rl = rowLinesList[cIdx];
+        doc.text(rl, colX, cursorY + 3.2);
       });
 
-      cursorY += 5.5;
+      cursorY += rowH;
     });
 
     cursorY += 4;

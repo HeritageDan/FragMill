@@ -45,6 +45,24 @@ function hexToRgb(hex: string): [number, number, number] {
 
 const yieldToMain = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+function drawDraftWatermark(doc: jsPDF, pageWidth = 210, pageHeight = 297) {
+  doc.saveGraphicsState();
+  try {
+    if (typeof (doc as any).setGState === 'function' && (doc as any).GState) {
+      doc.setGState(new (doc as any).GState({ opacity: 0.12 }));
+    }
+  } catch {}
+  // Soft, light pastel sky blue (#BAE6FD / rgb(186, 230, 253)) with high transparency
+  doc.setTextColor(186, 230, 253);
+  doc.setFontSize(55);
+  doc.setFont('helvetica', 'bold');
+  doc.text('DRAFT / PROVISOIRE', pageWidth / 2, pageHeight / 2, {
+    align: 'center',
+    angle: 45,
+  });
+  doc.restoreGraphicsState();
+}
+
 function renderStudyDocumentBlocks(
   doc: jsPDF,
   model: DocumentModel,
@@ -55,8 +73,9 @@ function renderStudyDocumentBlocks(
   totalStudyPages: number,
   onProgress?: (progress: PdfRenderProgress) => void,
   isPass1: boolean = false
-): Record<string, number> {
+): { sectionPageMap: Record<string, number>; annexPages: Set<number> } {
   const sectionPageMap: Record<string, number> = {};
+  const annexPages = new Set<number>();
   const tocBlock = model.blocks.find((b) => b.type === 'toc');
   const tocItems = tocBlock?.tocItems || [];
 
@@ -73,11 +92,19 @@ function renderStudyDocumentBlocks(
     }
   };
 
+  const pageWidth = 210;
   const pageHeight = 297;
   const maxY = pageHeight - 20;
 
+  const addPage = () => {
+    doc.addPage();
+    if (model.isDraftWatermark && !isPass1) {
+      drawDraftWatermark(doc, pageWidth, pageHeight);
+    }
+  };
+
   // First body page after Cover & TOC
-  doc.addPage();
+  addPage();
   let currentY = 28;
 
   let blockIdx = 0;
@@ -94,7 +121,7 @@ function renderStudyDocumentBlocks(
     }
 
     if (block.type === 'pageBreak') {
-      doc.addPage();
+      addPage();
       currentY = 28;
       continue;
     }
@@ -102,24 +129,24 @@ function renderStudyDocumentBlocks(
     if (block.type === 'narrative' && block.narrativeData) {
       // Keep-with-next: heading (15mm) + at least 2 lines (9mm)
       if (currentY > maxY - 25) {
-        doc.addPage();
+        addPage();
         currentY = 28;
       }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
-      currentY = renderNarrativeSection(doc, block.narrativeData, prR, prG, prB, currentY);
+      currentY = renderNarrativeSection(doc, block.narrativeData, prR, prG, prB, currentY, model.isDraftWatermark && !isPass1);
     } else if (block.type === 'analysisSummaryTable' && block.summaryRows) {
       // Keep-with-next: heading (15mm) + table header (6mm) + 1 row (6mm)
       if (currentY > maxY - 28) {
-        doc.addPage();
+        addPage();
         currentY = 28;
       }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
-      currentY = renderSummaryTableSection(doc, block.title, block.summaryRows, prR, prG, prB, lang, currentY);
+      currentY = renderSummaryTableSection(doc, block.title, block.summaryRows, prR, prG, prB, lang, currentY, model.isDraftWatermark && !isPass1);
     } else if (block.type === 'analysisDetail' && block.detailData) {
       const hasChart = Boolean(block.detailData.chartType && block.detailData.analysis.computedResults);
       const neededH = (block.detailData.sectionTitle ? 18 : 0) + 16 + 30 + (hasChart ? 86 : 0) + (block.detailData.observations ? 18 : 0);
       if (currentY + neededH > maxY) {
-        doc.addPage();
+        addPage();
         currentY = 28;
       }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
@@ -127,21 +154,21 @@ function renderStudyDocumentBlocks(
     } else if (block.type === 'gradingCurves' && block.gradingCurvesData) {
       const neededH = 154; // Heading + 120mm chart + caption
       if (currentY + neededH > maxY) {
-        doc.addPage();
+        addPage();
         currentY = 28;
       }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
       currentY = renderGradingCurvesSection(doc, block.title, block.gradingCurvesData.analyses, prR, prG, prB, lang, currentY);
     } else if (block.type === 'conformityTable' && block.conformityRows) {
       if (currentY > maxY - 28) {
-        doc.addPage();
+        addPage();
         currentY = 28;
       }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
-      currentY = renderConformitySection(doc, block.title, block.conformityRows, prR, prG, prB, lang, currentY);
+      currentY = renderConformitySection(doc, block.title, block.conformityRows, prR, prG, prB, lang, currentY, model.isDraftWatermark && !isPass1);
     } else if (block.type === 'usageNote' && block.usageNoteText) {
       if (currentY + 52 > maxY) {
-        doc.addPage();
+        addPage();
         currentY = 28;
       }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
@@ -150,14 +177,14 @@ function renderStudyDocumentBlocks(
       const sigCount = Math.min(6, block.signatureChain.length || 1);
       const rows = Math.ceil(sigCount / 3);
       if (currentY + 16 + rows * 32 > maxY) {
-        doc.addPage();
+        addPage();
         currentY = 28;
       }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
       currentY = renderSignatureBlockSection(doc, block.title, block.signatureChain, prR, prG, prB, lang, currentY);
     } else if (block.type === 'photoPages' && block.photoPageData) {
       // Photo pages: Annex group forces a fresh page
-      doc.addPage();
+      addPage();
       currentY = 28;
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
       renderPhotoPageSection(doc, block.title, block.photoPageData, prR, prG, prB, lang);
@@ -167,7 +194,7 @@ function renderStudyDocumentBlocks(
       for (let i = 0; i < block.annexAnalyses.length; i++) {
         const a = block.annexAnalyses[i];
         const pageBefore = doc.getNumberOfPages() + 1;
-        renderAnalysisSheet(doc, a, {
+        const res = renderAnalysisSheet(doc, a, {
           client: model.client,
           project: model.project,
           orgProfile: model.organisation,
@@ -176,14 +203,24 @@ function renderStudyDocumentBlocks(
           annexTitle: i === 0 ? block.title : undefined,
           totalStudyPages,
         });
+        if (res && res.startPage && res.endPage) {
+          for (let p = res.startPage; p <= res.endPage; p++) {
+            annexPages.add(p);
+          }
+        }
         if (i === 0) {
           recordBlockPage(block.id, pageBefore);
         }
       }
       currentY = 28;
+      // If there are subsequent blocks (e.g. dataQualityNotes), start on a new page!
+      if (blockIdx < model.blocks.length) {
+        addPage();
+        currentY = 28;
+      }
     } else if (block.type === 'dataQualityNotes' && block.dataQualityNotesText) {
       if (currentY + 40 > maxY) {
-        doc.addPage();
+        addPage();
         currentY = 28;
       }
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
@@ -191,7 +228,7 @@ function renderStudyDocumentBlocks(
     }
   }
 
-  return sectionPageMap;
+  return { sectionPageMap, annexPages };
 }
 
 export async function generateStudyPdfReport(
@@ -217,6 +254,7 @@ export async function generateStudyPdfReport(
   await yieldToMain();
 
   const doc1 = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  doc1.setLineHeightFactor(1.5);
   await setupUnicodeFont(doc1);
   options?.onDocCreated?.(doc1, 1);
 
@@ -229,7 +267,7 @@ export async function generateStudyPdfReport(
   }
 
   // 3. Render body blocks to measure exact starting page numbers
-  const measuredPageMap = renderStudyDocumentBlocks(
+  const { sectionPageMap: measuredPageMap } = renderStudyDocumentBlocks(
     doc1,
     model,
     prR,
@@ -251,6 +289,7 @@ export async function generateStudyPdfReport(
   await yieldToMain();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  doc.setLineHeightFactor(1.5);
   await setupUnicodeFont(doc);
   options?.onDocCreated?.(doc, 2);
 
@@ -260,11 +299,14 @@ export async function generateStudyPdfReport(
   // 2. Table of Contents (Page 2 ...)
   if (tocPageCount > 0) {
     doc.addPage();
-    renderTocPage(doc, model, measuredPageMap, prR, prG, prB, lang);
+    if (model.isDraftWatermark) {
+      drawDraftWatermark(doc, pageWidth, pageHeight);
+    }
+    renderTocPage(doc, model, measuredPageMap, prR, prG, prB, lang, model.isDraftWatermark);
   }
 
   // 3. Body Sections
-  renderStudyDocumentBlocks(
+  const { annexPages } = renderStudyDocumentBlocks(
     doc,
     model,
     prR,
@@ -277,28 +319,15 @@ export async function generateStudyPdfReport(
   );
 
   // -------------------------------------------------------------
-  // PASS 3: Running Furniture (Header Logos, Colored Rules, Footers & Watermark)
+  // PASS 3: Running Furniture (Header Logos, Colored Rules, Footers)
   // -------------------------------------------------------------
   const totalPages = doc.getNumberOfPages();
 
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p);
 
-    // Watermark
-    if (model.isDraftWatermark) {
-      doc.saveGraphicsState();
-      doc.setTextColor(240, 240, 240);
-      doc.setFontSize(55);
-      doc.setFont('helvetica', 'bold');
-      doc.text('DRAFT / PROVISOIRE', pageWidth / 2, pageHeight / 2, {
-        align: 'center',
-        angle: 45,
-      });
-      doc.restoreGraphicsState();
-    }
-
-    // Skip running header/footer on Cover Page (Page 1)
-    if (p === 1) continue;
+    // Skip running header/footer on Cover Page (Page 1) and Annex test sheet pages
+    if (p === 1 || annexPages.has(p)) continue;
 
     // Running Header (Pages 2+)
     const headerLogos = model.organisation.headerLogos || (model.organisation as any).logos;
@@ -364,6 +393,12 @@ function renderCoverPage(
   const pageHeight = 297;
   const margin = 14;
   const contentWidth = pageWidth - margin * 2;
+
+  // Watermark drawn first so it remains behind all text and graphics
+  if (model.isDraftWatermark) {
+    drawDraftWatermark(doc, pageWidth, pageHeight);
+  }
+
   let cursorY = 12;
 
   // 1. Bilingual Authority Header Block (if present)
@@ -399,7 +434,8 @@ function renderCoverPage(
     try { doc.addImage(rightLogo, 'PNG', pageWidth - margin - 24, cursorY, 24, 15); } catch {}
   }
 
-  cursorY += 18;
+  const hasLogos = Boolean(leftLogo || centerLogo || rightLogo);
+  cursorY += hasLogos ? 25 : 6;
 
   // Laboratory / Company Info
   doc.setFont('helvetica', 'bold');
@@ -625,7 +661,8 @@ function renderTocPage(
   prR: number,
   prG: number,
   prB: number,
-  lang: 'en' | 'fr'
+  lang: 'en' | 'fr',
+  isDraft: boolean = false
 ) {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
@@ -648,6 +685,9 @@ function renderTocPage(
   items.forEach((item, idx) => {
     if (idx > 0 && cursorY > 265) {
       doc.addPage();
+      if (isDraft) {
+        drawDraftWatermark(doc, 210, 297);
+      }
       cursorY = 28;
     }
 
@@ -690,7 +730,8 @@ function renderNarrativeSection(
   prR: number,
   prG: number,
   prB: number,
-  startY: number
+  startY: number,
+  isDraft: boolean = false
 ): number {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
@@ -728,6 +769,9 @@ function renderNarrativeSection(
     } else if (line.startsWith('## ')) {
       if (cursorY > maxY - 15) {
         doc.addPage();
+        if (isDraft) {
+          drawDraftWatermark(doc);
+        }
         cursorY = 28;
       }
       cursorY += 3;
@@ -745,6 +789,9 @@ function renderNarrativeSection(
       const neededH = split.length * 4.5;
       if (cursorY + neededH > maxY) {
         doc.addPage();
+        if (isDraft) {
+          drawDraftWatermark(doc);
+        }
         cursorY = 28;
       }
       doc.setFillColor(prR, prG, prB);
@@ -756,6 +803,9 @@ function renderNarrativeSection(
       const neededH = split.length * 4.5;
       if (cursorY + neededH > maxY) {
         doc.addPage();
+        if (isDraft) {
+          drawDraftWatermark(doc);
+        }
         cursorY = 28;
       }
       doc.text(split, margin, cursorY);
@@ -782,10 +832,10 @@ function drawSummaryTableHeader(
   doc.setFontSize(7);
   doc.setTextColor(255, 255, 255);
   doc.text(lang === 'fr' ? 'Échantillon' : 'Sample ID', margin + 3, cursorY + 4);
-  doc.text(lang === 'fr' ? 'Type d\'essai' : 'Test Type', margin + 32, cursorY + 4);
-  doc.text(lang === 'fr' ? 'Norme' : 'Standard', margin + 75, cursorY + 4);
+  doc.text(lang === 'fr' ? 'Type d\'essai' : 'Test Type', margin + 30, cursorY + 4);
+  doc.text(lang === 'fr' ? 'Norme' : 'Standard', margin + 76, cursorY + 4);
   doc.text(lang === 'fr' ? 'Date' : 'Date', margin + 110, cursorY + 4);
-  doc.text(lang === 'fr' ? 'Résultats clés' : 'Key Results', margin + 135, cursorY + 4);
+  doc.text(lang === 'fr' ? 'Résultats clés' : 'Key Results', margin + 134, cursorY + 4);
 }
 
 function renderSummaryTableSection(
@@ -796,7 +846,8 @@ function renderSummaryTableSection(
   prG: number,
   prB: number,
   lang: 'en' | 'fr',
-  startY: number
+  startY: number,
+  isDraft: boolean = false
 ): number {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
@@ -819,28 +870,49 @@ function renderSummaryTableSection(
   cursorY += 6;
 
   rows.forEach((r, idx) => {
-    if (cursorY + 6 > maxY) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    const colSample = doc.splitTextToSize(r.sampleId || '-', 25);
+    const colTest = doc.splitTextToSize(r.testLabel || '-', 44);
+    const colStd = doc.splitTextToSize(r.standard || '-', 32);
+    const colDate = doc.splitTextToSize(r.testedDate || '-', 22);
+    const colRes = doc.splitTextToSize(r.keyResultsText || '-', 45);
+
+    const maxLines = Math.max(
+      colSample.length,
+      colTest.length,
+      colStd.length,
+      colDate.length,
+      colRes.length,
+      1
+    );
+    const rowH = Math.max(6, maxLines * 3.3 + 2.5);
+
+    if (cursorY + rowH > maxY) {
       doc.addPage();
+      if (isDraft) {
+        drawDraftWatermark(doc);
+      }
       cursorY = 28;
       drawSummaryTableHeader(doc, margin, contentWidth, cursorY, prR, prG, prB, lang);
       cursorY += 6;
     }
 
     doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
-    doc.rect(margin, cursorY, contentWidth, 6, 'F');
+    doc.rect(margin, cursorY, contentWidth, rowH, 'F');
     doc.setDrawColor(226, 232, 240);
-    doc.line(margin, cursorY + 6, margin + contentWidth, cursorY + 6);
+    doc.line(margin, cursorY + rowH, margin + contentWidth, cursorY + rowH);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(15, 23, 42);
-    doc.text(r.sampleId, margin + 3, cursorY + 4);
-    doc.text(r.testLabel, margin + 32, cursorY + 4);
-    doc.text(r.standard, margin + 75, cursorY + 4);
-    doc.text(r.testedDate, margin + 110, cursorY + 4);
-    doc.text(r.keyResultsText, margin + 135, cursorY + 4);
+    doc.text(colSample, margin + 3, cursorY + 3.8);
+    doc.text(colTest, margin + 30, cursorY + 3.8);
+    doc.text(colStd, margin + 76, cursorY + 3.8);
+    doc.text(colDate, margin + 110, cursorY + 3.8);
+    doc.text(colRes, margin + 134, cursorY + 3.8);
 
-    cursorY += 6;
+    cursorY += rowH;
   });
 
   return cursorY + 8;
@@ -936,20 +1008,25 @@ function renderAnalysisDetailSection(
 
   // Observations
   if (detail.observations) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    const splitObs = doc.splitTextToSize(detail.observations, contentWidth - 8);
+    const boxHeight = Math.max(16, 7 + splitObs.length * 3.6 + 2);
+
     doc.setFillColor(255, 255, 255);
     doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(margin, cursorY, contentWidth, 14, 1, 1, 'FD');
+    doc.roundedRect(margin, cursorY, contentWidth, boxHeight, 1, 1, 'FD');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(prR, prG, prB);
-    doc.text(lang === 'fr' ? 'OBSERVATIONS PARTICULIÈRES' : 'SPECIFIC OBSERVATIONS', margin + 3, cursorY + 4);
+    doc.text(lang === 'fr' ? 'OBSERVATIONS PARTICULIÈRES' : 'SPECIFIC OBSERVATIONS', margin + 3, cursorY + 4.5);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
-    doc.text(detail.observations, margin + 3, cursorY + 9, { maxWidth: contentWidth - 6 });
-    cursorY += 18;
+    doc.text(splitObs, margin + 3, cursorY + 9);
+    cursorY += boxHeight + 4;
   }
 
   return cursorY + 8;
@@ -1036,7 +1113,8 @@ function renderConformitySection(
   prG: number,
   prB: number,
   lang: 'en' | 'fr',
-  startY: number
+  startY: number,
+  isDraft: boolean = false
 ): number {
   const margin = 14;
   const contentWidth = 210 - margin * 2;
@@ -1072,25 +1150,38 @@ function renderConformitySection(
   cursorY += 6;
 
   rows.forEach((r, idx) => {
-    if (cursorY + 6 > maxY) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    const colSample = doc.splitTextToSize(r.sampleId || '-', 35);
+    const colParam = doc.splitTextToSize(r.parameter || '-', 38);
+    const colMeas = doc.splitTextToSize(String(r.measured ?? '-'), 38);
+    const colSpec = doc.splitTextToSize(r.specification || '-', 36);
+
+    const maxLines = Math.max(colSample.length, colParam.length, colMeas.length, colSpec.length, 1);
+    const rowH = Math.max(6, maxLines * 3.3 + 2.5);
+
+    if (cursorY + rowH > maxY) {
       doc.addPage();
+      if (isDraft) {
+        drawDraftWatermark(doc);
+      }
       cursorY = 28;
       drawConformityTableHeader(doc, margin, contentWidth, cursorY, prR, prG, prB, lang);
       cursorY += 6;
     }
 
     doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
-    doc.rect(margin, cursorY, contentWidth, 6, 'F');
+    doc.rect(margin, cursorY, contentWidth, rowH, 'F');
     doc.setDrawColor(226, 232, 240);
-    doc.line(margin, cursorY + 6, margin + contentWidth, cursorY + 6);
+    doc.line(margin, cursorY + rowH, margin + contentWidth, cursorY + rowH);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(15, 23, 42);
-    doc.text(r.sampleId, margin + 3, cursorY + 4);
-    doc.text(r.parameter, margin + 40, cursorY + 4);
-    doc.text(String(r.measured), margin + 80, cursorY + 4);
-    doc.text(r.specification, margin + 120, cursorY + 4);
+    doc.text(colSample, margin + 3, cursorY + 3.8);
+    doc.text(colParam, margin + 40, cursorY + 3.8);
+    doc.text(colMeas, margin + 80, cursorY + 3.8);
+    doc.text(colSpec, margin + 120, cursorY + 3.8);
 
     const isConform = r.status === 'conform';
     doc.setFillColor(isConform ? 16 : 220, isConform ? 185 : 38, isConform ? 129 : 38);
@@ -1105,7 +1196,7 @@ function renderConformitySection(
       { align: 'center' }
     );
 
-    cursorY += 6;
+    cursorY += rowH;
   });
 
   return cursorY + 8;
@@ -1135,18 +1226,20 @@ function renderUsageNoteSection(
   doc.rect(margin, cursorY, 20, 1, 'F');
   cursorY += 10;
 
-  doc.setFillColor(254, 252, 232);
-  doc.setDrawColor(254, 240, 138);
-  doc.roundedRect(margin, cursorY, contentWidth, 36, 1.5, 1.5, 'FD');
-
+  const text = usageNote[lang] || usageNote.en;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.setTextColor(113, 63, 18);
-  const text = usageNote[lang] || usageNote.en;
   const split = doc.splitTextToSize(text, contentWidth - 8);
-  doc.text(split, margin + 4, cursorY + 7);
+  const boxH = Math.max(30, 8 + split.length * 4);
 
-  return cursorY + 44;
+  doc.setFillColor(254, 252, 232);
+  doc.setDrawColor(254, 240, 138);
+  doc.roundedRect(margin, cursorY, contentWidth, boxH, 1.5, 1.5, 'FD');
+
+  doc.setTextColor(113, 63, 18);
+  doc.text(split, margin + 4, cursorY + 6.5);
+
+  return cursorY + boxH + 8;
 }
 
 function renderSignatureBlockSection(
@@ -1294,17 +1387,19 @@ function renderDataQualityNotesSection(
   doc.rect(margin, cursorY, 20, 1, 'F');
   cursorY += 10;
 
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(margin, cursorY, contentWidth, 24, 1.5, 1.5, 'FD');
-
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
   const split = doc.splitTextToSize(notes, contentWidth - 8);
-  doc.text(split, margin + 4, cursorY + 7);
+  const boxH = Math.max(24, 8 + split.length * 4);
 
-  return cursorY + 32;
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(203, 213, 225);
+  doc.roundedRect(margin, cursorY, contentWidth, boxH, 1.5, 1.5, 'FD');
+
+  doc.text(split, margin + 4, cursorY + 6.5);
+
+  return cursorY + boxH + 8;
 }
 
 // -------------------------------------------------------------------------
