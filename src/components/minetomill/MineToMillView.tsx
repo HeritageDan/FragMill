@@ -216,22 +216,86 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
             project={project}
             site={site}
             blast={selectedBlast}
-            getPayload={() => ({
-              blastId: selectedBlast?.blastId,
-              drillingCostPerTon: econResult.evaluation.drillingCostPerTon,
-              blastingCostPerTon: econResult.evaluation.blastingCostPerTon,
-              secondaryBreakingCostPerTon: econResult.evaluation.secondaryBreakingCostPerTon,
-              crushingCostPerTon: econResult.evaluation.crushingCostPerTon,
-              millingCostPerTon: econResult.evaluation.millingCostPerTon,
-              totalCostPerTon: econResult.evaluation.totalCostPerTon,
-              optimalP80Mm: econResult.evaluation.optimalP80Mm,
-              isOptimumAtBoundary: econResult.evaluation.isOptimumAtBoundary,
-              potentialSavingsPerTon: econResult.evaluation.potentialSavingsPerTon,
-              carbonScope1Explosives: econResult.evaluation.carbonEmissions.scope1ExplosivesKgCo2ePerTon,
-              carbonScope1Diesel: econResult.evaluation.carbonEmissions.scope1DieselKgCo2ePerTon,
-              carbonScope2Electricity: econResult.evaluation.carbonEmissions.scope2ElectricityKgCo2ePerTon,
-              carbonTotalKgCo2ePerTon: econResult.evaluation.carbonEmissions.totalKgCo2ePerTon,
-            })}
+            getPayload={() => {
+              const optDrill = econResult.evaluation.optimalDrillingCostPerTon ?? econResult.evaluation.drillingCostPerTon;
+              const optBlast = econResult.evaluation.optimalBlastingCostPerTon ?? econResult.evaluation.blastingCostPerTon;
+              const optSec = econResult.evaluation.optimalSecondaryBreakingCostPerTon ?? econResult.evaluation.secondaryBreakingCostPerTon;
+              const optCrush = econResult.evaluation.optimalCrushingCostPerTon ?? econResult.evaluation.crushingCostPerTon;
+              const optMill = econResult.evaluation.optimalMillingCostPerTon ?? econResult.evaluation.millingCostPerTon;
+              const optTot = econResult.evaluation.optimalTotalCostPerTon ?? econResult.sweetSpotTotalCostPerTon;
+
+              const customCosts = [
+                {
+                  nameEn: '1. Primary Drilling',
+                  nameFr: '1. Foration Primaire',
+                  costPerTonUSD: econResult.evaluation.drillingCostPerTon,
+                  optimalCostPerTonUSD: optDrill,
+                  variancePerTonUSD: Number((optDrill - econResult.evaluation.drillingCostPerTon).toFixed(2)),
+                  percentage: Number(((econResult.evaluation.drillingCostPerTon / econResult.evaluation.totalCostPerTon) * 100).toFixed(1)),
+                  driverEn: 'Diameter and ROP',
+                  driverFr: 'Diamètre et ROP',
+                },
+                {
+                  nameEn: '2. Explosives & Blasting',
+                  nameFr: '2. Minage & Explosifs',
+                  costPerTonUSD: econResult.evaluation.blastingCostPerTon,
+                  optimalCostPerTonUSD: optBlast,
+                  variancePerTonUSD: Number((optBlast - econResult.evaluation.blastingCostPerTon).toFixed(2)),
+                  percentage: Number(((econResult.evaluation.blastingCostPerTon / econResult.evaluation.totalCostPerTon) * 100).toFixed(1)),
+                  driverEn: 'Powder factor',
+                  driverFr: 'Dosage kg/m³',
+                },
+                {
+                  nameEn: '3. Secondary Boulder Breaking',
+                  nameFr: '3. Débitage Secondaire Blocs',
+                  costPerTonUSD: econResult.evaluation.secondaryBreakingCostPerTon,
+                  optimalCostPerTonUSD: optSec,
+                  variancePerTonUSD: Number((optSec - econResult.evaluation.secondaryBreakingCostPerTon).toFixed(2)),
+                  percentage: Number(((econResult.evaluation.secondaryBreakingCostPerTon / econResult.evaluation.totalCostPerTon) * 100).toFixed(1)),
+                  driverEn: 'Boulders >300mm',
+                  driverFr: 'Brise-roche hydraulique sur blocs >300 mm',
+                },
+                {
+                  nameEn: '4. Primary Crushing',
+                  nameFr: '4. Concassage Primaire',
+                  costPerTonUSD: econResult.evaluation.crushingCostPerTon,
+                  optimalCostPerTonUSD: optCrush,
+                  variancePerTonUSD: Number((optCrush - econResult.evaluation.crushingCostPerTon).toFixed(2)),
+                  percentage: Number(((econResult.evaluation.crushingCostPerTon / econResult.evaluation.totalCostPerTon) * 100).toFixed(1)),
+                  driverEn: 'Crusher draw',
+                  driverFr: 'Énergie électrique & mâchoires concasseur',
+                },
+                {
+                  nameEn: '5. Fine Milling (SAG + Ball)',
+                  nameFr: '5. Broyage Fin (SAG + Boulets)',
+                  costPerTonUSD: econResult.evaluation.millingCostPerTon,
+                  optimalCostPerTonUSD: optMill,
+                  variancePerTonUSD: Number((optMill - econResult.evaluation.millingCostPerTon).toFixed(2)),
+                  percentage: Number(((econResult.evaluation.millingCostPerTon / econResult.evaluation.totalCostPerTon) * 100).toFixed(1)),
+                  driverEn: 'Feed P80',
+                  driverFr: 'Moteurs électriques broyeurs & boulets d’acier',
+                },
+              ];
+
+              return {
+                blastId: selectedBlast?.blastId,
+                drillingCostPerTon: econResult.evaluation.drillingCostPerTon,
+                blastingCostPerTon: econResult.evaluation.blastingCostPerTon,
+                secondaryBreakingCostPerTon: econResult.evaluation.secondaryBreakingCostPerTon,
+                crushingCostPerTon: econResult.evaluation.crushingCostPerTon,
+                millingCostPerTon: econResult.evaluation.millingCostPerTon,
+                totalCostPerTon: econResult.evaluation.totalCostPerTon,
+                optimalP80Mm: econResult.evaluation.optimalP80Mm,
+                optimalTotalCostPerTon: optTot,
+                costs: customCosts,
+                isOptimumAtBoundary: econResult.evaluation.isOptimumAtBoundary,
+                potentialSavingsPerTon: econResult.evaluation.potentialSavingsPerTon,
+                carbonScope1Explosives: econResult.evaluation.carbonEmissions.scope1ExplosivesKgCo2ePerTon,
+                carbonScope1Diesel: econResult.evaluation.carbonEmissions.scope1DieselKgCo2ePerTon,
+                carbonScope2Electricity: econResult.evaluation.carbonEmissions.scope2ElectricityKgCo2ePerTon,
+                carbonTotalKgCo2ePerTon: econResult.evaluation.carbonEmissions.totalKgCo2ePerTon,
+              };
+            }}
             summaryFr={`Optimisation mine-au-moulin (Tir ${selectedBlast?.blastId}) : coût global ${econResult.evaluation.totalCostPerTon.toFixed(2)} $/t, P80 optimal ${econResult.evaluation.optimalP80Mm} mm, économie ${econResult.evaluation.potentialSavingsPerTon.toFixed(2)} $/t.`}
             summaryEn={`Mine-to-mill optimization (Blast ${selectedBlast?.blastId}): total cost $${econResult.evaluation.totalCostPerTon.toFixed(2)}/t, optimal P80 ${econResult.evaluation.optimalP80Mm} mm, potential savings $${econResult.evaluation.potentialSavingsPerTon.toFixed(2)}/t.`}
           />
@@ -541,64 +605,101 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
 
         {/* Cost Breakdown & Carbon Highlights */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left: Cost Breakdown Table */}
+          {/* Left: Direct Side-by-Side Comparison Table */}
           <div className="lg:col-span-6 space-y-3">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              {lang === 'fr' ? 'Décomposition des Coûts Opérationnels par Tonne' : 'Direct Operational Cost per Tonne Breakdown'}
-            </h4>
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                  <tr>
-                    <th className="py-2 px-3">{lang === 'fr' ? 'Étape' : 'Process Stage'}</th>
-                    <th className="py-2 px-3">{lang === 'fr' ? 'Coût ($/tonne)' : 'Cost ($/tonne)'}</th>
-                    <th className="py-2 px-3">% Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  <tr>
-                    <td className="py-1.5 px-3 text-slate-700">{lang === 'fr' ? '1. Foration' : '1. Drilling'}</td>
-                    <td className="py-1.5 px-3 font-semibold text-slate-900">${econResult.evaluation.drillingCostPerTon}</td>
-                    <td className="py-1.5 px-3 text-slate-500">
-                      {((econResult.evaluation.drillingCostPerTon / econResult.evaluation.totalCostPerTon) * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 px-3 text-slate-700">{lang === 'fr' ? '2. Abattage (Explosifs)' : '2. Blasting (Explosives)'}</td>
-                    <td className="py-1.5 px-3 font-semibold text-slate-900">${econResult.evaluation.blastingCostPerTon}</td>
-                    <td className="py-1.5 px-3 text-slate-500">
-                      {((econResult.evaluation.blastingCostPerTon / econResult.evaluation.totalCostPerTon) * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 px-3 text-slate-700">{lang === 'fr' ? '3. Débitage Secondaire (BRH)' : '3. Secondary Boulder Breaking'}</td>
-                    <td className="py-1.5 px-3 font-semibold text-slate-900">${econResult.evaluation.secondaryBreakingCostPerTon}</td>
-                    <td className="py-1.5 px-3 text-slate-500">
-                      {((econResult.evaluation.secondaryBreakingCostPerTon / econResult.evaluation.totalCostPerTon) * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 px-3 text-slate-700">{lang === 'fr' ? '4. Concassage (Énergie)' : '4. Crushing (Energy)'}</td>
-                    <td className="py-1.5 px-3 font-semibold text-slate-900">${econResult.evaluation.crushingCostPerTon}</td>
-                    <td className="py-1.5 px-3 text-slate-500">
-                      {((econResult.evaluation.crushingCostPerTon / econResult.evaluation.totalCostPerTon) * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 px-3 text-slate-700">{lang === 'fr' ? '5. Broyage / Moulin (Énergie)' : '5. Grinding / Milling (Power)'}</td>
-                    <td className="py-1.5 px-3 font-semibold text-slate-900">${econResult.evaluation.millingCostPerTon}</td>
-                    <td className="py-1.5 px-3 text-slate-500">
-                      {((econResult.evaluation.millingCostPerTon / econResult.evaluation.totalCostPerTon) * 100).toFixed(1)}%
-                    </td>
-                  </tr>
-                  <tr className="bg-emerald-50/70 font-black text-emerald-950">
-                    <td className="py-2 px-3">{lang === 'fr' ? 'COÛT TOTAL MINE-AU-MOULIN' : 'TOTAL MINE-TO-MILL COST'}</td>
-                    <td className="py-2 px-3 text-sm font-extrabold text-emerald-700">${econResult.evaluation.totalCostPerTon} / t</td>
-                    <td className="py-2 px-3">100%</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                {lang === 'fr' ? 'Comparaison Économique Directe : Actuel vs Optimal' : 'Direct Economic Comparison: Current vs. Optimised'}
+              </h4>
+              <span className="text-[10px] font-semibold text-slate-500">
+                {lang === 'fr' ? `Optimum calibré à P80 = ${econResult.sweetSpotP80Mm} mm` : `Optimal tuned at P80 = ${econResult.sweetSpotP80Mm} mm`}
+              </span>
             </div>
+            {(() => {
+              const optDrill = econResult.evaluation.optimalDrillingCostPerTon ?? econResult.evaluation.drillingCostPerTon;
+              const optBlast = econResult.evaluation.optimalBlastingCostPerTon ?? econResult.evaluation.blastingCostPerTon;
+              const optSec = econResult.evaluation.optimalSecondaryBreakingCostPerTon ?? econResult.evaluation.secondaryBreakingCostPerTon;
+              const optCrush = econResult.evaluation.optimalCrushingCostPerTon ?? econResult.evaluation.crushingCostPerTon;
+              const optMill = econResult.evaluation.optimalMillingCostPerTon ?? econResult.evaluation.millingCostPerTon;
+              const optTot = econResult.evaluation.optimalTotalCostPerTon ?? econResult.sweetSpotTotalCostPerTon;
+
+              const rows = [
+                {
+                  name: lang === 'fr' ? '1. Foration' : '1. Drilling',
+                  cur: econResult.evaluation.drillingCostPerTon,
+                  opt: optDrill,
+                },
+                {
+                  name: lang === 'fr' ? '2. Abattage (Explosifs)' : '2. Blasting (Explosives)',
+                  cur: econResult.evaluation.blastingCostPerTon,
+                  opt: optBlast,
+                },
+                {
+                  name: lang === 'fr' ? '3. Débitage Secondaire (BRH)' : '3. Secondary Boulder Breaking',
+                  cur: econResult.evaluation.secondaryBreakingCostPerTon,
+                  opt: optSec,
+                },
+                {
+                  name: lang === 'fr' ? '4. Concassage (Énergie)' : '4. Primary Crushing',
+                  cur: econResult.evaluation.crushingCostPerTon,
+                  opt: optCrush,
+                },
+                {
+                  name: lang === 'fr' ? '5. Broyage / Moulin (Énergie)' : '5. Grinding / Milling (Power)',
+                  cur: econResult.evaluation.millingCostPerTon,
+                  opt: optMill,
+                },
+              ];
+
+              const totalDiff = Number((optTot - econResult.evaluation.totalCostPerTon).toFixed(2));
+
+              return (
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2 px-3">{lang === 'fr' ? 'Poste Opérationnel' : 'Operational Stage'}</th>
+                        <th className="py-2 px-2.5 text-right">{lang === 'fr' ? 'Actuel ($/t)' : 'Current ($/t)'}</th>
+                        <th className="py-2 px-2.5 text-right text-emerald-800">{lang === 'fr' ? 'Optimal ($/t)' : 'Optimal ($/t)'}</th>
+                        <th className="py-2 px-2.5 text-right">{lang === 'fr' ? 'Écart ($/t)' : 'Delta ($/t)'}</th>
+                        <th className="py-2 px-2.5 text-right hidden sm:table-cell">% Actuel</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {rows.map((r, idx) => {
+                        const delta = Number((r.opt - r.cur).toFixed(2));
+                        const isSaving = delta < 0;
+                        const isIncrease = delta > 0;
+                        const pct = ((r.cur / econResult.evaluation.totalCostPerTon) * 100).toFixed(1);
+
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="py-1.5 px-3 text-slate-700 font-medium">{r.name}</td>
+                            <td className="py-1.5 px-2.5 text-right font-semibold text-slate-800">${r.cur.toFixed(2)}</td>
+                            <td className="py-1.5 px-2.5 text-right font-bold text-emerald-700">${r.opt.toFixed(2)}</td>
+                            <td className={`py-1.5 px-2.5 text-right font-bold ${
+                              isSaving ? 'text-emerald-600' : isIncrease ? 'text-amber-600' : 'text-slate-500'
+                            }`}>
+                              {delta > 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2)}
+                            </td>
+                            <td className="py-1.5 px-2.5 text-right text-slate-500 hidden sm:table-cell">{pct}%</td>
+                          </tr>
+                        );
+                      })}
+                      <tr className="bg-emerald-50/70 font-black text-emerald-950 border-t-2 border-emerald-200">
+                        <td className="py-2 px-3">{lang === 'fr' ? 'COÛT TOTAL MINE-AU-MOULIN' : 'TOTAL MINE-TO-MILL'}</td>
+                        <td className="py-2 px-2.5 text-right text-slate-900">${econResult.evaluation.totalCostPerTon.toFixed(2)}</td>
+                        <td className="py-2 px-2.5 text-right text-emerald-800">${optTot.toFixed(2)}</td>
+                        <td className="py-2 px-2.5 text-right text-sm font-extrabold text-emerald-700">
+                          {totalDiff > 0 ? `+${totalDiff.toFixed(2)}` : totalDiff.toFixed(2)} / t
+                        </td>
+                        <td className="py-2 px-2.5 text-right hidden sm:table-cell">100%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
 
             {/* Potential Savings Banner */}
             {econResult.evaluation.potentialSavingsPerTon > 0 && (

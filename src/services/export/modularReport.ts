@@ -523,10 +523,10 @@ export async function generateModularVaultPdfReport(
       doc.setFontSize(7.5);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(30, 41, 59);
-      doc.text(isFr ? `Indice d'uniformité n : ${unifVal}` : `Uniformity Index n: ${unifVal}`, colX[0], y + 29);
-      doc.text(isFr ? `Taille max (Pmax) : ${pMaxVal} mm` : `Top Size (Pmax): ${pMaxVal} mm`, colX[1], y + 29);
-      doc.text(isFr ? `Blocs (>300 mm) : ${overVal}%` : `Oversize (>300 mm): ${overVal}%`, colX[2], y + 29);
-      doc.text(isFr ? `Fines (<25 mm) : ${finesVal}%` : `Fines (<25 mm): ${finesVal}%`, colX[3], y + 29);
+      doc.text(isFr ? `Indice d'uniformité n : ${unifVal}` : `Uniformity Index n: ${unifVal}`, colX[0], y + 29, { maxWidth: 42 });
+      doc.text(isFr ? `Taille max (Pmax) : ${pMaxVal} mm` : `Top Size (Pmax): ${pMaxVal} mm`, colX[1], y + 29, { maxWidth: 42 });
+      doc.text(isFr ? `Blocs (>300 mm) : ${overVal}%` : `Oversize (>300 mm): ${overVal}%`, colX[2], y + 29, { maxWidth: 42 });
+      doc.text(isFr ? `Fines (<25 mm) : ${finesVal}%` : `Fines (<25 mm): ${finesVal}%`, colX[3], y + 29, { maxWidth: 42 });
 
       // PAGE BREAK FOR STATISTICAL REGRESSIONS & SAMPLING
       doc.addPage();
@@ -1161,7 +1161,7 @@ export async function generateModularVaultPdfReport(
       const ton = p.totalBlastedTonnage ?? blastState.rock.totalBlastedTonnage;
 
       doc.setFillColor(254, 243, 199);
-      doc.rect(14, y, 182, 12, 'F');
+      doc.rect(14, y, 182, 13, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(146, 64, 14);
@@ -1170,16 +1170,18 @@ export async function generateModularVaultPdfReport(
           ? `GÉOMÉTRIE FOSSE : Gradin ${bench} RL | Maille : ${burden}m × ${spacing}m (${numHoles} trous) | Volume : ${vol.toLocaleString()} m³`
           : `PIT GEOMETRY: Bench ${bench} RL | Pattern: ${burden}m × ${spacing}m (${numHoles} holes) | Volume: ${vol.toLocaleString()} m³`,
         18,
-        y + 5
+        y + 4.8,
+        { maxWidth: 174 }
       );
       doc.text(
         isFr
           ? `SÉCURITÉ DU TIR : Rayon d'Exclusion Anti-Projections (Flyrock) : ${flyrock} m (Périmètre Balisé)`
           : `BLAST SAFETY: Flyrock Exclusion Safety Clearance Radius: ${flyrock} m (Secured Perimeter)`,
         18,
-        y + 9.5
+        y + 9.5,
+        { maxWidth: 174 }
       );
-      y += 16;
+      y += 17;
 
       // Embed Open-Pit Bench Map Graphic with Flyrock Radius
       const benchGraphic = renderBenchMapGraphic(blast, flyrock, isFr ? 'fr' : 'en', {
@@ -1361,33 +1363,53 @@ export async function generateModularVaultPdfReport(
       addImageWithPageCheck(m2mGraphic, 182, 85);
 
       const rawCosts = p.costs ?? [
-        { nameFr: 'Foration des Trous', nameEn: 'Drilling', costPerTonUSD: p.drillingCostPerTon ?? 0.65, percentage: 10.0, driverFr: 'Diamètre et ROP', driverEn: 'Diameter and ROP' },
-        { nameFr: 'Minage & Explosifs', nameEn: 'Blasting', costPerTonUSD: p.blastingCostPerTon ?? 1.10, percentage: 17.0, driverFr: 'Dosage kg/m³', driverEn: 'Powder factor' },
-        { nameFr: 'Débitage Secondaire', nameEn: 'Secondary Breaking', costPerTonUSD: p.secondaryBreakingCostPerTon ?? 0.20, percentage: 3.0, driverFr: 'Gros blocs >300mm', driverEn: 'Boulders >300mm' },
-        { nameFr: 'Concassage Primaire', nameEn: 'Primary Crushing', costPerTonUSD: p.crushingCostPerTon ?? 0.55, percentage: 8.5, driverFr: 'Énergie mâchoires', driverEn: 'Crusher draw' },
-        { nameFr: 'Broyage SAG & Boulets', nameEn: 'SAG & Ball Milling', costPerTonUSD: p.millingCostPerTon ?? 4.00, percentage: 61.5, driverFr: 'P80 d’alimentation', driverEn: 'Feed P80' },
+        { nameFr: 'Foration des Trous', nameEn: 'Drilling', costPerTonUSD: p.drillingCostPerTon ?? 0.65, optimalCostPerTonUSD: 0.85, variancePerTonUSD: 0.20, percentage: 10.0, driverFr: 'Diamètre et ROP', driverEn: 'Diameter and ROP' },
+        { nameFr: 'Minage & Explosifs', nameEn: 'Blasting', costPerTonUSD: p.blastingCostPerTon ?? 1.10, optimalCostPerTonUSD: 1.45, variancePerTonUSD: 0.35, percentage: 17.0, driverFr: 'Dosage kg/m³', driverEn: 'Powder factor' },
+        { nameFr: 'Débitage Secondaire', nameEn: 'Secondary Breaking', costPerTonUSD: p.secondaryBreakingCostPerTon ?? 0.20, optimalCostPerTonUSD: 0.05, variancePerTonUSD: -0.15, percentage: 3.0, driverFr: 'Gros blocs >300mm', driverEn: 'Boulders >300mm' },
+        { nameFr: 'Concassage Primaire', nameEn: 'Primary Crushing', costPerTonUSD: p.crushingCostPerTon ?? 0.55, optimalCostPerTonUSD: 0.45, variancePerTonUSD: -0.10, percentage: 8.5, driverFr: 'Énergie mâchoires', driverEn: 'Crusher draw' },
+        { nameFr: 'Broyage SAG & Boulets', nameEn: 'SAG & Ball Milling', costPerTonUSD: p.millingCostPerTon ?? 4.00, optimalCostPerTonUSD: 2.50, variancePerTonUSD: -1.50, percentage: 61.5, driverFr: 'P80 d’alimentation', driverEn: 'Feed P80' },
       ];
-      const econRows = rawCosts.map((c: any) => [
-        isFr ? c.nameFr : c.nameEn,
-        `${c.costPerTonUSD.toFixed(2)} USD/t`,
-        `${c.percentage ? c.percentage.toFixed(1) : ((c.costPerTonUSD / (parseFloat(totalCost) || 1)) * 100).toFixed(1)}%`,
-        isFr ? c.driverFr : c.driverEn,
-      ]);
+
+      const optTotal = p.optimalTotalCostPerTon ?? blastState.economics.optimalTotalCostPerTonUSD ?? Math.max(0.5, parseFloat(totalCost) - savings);
+
+      const econRows = rawCosts.map((c: any) => {
+        const cur = Number(c.costPerTonUSD.toFixed(2));
+        const opt = c.optimalCostPerTonUSD !== undefined
+          ? Number(c.optimalCostPerTonUSD.toFixed(2))
+          : cur;
+        const diff = c.variancePerTonUSD !== undefined
+          ? Number(c.variancePerTonUSD.toFixed(2))
+          : Number((opt - cur).toFixed(2));
+        const diffStr = diff > 0 ? `+${diff.toFixed(2)} USD/t` : `${diff.toFixed(2)} USD/t`;
+
+        return [
+          isFr ? c.nameFr : c.nameEn,
+          `${cur.toFixed(2)} USD/t`,
+          `${opt.toFixed(2)} USD/t`,
+          diffStr,
+          isFr ? c.driverFr : c.driverEn,
+        ];
+      });
+
+      const totalDiff = Number((optTotal - parseFloat(totalCost)).toFixed(2));
+      const totalDiffStr = totalDiff > 0 ? `+${totalDiff.toFixed(2)} USD/t` : `${totalDiff.toFixed(2)} USD/t`;
+
       econRows.push([
         isFr ? 'Total Coût Minier & Minéralurgique' : 'Total Mine-to-Mill Cost',
         `${totalCost} USD/t`,
-        '100.0%',
-        isFr ? 'Somme exacte des 5 postes de comminution' : 'Exact sum of all 5 comminution cost centers',
+        `${optTotal.toFixed(2)} USD/t`,
+        totalDiffStr,
+        isFr ? `Gain net de +${savings} USD/t` : `Net savings of +${savings} USD/t`,
       ]);
 
       y = drawTable(
         isFr
-          ? ['Poste de Coût Opérationnel', 'Coût Unitaire ($/t)', '% du Coût Total', 'Facteurs Prépondérants']
-          : ['Operational Cost Center', 'Unit Cost ($/t)', '% of Total Cost', 'Key Cost Drivers'],
+          ? ['Poste Opérationnel', 'Actuel ($/t)', 'Optimal ($/t)', 'Écart ($/t)', 'Facteurs Prépondérants']
+          : ['Operational Cost Center', 'Current ($/t)', 'Optimal ($/t)', 'Delta ($/t)', 'Key Cost Drivers'],
         econRows,
-        [60, 36, 36, 50],
+        [52, 28, 28, 26, 48],
         y,
-        isFr ? 'DÉCOMPOSITION DU COÛT GLOBAL MINE-AU-MOULIN (5 POSTES)' : 'HOLISTIC MINE-TO-MILL OPERATING COST BREAKDOWN (5 LINES)',
+        isFr ? 'COMPARAISON ÉCONOMIQUE DIRECTE : ACTUEL VS OPTIMAL (5 POSTES)' : 'DIRECT ECONOMIC COMPARISON: CURRENT RAW VS OPTIMISED (5 LINES)',
         headerTitle,
         headerSub
       );

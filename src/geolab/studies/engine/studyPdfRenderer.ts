@@ -311,15 +311,19 @@ export async function generateStudyPdfReport(
       try { doc.addImage(rightLogo, 'PNG', pageWidth - margin - 16, 7, 16, 10); } catch {}
     }
 
+    const runningHeaderLeftX = leftLogo ? margin + 19 : margin;
+    const runningHeaderRightX = pageWidth - (rightLogo ? margin + 19 : margin);
+    const halfHeaderWidth = Math.max(30, (runningHeaderRightX - runningHeaderLeftX - 6) / 2);
+
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(prR, prG, prB);
-    doc.text(model.organisation.companyName || '', leftLogo ? margin + 19 : margin, 12);
+    doc.text(model.organisation.companyName || '', runningHeaderLeftX, 12, { maxWidth: halfHeaderWidth });
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(100, 116, 139);
-    doc.text(model.study.title, pageWidth - (rightLogo ? margin + 19 : margin), 12, { align: 'right' });
+    doc.text(model.study.title, runningHeaderRightX, 12, { align: 'right', maxWidth: halfHeaderWidth });
 
     doc.setDrawColor(226, 232, 240);
     doc.line(margin, 18, pageWidth - margin, 18);
@@ -509,7 +513,7 @@ function renderCoverPage(
     doc.setFont('helvetica', 'bold');
     doc.text(label, margin + 4, pY);
     doc.setFont('helvetica', 'normal');
-    doc.text(val, margin + 50, pY);
+    doc.text(val, margin + 50, pY, { maxWidth: contentWidth - 54 });
     pY += 5;
   };
 

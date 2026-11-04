@@ -48,8 +48,10 @@ export const NewStudyWizardModal: React.FC<Props> = ({
 
   useEffect(() => {
     const load = async () => {
-      const p = await db.geolabProjects.where('isArchived').equals(0).toArray();
-      const c = await db.clients.where('isArchived').equals(0).toArray();
+      const allProjects = await db.geolabProjects.toArray();
+      const p = allProjects.filter((proj) => !proj.isArchived);
+      const allClients = await db.clients.toArray();
+      const c = allClients.filter((cli) => !cli.isArchived);
       const s = await db.samples.toArray();
       const a = await db.analyses.toArray();
 

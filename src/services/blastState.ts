@@ -187,6 +187,8 @@ export interface BlastCostItem {
   nameEn: string;
   nameFr: string;
   costPerTonUSD: number;
+  optimalCostPerTonUSD?: number;
+  variancePerTonUSD?: number;
   percentage: number;
   driverEn: string;
   driverFr: string;
@@ -196,6 +198,7 @@ export interface BlastEconomicsState {
   costs: BlastCostItem[];
   totalCostPerTonUSD: number;
   optimalP80Mm: number;
+  optimalTotalCostPerTonUSD?: number;
   isOptimumAtBoundary: boolean;
   potentialSavingsPerTonUSD: number;
   annualSavings100ktUSD: number;
@@ -855,11 +858,41 @@ export function getBlastState(
     (drillingCostPerTon + blastingCostPerTon + secondaryBreakingCostPerTon + crushingCostPerTon + millingCostPerTon).toFixed(2)
   );
 
+  // Cost optimization curve & sweet spot
+  let minCostOnCurve = Infinity;
+  let optimalP80Mm = 160;
+  let optDrill = drillingCostPerTon;
+  let optBlast = blastingCostPerTon;
+  let optSec = secondaryBreakingCostPerTon;
+  let optCrush = crushingCostPerTon;
+  let optMill = millingCostPerTon;
+
+  for (let testP80 = 80; testP80 <= 360; testP80 += 20) {
+    const ratio = testP80 / Math.max(1, optP80);
+    const tDrill = Number((drillingCostPerTon * Math.pow(1 / ratio, 0.45)).toFixed(2));
+    const tBlast = Number((blastingCostPerTon * Math.pow(1 / ratio, 0.45)).toFixed(2));
+    const tSec = Number(((Math.pow(testP80 / 140, 2.2) * 3.2 * secondaryBoulderPrice) / 1000).toFixed(2));
+    const tCrush = Number((calculateBondSpecificEnergy(testP80, 110 * 1000, bondWiGrinding * 0.6) * powerPrice).toFixed(2));
+    const tMill = Number((calculateMorrellSpecificEnergy(110, 75, rockAxb, powderFactorKgPerM3) * powerPrice).toFixed(2));
+    const tTotal = Number((tDrill + tBlast + tSec + tCrush + tMill).toFixed(2));
+    if (tTotal < minCostOnCurve) {
+      minCostOnCurve = tTotal;
+      optimalP80Mm = testP80;
+      optDrill = tDrill;
+      optBlast = tBlast;
+      optSec = tSec;
+      optCrush = tCrush;
+      optMill = tMill;
+    }
+  }
+
   const costsList: BlastCostItem[] = [
     {
       nameEn: '1. Primary Drilling',
       nameFr: '1. Foration Primaire',
       costPerTonUSD: drillingCostPerTon,
+      optimalCostPerTonUSD: optDrill,
+      variancePerTonUSD: Number((optDrill - drillingCostPerTon).toFixed(2)),
       percentage: Number(((drillingCostPerTon / totalCostPerTonUSD) * 100).toFixed(1)),
       driverEn: 'Rig amortization & consumable bits',
       driverFr: 'Amortissement sondeuse & taillants',
@@ -868,6 +901,8 @@ export function getBlastState(
       nameEn: '2. Explosives & Blasting',
       nameFr: '2. Minage & Explosifs',
       costPerTonUSD: blastingCostPerTon,
+      optimalCostPerTonUSD: optBlast,
+      variancePerTonUSD: Number((optBlast - blastingCostPerTon).toFixed(2)),
       percentage: Number(((blastingCostPerTon / totalCostPerTonUSD) * 100).toFixed(1)),
       driverEn: 'ANFO prill, boosters & detonators',
       driverFr: 'Explosif vrac, boosters & détonateurs',
@@ -876,6 +911,8 @@ export function getBlastState(
       nameEn: '3. Secondary Boulder Breaking',
       nameFr: '3. Débitage Secondaire Blocs',
       costPerTonUSD: secondaryBreakingCostPerTon,
+      optimalCostPerTonUSD: optSec,
+      variancePerTonUSD: Number((optSec - secondaryBreakingCostPerTon).toFixed(2)),
       percentage: Number(((secondaryBreakingCostPerTon / totalCostPerTonUSD) * 100).toFixed(1)),
       driverEn: 'Hydraulic rock breaker on oversize boulders',
       driverFr: 'Brise-roche hydraulique sur blocs >300 mm',
@@ -884,6 +921,8 @@ export function getBlastState(
       nameEn: '4. Primary Crushing',
       nameFr: '4. Concassage Primaire',
       costPerTonUSD: crushingCostPerTon,
+      optimalCostPerTonUSD: optCrush,
+      variancePerTonUSD: Number((optCrush - crushingCostPerTon).toFixed(2)),
       percentage: Number(((crushingCostPerTon / totalCostPerTonUSD) * 100).toFixed(1)),
       driverEn: 'Jaw crusher power & liner wear',
       driverFr: 'Énergie électrique & mâchoires concasseur',
@@ -892,6 +931,8 @@ export function getBlastState(
       nameEn: '5. Fine Milling (SAG + Ball)',
       nameFr: '5. Broyage Fin (SAG + Boulets)',
       costPerTonUSD: millingCostPerTon,
+      optimalCostPerTonUSD: optMill,
+      variancePerTonUSD: Number((optMill - millingCostPerTon).toFixed(2)),
       percentage: Number(((millingCostPerTon / totalCostPerTonUSD) * 100).toFixed(1)),
       driverEn: 'Heavy comminution electricity & grinding media wear',
       driverFr: 'Moteurs électriques broyeurs & boulets d’acier',
@@ -904,22 +945,6 @@ export function getBlastState(
     costsList[costsList.length - 1].percentage = Number(
       (costsList[costsList.length - 1].percentage + (100 - currentSumPct)).toFixed(1)
     );
-  }
-
-  // Cost optimization curve & sweet spot
-  let minCostOnCurve = Infinity;
-  let optimalP80Mm = 160;
-  for (let testP80 = 80; testP80 <= 360; testP80 += 20) {
-    const ratio = testP80 / Math.max(1, optP80);
-    const tDrillBlast = (drillingCostPerTon + blastingCostPerTon) * Math.pow(1 / ratio, 0.45);
-    const tSec = Number(((Math.pow(testP80 / 140, 2.2) * 3.2 * secondaryBoulderPrice) / 1000).toFixed(2));
-    const tCrush = calculateBondSpecificEnergy(testP80, 110 * 1000, bondWiGrinding * 0.6) * powerPrice;
-    const tMill = calculateMorrellSpecificEnergy(110, 75, rockAxb, powderFactorKgPerM3) * powerPrice;
-    const tTotal = tDrillBlast + tSec + tCrush + tMill;
-    if (tTotal < minCostOnCurve) {
-      minCostOnCurve = tTotal;
-      optimalP80Mm = testP80;
-    }
   }
 
   const isOptimumAtBoundary = optimalP80Mm <= 80 || optimalP80Mm >= 360;
@@ -939,6 +964,7 @@ export function getBlastState(
     costs: costsList,
     totalCostPerTonUSD,
     optimalP80Mm,
+    optimalTotalCostPerTonUSD: minCostOnCurve,
     isOptimumAtBoundary,
     potentialSavingsPerTonUSD,
     annualSavings100ktUSD,

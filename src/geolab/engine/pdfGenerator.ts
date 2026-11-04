@@ -134,12 +134,15 @@ export function renderAnalysisSheet(
     try { doc.addImage(rightLogo, 'PNG', pageWidth - margin - 22, cursorY, 22, 14); } catch {}
   }
 
-  // Lab Name & Accreditation
+  // Lab Name & Accreditation (constrained so it never collides with centerLogo or right-side text)
   const textLeft = leftLogo ? margin + 26 : margin;
+  const textRightLimit = centerLogo ? pageWidth / 2 - 14 : (rightLogo ? pageWidth - margin - 85 : pageWidth - margin - 70);
+  const leftTextMaxW = Math.max(40, textRightLimit - textLeft);
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(prR, prG, prB);
-  doc.text(orgProfile.companyName || '', textLeft, cursorY + 4);
+  doc.text(orgProfile.companyName || '', textLeft, cursorY + 4, { maxWidth: leftTextMaxW });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
@@ -150,29 +153,32 @@ export function renderAnalysisSheet(
     orgProfile.email,
   ].filter(Boolean);
   if (contactParts.length > 0) {
-    doc.text(contactParts.join(' | '), textLeft, cursorY + 8.5);
+    doc.text(contactParts.join(' | '), textLeft, cursorY + 8.5, { maxWidth: leftTextMaxW });
   }
   if (orgProfile.accreditationNumber?.trim()) {
     const accLabel = lang === 'fr' ? "N° d'agrément / d'accréditation : " : 'Agrément / Accreditation no.: ';
-    doc.text(`${accLabel}${orgProfile.accreditationNumber}`, textLeft, cursorY + 12.5);
+    doc.text(`${accLabel}${orgProfile.accreditationNumber}`, textLeft, cursorY + 12.5, { maxWidth: leftTextMaxW });
   }
 
-  // Right-aligned report number and status
+  // Right-aligned report number and status (offset to the left of rightLogo to prevent text-to-logo overlap)
+  const textRight = rightLogo ? pageWidth - margin - 25 : pageWidth - margin;
+  const rightTextMaxW = centerLogo ? (textRight - (pageWidth / 2 + 14)) : 70;
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(30, 41, 59);
-  doc.text(`${lang === 'fr' ? 'N° Rapport' : 'Report No'}: ${analysis.reportNumber}`, pageWidth - margin, cursorY + 4, { align: 'right' });
+  doc.text(`${lang === 'fr' ? 'N° Rapport' : 'Report No'}: ${analysis.reportNumber}`, textRight, cursorY + 4, { align: 'right', maxWidth: rightTextMaxW });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.text(`Version: v${analysis.version} | Date: ${analysis.testedDate}`, pageWidth - margin, cursorY + 8.5, { align: 'right' });
+  doc.text(`Version: v${analysis.version} | Date: ${analysis.testedDate}`, textRight, cursorY + 8.5, { align: 'right', maxWidth: rightTextMaxW });
 
   const statusLabel = analysis.status === 'approved'
     ? (lang === 'fr' ? 'APPROUVÉ / DÉFINITIF' : 'APPROVED / FINAL')
     : (lang === 'fr' ? 'BROUILLON (NON AUDITÉ)' : 'DRAFT (UNAUDITED)');
   doc.setTextColor(analysis.status === 'approved' ? 16 : 220, analysis.status === 'approved' ? 185 : 38, analysis.status === 'approved' ? 129 : 38);
   doc.setFont('helvetica', 'bold');
-  doc.text(statusLabel, pageWidth - margin, cursorY + 13, { align: 'right' });
+  doc.text(statusLabel, textRight, cursorY + 13, { align: 'right', maxWidth: rightTextMaxW });
 
   cursorY += 18;
 
@@ -227,20 +233,23 @@ export function renderAnalysisSheet(
 
   doc.setFontSize(7.5);
 
+  const maxWCol2 = col3X - col2X - 3; // 63mm max width to prevent spilling into col 3
+  const maxWCol4 = pageWidth - margin - col4X - 2; // 46mm max width to prevent spilling over right border
+
   // Row 1
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'Client :' : 'Client:', col1X, cursorY + 4.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(`${client.companyName}${client.contactPerson ? ` (${client.contactPerson})` : ''}`, col2X, cursorY + 4.5);
+  doc.text(`${client.companyName}${client.contactPerson ? ` (${client.contactPerson})` : ''}`, col2X, cursorY + 4.5, { maxWidth: maxWCol2 });
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'Échantillon :' : 'Sample ID:', col3X, cursorY + 4.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(sample.sampleId, col4X, cursorY + 4.5);
+  doc.text(sample.sampleId, col4X, cursorY + 4.5, { maxWidth: maxWCol4 });
 
   // Row 2
   doc.setFont('helvetica', 'bold');
@@ -248,14 +257,14 @@ export function renderAnalysisSheet(
   doc.text(lang === 'fr' ? 'Projet :' : 'Project:', col1X, cursorY + 10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(project.projectName, col2X, cursorY + 10);
+  doc.text(project.projectName, col2X, cursorY + 10, { maxWidth: maxWCol2 });
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'Profondeur :' : 'Depth:', col3X, cursorY + 10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(sample.depth || '-', col4X, cursorY + 10);
+  doc.text(sample.depth || '-', col4X, cursorY + 10, { maxWidth: maxWCol4 });
 
   // Row 3
   doc.setFont('helvetica', 'bold');
@@ -263,14 +272,14 @@ export function renderAnalysisSheet(
   doc.text(lang === 'fr' ? 'Site / Lieu :' : 'Site Location:', col1X, cursorY + 15.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(project.siteLocation, col2X, cursorY + 15.5);
+  doc.text(project.siteLocation, col2X, cursorY + 15.5, { maxWidth: maxWCol2 });
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'Date prélèvement :' : 'Sample Date:', col3X, cursorY + 15.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(sample.samplingDate, col4X, cursorY + 15.5);
+  doc.text(sample.samplingDate, col4X, cursorY + 15.5, { maxWidth: maxWCol4 });
 
   if (hasExtendedProject) {
     // Row 4: Extended details
@@ -280,14 +289,14 @@ export function renderAnalysisSheet(
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(15, 23, 42);
     const contractLot = `${project.contractNumber || project.referenceNumber || '-'} ${project.lotSection ? `(${project.lotSection})` : ''}`;
-    doc.text(contractLot, col2X, cursorY + 21);
+    doc.text(contractLot, col2X, cursorY + 21, { maxWidth: maxWCol2 });
 
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(71, 85, 105);
     doc.text(lang === 'fr' ? 'Financement :' : 'Financing:', col3X, cursorY + 21);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(15, 23, 42);
-    doc.text(project.financingText || (project.parties?.[0]?.name ? `${project.parties[0].role}: ${project.parties[0].name}` : '-'), col4X, cursorY + 21);
+    doc.text(project.financingText || (project.parties?.[0]?.name ? `${project.parties[0].role}: ${project.parties[0].name}` : '-'), col4X, cursorY + 21, { maxWidth: maxWCol4 });
   }
 
   cursorY += projectBoxHeight + 4;
@@ -419,17 +428,18 @@ export function renderAnalysisSheet(
     doc.setFillColor(248, 250, 252);
     doc.roundedRect(boxX, boxY, sigBoxWidth, sigHeight, 1, 1, 'FD');
 
+    const textMaxW = sig.stampOrSignatureBase64 ? sigBoxWidth - 23 : sigBoxWidth - 5;
     const roleTitle = sig.roleLabel?.[lang] || sig.title || `Signataire ${idx + 1}`;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
-    doc.text(roleTitle, boxX + 2.5, boxY + 4);
+    doc.text(roleTitle, boxX + 2.5, boxY + 4, { maxWidth: textMaxW });
 
     if (sig.name) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(sig.name, boxX + 2.5, boxY + 8.5);
+      doc.text(sig.name, boxX + 2.5, boxY + 8.5, { maxWidth: textMaxW });
     }
 
     if (sig.stampOrSignatureBase64) {
@@ -891,14 +901,14 @@ function renderWaterContentPdfSection(
 
   doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
-  doc.text(`${lang === 'fr' ? 'Écart entre prises' : 'Difference Δw'}: ${res.differenceBetweenSpecimensPercent}% (Max: ${res.maxTolerancePercent}%)`, startX + 60, startY + 14);
+  doc.text(`${lang === 'fr' ? 'Écart entre prises' : 'Difference Δw'}: ${res.differenceBetweenSpecimensPercent}% (Max: ${res.maxTolerancePercent}%)`, startX + 50, startY + 14, { maxWidth: 82 });
 
   const repLabel = res.repeatabilityAccepted
     ? (lang === 'fr' ? 'RÉPÉTABILITÉ CONFORME' : 'REPEATABILITY PASSED')
     : (lang === 'fr' ? 'RÉPÉTABILITÉ NON CONFORME' : 'REPEATABILITY FAILED');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(res.repeatabilityAccepted ? 16 : 220, res.repeatabilityAccepted ? 185 : 38, res.repeatabilityAccepted ? 129 : 38);
-  doc.text(repLabel, totalWidth - 45, startY + 14);
+  doc.text(repLabel, startX + totalWidth - 4, startY + 14, { align: 'right' });
 
   // Table
   let tableY = startY + 24;
@@ -966,18 +976,22 @@ function renderGenericTestPdfSection(
       cursorY + 5
     );
 
+    const colW = (totalWidth - 6) / 2;
+    const labelW = 46;
+    const valW = colW - labelW - 2;
+
     let resY = cursorY + 11;
     keyResults.forEach((kr, idx) => {
-      const colX = startX + 4 + (idx % 2) * (totalWidth / 2);
+      const colX = startX + 3 + (idx % 2) * (colW + 3);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(71, 85, 105);
-      doc.text(`${kr.label} :`, colX, resY);
+      doc.text(`${kr.label} :`, colX, resY, { maxWidth: labelW });
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(15, 23, 42);
-      doc.text(`${kr.value}${kr.unit ? ' ' + kr.unit : ''}`, colX + 50, resY);
+      doc.text(`${kr.value}${kr.unit ? ' ' + kr.unit : ''}`, colX + labelW + 2, resY, { maxWidth: valW });
 
       if (idx % 2 === 1 || idx === keyResults.length - 1) {
         resY += 5.5;
@@ -1012,18 +1026,22 @@ function renderGenericTestPdfSection(
       doc.setTextColor(prR, prG, prB);
       doc.text(lang === 'fr' ? 'PARAMÈTRES D’ESSAI' : 'TEST PARAMETERS', startX + 3, cursorY + 4);
 
+      const colW = (totalWidth - 6) / 2;
+      const labelW = 44;
+      const valW = colW - labelW - 2;
+
       let py = cursorY + 9;
       paramItems.forEach((pi, idx) => {
-        const colX = startX + 4 + (idx % 2) * (totalWidth / 2);
+        const colX = startX + 3 + (idx % 2) * (colW + 3);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
         doc.setTextColor(71, 85, 105);
-        doc.text(`${pi.label} :`, colX, py);
+        doc.text(`${pi.label} :`, colX, py, { maxWidth: labelW });
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
         doc.setTextColor(15, 23, 42);
-        doc.text(pi.value, colX + 48, py);
+        doc.text(pi.value, colX + labelW + 2, py, { maxWidth: valW });
 
         if (idx % 2 === 1 || idx === paramItems.length - 1) {
           py += 5;

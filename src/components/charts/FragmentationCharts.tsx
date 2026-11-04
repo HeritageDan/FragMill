@@ -619,9 +619,9 @@ export const TornadoSensitivityChart: React.FC<TornadoSensitivityProps> = ({
   sensitivity,
   lang = 'en',
 }) => {
-  const width = 460;
-  const height = 200;
-  const padding = { top: 20, right: 30, bottom: 25, left: 140 };
+  const width = 540;
+  const height = 210;
+  const padding = { top: 26, right: 45, bottom: 25, left: 165 };
   const isFr = lang === 'fr';
 
   const maxImpact = Math.max(
@@ -630,9 +630,9 @@ export const TornadoSensitivityChart: React.FC<TornadoSensitivityProps> = ({
   );
 
   const scaleImpact = (val: number) => {
-    const center = padding.left + (width - padding.left - padding.right) / 2;
+    const chartCenter = padding.left + (width - padding.left - padding.right) / 2;
     const halfWidth = (width - padding.left - padding.right) / 2;
-    return center + (val / maxImpact) * halfWidth;
+    return chartCenter + (val / maxImpact) * halfWidth;
   };
 
   const center = scaleImpact(0);
@@ -643,25 +643,93 @@ export const TornadoSensitivityChart: React.FC<TornadoSensitivityProps> = ({
         {isFr ? 'Diagramme Tornade : Impact sur le P80 (mm)' : 'Tornado Sensitivity Chart: Impact on P80 (mm)'}
       </h5>
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
-        {/* Center Zero Line */}
-        <line x1={center} x2={center} y1={padding.top} y2={height - padding.bottom} stroke="#64748B" strokeWidth="1.5" />
+        {/* Center Zero Line and Base Label */}
+        <line x1={center} x2={center} y1={padding.top} y2={height - padding.bottom} stroke="#64748B" strokeWidth="1.5" strokeDasharray="3 2" />
+        <text x={center} y={padding.top - 6} textAnchor="middle" fontSize="9" fill="#64748B" fontWeight="bold">
+          0 mm ({isFr ? 'Base' : 'Baseline'})
+        </text>
 
         {sensitivity.map((s, idx) => {
-          const y = padding.top + idx * 36 + 10;
+          const y = padding.top + idx * 38 + 10;
           const xLow = scaleImpact(s.impactLowMm);
           const xHigh = scaleImpact(s.impactHighMm);
 
+          const isLowLeft = xLow <= center;
+          const lowBarWidth = Math.max(2, Math.abs(xLow - center));
+          let lowTextX: number;
+          let lowTextAnchor: 'start' | 'middle' | 'end';
+          let lowTextColor: string;
+
+          if (isLowLeft) {
+            if (lowBarWidth >= 36) {
+              lowTextX = xLow + lowBarWidth / 2;
+              lowTextAnchor = 'middle';
+              lowTextColor = '#FFFFFF';
+            } else if (xLow - 35 >= padding.left) {
+              lowTextX = xLow - 5;
+              lowTextAnchor = 'end';
+              lowTextColor = '#DC2626';
+            } else {
+              lowTextX = xLow + 3;
+              lowTextAnchor = 'start';
+              lowTextColor = '#FFFFFF';
+            }
+          } else {
+            if (lowBarWidth >= 36) {
+              lowTextX = center + lowBarWidth / 2;
+              lowTextAnchor = 'middle';
+              lowTextColor = '#FFFFFF';
+            } else {
+              lowTextX = xLow + 5;
+              lowTextAnchor = 'start';
+              lowTextColor = '#DC2626';
+            }
+          }
+
+          const isHighRight = xHigh >= center;
+          const highBarWidth = Math.max(2, Math.abs(xHigh - center));
+          let highTextX: number;
+          let highTextAnchor: 'start' | 'middle' | 'end';
+          let highTextColor: string;
+
+          if (isHighRight) {
+            if (highBarWidth >= 36) {
+              highTextX = center + highBarWidth / 2;
+              highTextAnchor = 'middle';
+              highTextColor = '#FFFFFF';
+            } else if (xHigh + 35 <= width - 10) {
+              highTextX = xHigh + 5;
+              highTextAnchor = 'start';
+              highTextColor = '#059669';
+            } else {
+              highTextX = xHigh - 3;
+              highTextAnchor = 'end';
+              highTextColor = '#FFFFFF';
+            }
+          } else {
+            if (highBarWidth >= 36) {
+              highTextX = xHigh + highBarWidth / 2;
+              highTextAnchor = 'middle';
+              highTextColor = '#FFFFFF';
+            } else {
+              highTextX = xHigh - 5;
+              highTextAnchor = 'end';
+              highTextColor = '#059669';
+            }
+          }
+
           return (
             <g key={s.parameter}>
-              <text x={padding.left - 10} y={y + 10} textAnchor="end" fontSize="10" fill="#334155" fontWeight="medium">
+              {/* Parameter Name with ample left padding */}
+              <text x={padding.left - 12} y={y + 11} textAnchor="end" fontSize="9.5" fill="#334155" fontWeight="semibold">
                 {s.parameter}
               </text>
               {/* -15% Bar */}
               <rect
                 x={Math.min(center, xLow)}
                 y={y}
-                width={Math.abs(xLow - center)}
-                height="14"
+                width={lowBarWidth}
+                height="15"
                 fill="#EF4444"
                 rx="2"
               />
@@ -669,19 +737,32 @@ export const TornadoSensitivityChart: React.FC<TornadoSensitivityProps> = ({
               <rect
                 x={Math.min(center, xHigh)}
                 y={y}
-                width={Math.abs(xHigh - center)}
-                height="14"
+                width={highBarWidth}
+                height="15"
                 fill="#10B981"
                 rx="2"
               />
+              {/* -15% Impact Value Label */}
               <text
-                x={xLow < center ? xLow - 4 : xLow + 4}
+                x={lowTextX}
                 y={y + 11}
-                textAnchor={xLow < center ? 'end' : 'start'}
-                fontSize="8.5"
-                fill="#64748B"
+                textAnchor={lowTextAnchor}
+                fontSize="8"
+                fill={lowTextColor}
+                fontWeight="bold"
               >
-                {s.impactLowMm > 0 ? `+${s.impactLowMm}` : s.impactLowMm}
+                {s.impactLowMm > 0 ? `+${s.impactLowMm}` : s.impactLowMm} mm
+              </text>
+              {/* +15% Impact Value Label */}
+              <text
+                x={highTextX}
+                y={y + 11}
+                textAnchor={highTextAnchor}
+                fontSize="8"
+                fill={highTextColor}
+                fontWeight="bold"
+              >
+                {s.impactHighMm > 0 ? `+${s.impactHighMm}` : s.impactHighMm} mm
               </text>
             </g>
           );

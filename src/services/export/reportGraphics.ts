@@ -1434,21 +1434,44 @@ export function renderBenchMapGraphic(
   ctx.setLineDash([]);
 
   // Blasted Polygon Pattern
+  const polyW = 110;
+  const polyH = 80;
   ctx.fillStyle = '#F59E0B';
-  ctx.fillRect(cX - 50, cY - 35, 100, 70);
+  ctx.fillRect(cX - polyW / 2, cY - polyH / 2, polyW, polyH);
   ctx.strokeStyle = '#FFFFFF';
   ctx.lineWidth = 2;
-  ctx.strokeRect(cX - 50, cY - 35, 100, 70);
+  ctx.strokeRect(cX - polyW / 2, cY - polyH / 2, polyW, polyH);
 
-  // Pattern holes dots
-  for (let r = -25; r <= 25; r += 16) {
-    for (let c = -40; c <= 40; c += 20) {
-      ctx.fillStyle = '#FFFFFF';
+  // Pattern holes dots (subtle background grid)
+  for (let r = -28; r <= 28; r += 14) {
+    for (let c = -42; c <= 42; c += 21) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
       ctx.beginPath();
-      ctx.arc(cX + c, cY + r, 3, 0, Math.PI * 2);
+      ctx.arc(cX + c, cY + r, 2, 0, Math.PI * 2);
       ctx.fill();
     }
   }
+
+  // Clear non-overlapping block info badges
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+  ctx.fillRect(cX - 46, cY - 32, 92, 18);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 10px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(blast.blastId || 'BLAST', cX, cY - 19);
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+  ctx.fillRect(cX - 46, cY - 10, 92, 18);
+  ctx.fillStyle = '#38BDF8';
+  ctx.font = 'bold 9px Arial';
+  ctx.fillText(`${benchElevation} RL`, cX, cY + 3);
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+  ctx.fillRect(cX - 46, cY + 12, 92, 18);
+  ctx.fillStyle = '#FDE047';
+  ctx.font = 'bold 8.5px Arial';
+  const pf = ((blast.parameters?.chargePerHole || 22) / Math.max(0.1, (blast.parameters?.burden || 2.4) * (blast.parameters?.spacing || 2.8) * (blast.parameters?.benchHeight || 6.0))).toFixed(2);
+  ctx.fillText(`PF: ${pf} kg/m³`, cX, cY + 25);
 
   // Flyrock tag
   ctx.fillStyle = '#EF4444';
@@ -1474,7 +1497,7 @@ export function renderBenchMapGraphic(
     { c: '#64748B', l: isFr ? `Courbe Niveau (${benchElevation} RL)` : `Topo Crest (${benchElevation} RL)`, line: true },
   ];
 
-  let mChipX = bX + (isFr ? 120 : 110);
+  let mChipX = bX + (isFr ? 115 : 105);
   mapChips.forEach((chip) => {
     if (chip.dash) {
       ctx.strokeStyle = chip.c;
@@ -1507,7 +1530,7 @@ export function renderBenchMapGraphic(
     ctx.fillStyle = '#CBD5E1';
     ctx.font = '8px Arial';
     ctx.fillText(chip.l, mChipX + 18, bY + bH - 18);
-    mChipX += isFr ? 130 : 125;
+    mChipX += isFr ? 138 : 132;
   });
 
   // Right Side Summary

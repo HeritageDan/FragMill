@@ -100,22 +100,29 @@ export function evaluateMineToMillEconomics(
   const costCurve: CostCurvePoint[] = [];
   let sweetSpotP80Mm = 160;
   let minCurveCost = Infinity;
+  let optimalDrill = drillingCostPerTon;
+  let optimalBlast = blastingCostPerTon;
+  let optimalSecondary = secondaryBreakingCostPerTon;
+  let optimalCrush = crushingCostPerTon;
+  let optimalMill = millingCostPerTon;
 
   for (let testP80 = 80; testP80 <= 360; testP80 += 20) {
     // Finer P80 requires tighter pattern / higher powder factor
     const ratioToCurrent = testP80 / Math.max(1, p80Mm);
     // Inverse relationship: tighter pattern increases drilling/blasting
-    const testDrillBlast = (drillingCostPerTon + blastingCostPerTon) * Math.pow(1 / ratioToCurrent, 0.45);
+    const testDrill = Number((drillingCostPerTon * Math.pow(1 / ratioToCurrent, 0.45)).toFixed(2));
+    const testBlast = Number((blastingCostPerTon * Math.pow(1 / ratioToCurrent, 0.45)).toFixed(2));
+    const testDrillBlast = Number((testDrill + testBlast).toFixed(2));
     const testSecondary = Number(
       ((Math.pow(testP80 / 140, 2.2) * 3.2 * params.secondaryBreakingCostPerBoulder) / 1000).toFixed(2)
     );
-    const testCrush = (0.45 + 0.35 * Math.pow(testP80 / 200, 1.3)) * params.crushingEnergyCostPerKwh;
-    const testMill = (13.5 + 4.5 * ((testP80 - 150) / 150)) * params.millingEnergyCostPerKwh;
-    const testTotal = Number((testDrillBlast + testSecondary + testCrush + testMill).toFixed(2));
+    const testCrush = Number(((0.45 + 0.35 * Math.pow(testP80 / 200, 1.3)) * params.crushingEnergyCostPerKwh).toFixed(2));
+    const testMill = Number(((13.5 + 4.5 * ((testP80 - 150) / 150)) * params.millingEnergyCostPerKwh).toFixed(2));
+    const testTotal = Number((testDrill + testBlast + testSecondary + testCrush + testMill).toFixed(2));
 
     costCurve.push({
       p80Mm: testP80,
-      drillingBlastingCostPerTon: Number(testDrillBlast.toFixed(2)),
+      drillingBlastingCostPerTon: testDrillBlast,
       secondaryBreakingCostPerTon: testSecondary,
       crushingMillingCostPerTon: Number((testCrush + testMill).toFixed(2)),
       totalCostPerTon: testTotal,
@@ -124,6 +131,11 @@ export function evaluateMineToMillEconomics(
     if (testTotal < minCurveCost) {
       minCurveCost = testTotal;
       sweetSpotP80Mm = testP80;
+      optimalDrill = testDrill;
+      optimalBlast = testBlast;
+      optimalSecondary = testSecondary;
+      optimalCrush = testCrush;
+      optimalMill = testMill;
     }
   }
 
@@ -139,6 +151,12 @@ export function evaluateMineToMillEconomics(
     millingCostPerTon,
     totalCostPerTon,
     optimalP80Mm: sweetSpotP80Mm,
+    optimalDrillingCostPerTon: optimalDrill,
+    optimalBlastingCostPerTon: optimalBlast,
+    optimalSecondaryBreakingCostPerTon: optimalSecondary,
+    optimalCrushingCostPerTon: optimalCrush,
+    optimalMillingCostPerTon: optimalMill,
+    optimalTotalCostPerTon: minCurveCost,
     potentialSavingsPerTon,
     isOptimumAtBoundary,
     carbonEmissions: {

@@ -151,7 +151,7 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
             : 245);
 
       const nOnBench = bList.length;
-      const blockWidth = Math.min(130, Math.max(95, 460 / (nOnBench + 0.3)));
+      const blockWidth = Math.min(135, Math.max(105, 460 / (nOnBench + 0.3)));
       const startX = 300 - ((nOnBench * (blockWidth + 16)) - 16) / 2;
 
       bList.forEach((b: Blast, idx: number) => {
@@ -159,7 +159,7 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
           x: Math.round(startX + idx * (blockWidth + 16)),
           y: Math.round(targetY),
           w: Math.round(blockWidth),
-          h: 75,
+          h: 88,
           bench: elev,
           isUpper,
         };
@@ -603,8 +603,8 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
                 const layout = computedBlastLayouts[b.id] || {
                   x: 100 + (idx % 3) * 140,
                   y: 130 + Math.floor(idx / 3) * 110,
-                  w: 115,
-                  h: 75,
+                  w: 120,
+                  h: 88,
                   bench: 1240,
                   isUpper: true,
                 };
@@ -641,10 +641,10 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
                     {/* Blast ID Label */}
                     <text
                       x={layout.x + layout.w / 2}
-                      y={layout.y + 24}
+                      y={layout.y + 18}
                       textAnchor="middle"
                       fill="#FFFFFF"
-                      fontSize="12"
+                      fontSize="10.5"
                       fontWeight="bold"
                     >
                       {b.blastId}
@@ -652,20 +652,20 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
 
                     {/* P80 Badge on map */}
                     <rect
-                      x={layout.x + layout.w / 2 - 38}
-                      y={layout.y + 32}
-                      width="76"
-                      height="18"
+                      x={layout.x + layout.w / 2 - 37}
+                      y={layout.y + 25}
+                      width="74"
+                      height="16"
                       rx="4"
                       fill="#000000"
-                      fillOpacity="0.6"
+                      fillOpacity="0.65"
                     />
                     <text
                       x={layout.x + layout.w / 2}
-                      y={layout.y + 45}
+                      y={layout.y + 36.5}
                       textAnchor="middle"
                       fill="#FFFFFF"
-                      fontSize="10"
+                      fontSize="9"
                       fontWeight="bold"
                     >
                       P80: {p80} mm
@@ -674,11 +674,11 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
                     {/* Bench Elevation Label */}
                     <text
                       x={layout.x + layout.w / 2}
-                      y={layout.y + 65}
+                      y={layout.y + 55}
                       textAnchor="middle"
                       fill="#CBD5E1"
-                      fontSize="9"
-                      fontWeight="bold"
+                      fontSize="8.5"
+                      fontWeight="semibold"
                     >
                       {layout.bench} RL {layout.isUpper ? '▲' : '▼'}
                     </text>
@@ -686,10 +686,11 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
                     {/* Powder Factor */}
                     <text
                       x={layout.x + layout.w / 2}
-                      y={layout.y + 64}
+                      y={layout.y + 71}
                       textAnchor="middle"
-                      fill="#E2E8F0"
-                      fontSize="9"
+                      fill="#93C5FD"
+                      fontSize="8"
+                      fontWeight="medium"
                     >
                       {isSelected ? `PF: ${livePowderFactor} kg/m³` : `PF: ${(b.parameters.chargePerHole / Math.max(0.1, b.parameters.burden * b.parameters.spacing * b.parameters.benchHeight)).toFixed(2)} kg/m³`}
                     </text>

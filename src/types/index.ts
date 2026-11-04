@@ -239,6 +239,12 @@ export interface EconomicEvaluation {
   millingCostPerTon: number;
   totalCostPerTon: number;
   optimalP80Mm: number;
+  optimalDrillingCostPerTon?: number;
+  optimalBlastingCostPerTon?: number;
+  optimalSecondaryBreakingCostPerTon?: number;
+  optimalCrushingCostPerTon?: number;
+  optimalMillingCostPerTon?: number;
+  optimalTotalCostPerTon?: number;
   potentialSavingsPerTon: number;
   isOptimumAtBoundary?: boolean;
   carbonEmissions: {
