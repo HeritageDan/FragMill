@@ -15,7 +15,7 @@ export type GeoLabTestType =
 
 export type AnalysisStatus = 'draft' | 'checked' | 'approved';
 
-export type StandardBody = 'NF' | 'ASTM' | 'AASHTO';
+export type StandardBody = 'NF' | 'ASTM' | 'AASHTO' | 'EN' | 'ISO' | 'BS';
 
 export interface GeoLabSignatory {
   role: 'prepared' | 'checked' | 'approved';

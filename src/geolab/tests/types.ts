@@ -22,6 +22,7 @@ export interface FormFieldDefinition {
   min?: number;
   max?: number;
   step?: number;
+  decimals?: number;
   defaultValue?: any;
   options?: { value: string; label: { en: string; fr: string } }[];
   helperText?: { en: string; fr: string };

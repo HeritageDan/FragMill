@@ -69,6 +69,10 @@ export function checkStudyConsistency(params: ConsistencyCheckParams): Consisten
         densityVal = res.solidDensityMgM3;
       } else if (typeof res.solidDensityGcm3 === 'number' && res.solidDensityGcm3 > 0) {
         densityVal = res.solidDensityGcm3;
+      } else if (typeof res.meanGs === 'number' && res.meanGs > 0) {
+        densityVal = res.meanGs;
+      } else if (typeof res.Gs === 'number' && res.Gs > 0) {
+        densityVal = res.Gs;
       }
     }
     if (typeof densityVal === 'number') {
