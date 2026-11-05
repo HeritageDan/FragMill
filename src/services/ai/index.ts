@@ -8,11 +8,11 @@ import type {
 } from '../../types';
 
 export const CLAUDE_CONFIG = {
-  defaultModel: 'claude-3-5-haiku-20241022',
-  sonnetModel: 'claude-3-5-sonnet-20241022',
-  reasoningModel: 'claude-3-7-sonnet-latest',
-  legacyHaikuModel: 'claude-3-haiku-20240307',
+  defaultModel: 'claude-haiku-5-5',
+  sonnetModel: 'claude-sonnet-5-5',
+  reasoningModel: 'claude-opus-5-5',
   baseUrl: 'https://api.anthropic.com/v1/messages',
+  modelsUrl: 'https://api.anthropic.com/v1/models',
   apiVersion: '2023-06-01',
 };
 
@@ -63,6 +63,46 @@ export function detectAiProvider(apiKey?: string, explicitProvider?: AiProvider)
 }
 
 /**
+ * Fetch list of active models directly from Anthropic API.
+ */
+export async function fetchAvailableClaudeModels(apiKey?: string): Promise<string[]> {
+  const fallbackList = [
+    'claude-haiku-5-5',
+    'claude-sonnet-5-5',
+    'claude-opus-5-5',
+    'claude-sonnet-5',
+    'claude-opus-5',
+    'claude-haiku-4-5-20251001',
+  ];
+
+  const cleanKey = apiKey ? apiKey.trim() : '';
+  if (!cleanKey) return fallbackList;
+
+  try {
+    const res = await fetch(CLAUDE_CONFIG.modelsUrl, {
+      method: 'GET',
+      headers: {
+        'x-api-key': cleanKey,
+        'anthropic-version': CLAUDE_CONFIG.apiVersion,
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.data)) {
+        const ids = data.data.map((m: any) => m.id).filter(Boolean);
+        if (ids.length > 0) return ids;
+      }
+    }
+  } catch (err) {
+    console.warn('Could not query Anthropic models API, using standard list:', err);
+  }
+
+  return fallbackList;
+}
+
+/**
  * Universal Anthropic Claude API Messages caller.
  * Uses 'anthropic-dangerous-direct-browser-access: true' for zero-backend client-side execution.
  */
@@ -76,11 +116,17 @@ export async function postClaudeMessages(
     return { ok: false, error: 'Clé API Anthropic absente', providerUsed: 'anthropic' };
   }
 
-  const chosenModel = options?.model || CLAUDE_CONFIG.defaultModel;
+  let chosenModel = options?.model || CLAUDE_CONFIG.defaultModel;
+  // Automatically migrate retired Claude 3 model identifiers
+  if (chosenModel.startsWith('claude-3')) {
+    if (chosenModel.includes('sonnet')) chosenModel = CLAUDE_CONFIG.sonnetModel;
+    else if (chosenModel.includes('opus')) chosenModel = CLAUDE_CONFIG.reasoningModel;
+    else chosenModel = CLAUDE_CONFIG.defaultModel;
+  }
 
-  // Only fallback if explicitly requested (e.g. background workflows), never during explicit testing!
+  // Candidate models: user choice first, followed by active Claude 5/5.5 models if autoFallback is on
   const candidateModels = options?.autoFallback
-    ? Array.from(new Set([chosenModel, 'claude-3-5-haiku-latest', 'claude-3-5-sonnet-latest'])).filter(Boolean)
+    ? Array.from(new Set([chosenModel, CLAUDE_CONFIG.defaultModel, CLAUDE_CONFIG.sonnetModel, CLAUDE_CONFIG.reasoningModel])).filter(Boolean)
     : [chosenModel];
 
   let lastStatus = 0;
@@ -153,6 +199,10 @@ export async function postClaudeMessages(
       // If credit balance too low (400), break immediately
       if (lastError.toLowerCase().includes('credit balance') || lastError.toLowerCase().includes('plans & billing')) {
         break;
+      }
+      // If 404 (model not found/deprecated) and we haven't tried defaultModel yet, continue to next candidate
+      if (response.status === 404 && model !== CLAUDE_CONFIG.defaultModel) {
+        continue;
       }
     } catch (networkErr: any) {
       lastError = networkErr.message || 'Erreur réseau';
@@ -318,16 +368,21 @@ export async function testClaudeApiKey(
     };
   }
 
-  const modelToTest = preferredModel || CLAUDE_CONFIG.defaultModel;
+  let modelToTest = preferredModel || CLAUDE_CONFIG.defaultModel;
+  if (modelToTest.startsWith('claude-3')) {
+    if (modelToTest.includes('sonnet')) modelToTest = CLAUDE_CONFIG.sonnetModel;
+    else if (modelToTest.includes('opus')) modelToTest = CLAUDE_CONFIG.reasoningModel;
+    else modelToTest = CLAUDE_CONFIG.defaultModel;
+  }
 
-  // Exact single test on the user's chosen model: autoFallback is strictly false
+  // Test the model with graceful fallback to active Claude models
   const result = await postClaudeMessages(
     cleanKey,
     [{ role: 'user', content: 'Respond with OK.' }],
     {
       model: modelToTest,
       maxTokens: 10,
-      autoFallback: false,
+      autoFallback: true,
     }
   );
 
@@ -354,7 +409,7 @@ export async function testClaudeApiKey(
     diagnosticMessage =
       'Clé API Anthropic invalide (Erreur 401) : La clé x-api-key n\'est pas reconnue par Anthropic.';
     suggestions.push(
-      'Vérifiez que votre clé commence par "sk-ant-api03-..." et a été copiée sans espaces au début ou à la fin.'
+      'Vérifiez que votre clé commence par "sk-ant-..." et a été copiée sans espaces au début ou à la fin.'
     );
     suggestions.push(
       'Générez une nouvelle clé sur Anthropic Console : https://console.anthropic.com/settings/keys'
@@ -364,18 +419,18 @@ export async function testClaudeApiKey(
     errLower.includes('not_found_error') ||
     errLower.includes('model:')
   ) {
-    diagnosticMessage = `Modèle non accessible ou compte sans crédits prépayés (Erreur 404 : ${rawErr}).`;
+    diagnosticMessage = `Modèle non accessible (${rawErr}).`;
     suggestions.push(
-      '1. Solde de crédits Anthropic requis ($0.00) : L\'API Anthropic ne propose PAS de quota gratuit sans carte bancaire. Si votre organisation a un solde nul ($0.00), Anthropic bloque tous les modèles avec l\'erreur "model: ...". Rendez-vous sur https://console.anthropic.com/settings/billing pour ajouter des crédits prépayés (minimum $5).'
+      '1. Les anciens modèles de génération Claude 3 ont été retirés par Anthropic. Utilisez les modèles actifs actuels : "claude-haiku-5-5" (recommandé), "claude-sonnet-5-5", ou "claude-opus-5-5".'
     );
     suggestions.push(
-      `2. Vérifiez le nom exact du modèle "${modelToTest}". Vous pouvez essayer les alias officiels : "claude-3-5-haiku-latest", "claude-3-5-sonnet-latest", ou "claude-3-7-sonnet-latest".`
+      '2. Solde de crédits Anthropic requis : L\'API Anthropic nécessite un compte avec crédits prépayés actifs. Rendez-vous sur https://console.anthropic.com/settings/billing pour vérifier votre solde.'
     );
     suggestions.push(
-      '3. Alternative 100% GRATUITE sans carte bancaire : Basculez sur l\'onglet Google Gemini ci-dessus (modèle Gemini 1.5 Flash gratuit jusqu\'à 15 requêtes/min sans aucune carte bancaire sur aistudio.google.com).'
+      '3. Alternative 100% GRATUITE sans carte bancaire : Basculez sur l\'onglet Google Gemini ci-dessus (modèle Gemini 1.5 Flash gratuit sans carte bancaire sur aistudio.google.com).'
     );
     suggestions.push(
-      '4. Mode local hors-ligne : FragMill et Geolab restent 100% opérationnels en local même sans connexion IA avec les calculs géotechniques réels.'
+      '4. Mode local hors-ligne : L\'application reste 100% opérationnelle en local avec les calculs géotechniques réels.'
     );
   } else if (
     status === 400 &&

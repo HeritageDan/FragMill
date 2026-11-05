@@ -83,7 +83,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   aiProvider: 'anthropic',
   enableAi: false,
   anthropicApiKey: '',
-  claudeModel: 'claude-3-5-haiku-20241022',
+  claudeModel: 'claude-haiku-5-5',
   enableGemini: false,
   geminiModelFlash: 'gemini-1.5-flash',
   geminiModelPro: 'gemini-1.5-pro',
@@ -119,8 +119,8 @@ export async function getSettings(): Promise<AppSettings> {
   if (!s.aiProvider) {
     s.aiProvider = 'anthropic';
   }
-  if (!s.claudeModel) {
-    s.claudeModel = 'claude-3-5-haiku-20241022';
+  if (!s.claudeModel || s.claudeModel.startsWith('claude-3')) {
+    s.claudeModel = 'claude-haiku-5-5';
   }
   if (s.enableGemini && s.enableAi === undefined) {
     s.enableAi = true;

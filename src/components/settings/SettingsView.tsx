@@ -71,7 +71,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setApiKeyTestResult(null);
     try {
       const activeModel = isClaudeProvider
-        ? (settings.claudeModel || 'claude-3-5-haiku-20241022')
+        ? (settings.claudeModel && !settings.claudeModel.startsWith('claude-3') ? settings.claudeModel : 'claude-haiku-5-5')
         : (settings.geminiModelFlash || 'gemini-1.5-flash');
 
       const res = await testAiApiKey(currentApiKey.trim(), activeModel, settings.aiProvider || 'anthropic');
@@ -616,30 +616,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </label>
                 {isClaudeProvider ? (
                   <select
-                    value={settings.claudeModel || 'claude-3-5-haiku-20241022'}
+                    value={settings.claudeModel && !settings.claudeModel.startsWith('claude-3') ? settings.claudeModel : 'claude-haiku-5-5'}
                     onChange={(e) => {
                       onUpdateSettings({ ...settings, claudeModel: e.target.value });
                       setApiKeyTestResult(null);
                     }}
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-slate-800 text-xs bg-white"
                   >
-                    <option value="claude-3-5-haiku-20241022">
-                      Claude 3.5 Haiku (claude-3-5-haiku-20241022 - Recommandé)
+                    <option value="claude-haiku-5-5">
+                      Claude Haiku 5.5 (claude-haiku-5-5 — Recommandé / Rapide & Économique)
                     </option>
-                    <option value="claude-3-5-haiku-latest">
-                      Claude 3.5 Haiku (claude-3-5-haiku-latest)
+                    <option value="claude-sonnet-5-5">
+                      Claude Sonnet 5.5 (claude-sonnet-5-5 — Vision & Rédaction Géotechnique Précise)
                     </option>
-                    <option value="claude-3-5-sonnet-20241022">
-                      Claude 3.5 Sonnet (claude-3-5-sonnet-20241022 - Vision & Précision)
+                    <option value="claude-opus-5-5">
+                      Claude Opus 5.5 (claude-opus-5-5 — Raisonnement Complexe & Analyse Approfondie)
                     </option>
-                    <option value="claude-3-5-sonnet-latest">
-                      Claude 3.5 Sonnet (claude-3-5-sonnet-latest)
+                    <option value="claude-sonnet-5">
+                      Claude Sonnet 5 (claude-sonnet-5)
                     </option>
-                    <option value="claude-3-7-sonnet-latest">
-                      Claude 3.7 Sonnet (claude-3-7-sonnet-latest)
+                    <option value="claude-opus-5">
+                      Claude Opus 5 (claude-opus-5)
                     </option>
-                    <option value="claude-3-haiku-20240307">
-                      Claude 3 Haiku (claude-3-haiku-20240307)
+                    <option value="claude-haiku-4-5-20251001">
+                      Claude Haiku 4.5 (claude-haiku-4-5-20251001)
                     </option>
                   </select>
                 ) : (
@@ -659,8 +659,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <p className="text-[11px] text-slate-500 mt-1">
                   {isClaudeProvider
                     ? lang === 'fr'
-                      ? 'Claude 3.5 Haiku est le modèle recommandé par défaut pour sa rapidité et son coût très faible.'
-                      : 'Claude 3.5 Haiku is the recommended default for fast latency and cost efficiency.'
+                      ? 'Claude Haiku 5.5 est le modèle actif recommandé par défaut pour sa rapidité d\'exécution et son coût très faible.'
+                      : 'Claude Haiku 5.5 is the active recommended default for high performance and cost efficiency.'
                     : lang === 'fr'
                       ? 'Gemini 1.5 Flash est actif par défaut et supporté par tous les comptes gratuits Google AI Studio.'
                       : 'Gemini 1.5 Flash is the default stable model supported by all free Google AI Studio accounts.'}
