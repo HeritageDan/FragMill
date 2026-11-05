@@ -114,47 +114,83 @@ export function getDeterministicStudyNarrative(
   const materialsList = summary.materialTypes.join(', ');
   const totalTests = summary.testSummaries.length;
 
-  // Extract key Proctor metrics if present
+  // 1. Proctor compaction metrics
   const proctorTests = summary.testSummaries.filter((t) => t.testType === 'proctor');
-  const proctorTextFr =
-    proctorTests.length > 0
-      ? `Les essais de compactage Proctor Modifié indiquent un optimum hydrique (w_OPM) compris autour de ${
-          proctorTests[0].keyValues['w_opt_percent'] ?? '10.5'
-        }% pour une densité sèche maximale (ρd_max) de ${
-          proctorTests[0].keyValues['rho_d_max_Mg_m3'] ?? '2.10'
-        } Mg/m³.`
-      : `Les caractéristiques de compactage ont été évaluées conformément aux spécifications du cahier des charges.`;
+  let proctorTextFr = '';
+  let proctorTextEn = '';
+  if (proctorTests.length === 1) {
+    const wOpt = proctorTests[0].keyValues['w_opt_percent'] ?? '10.5';
+    const rhoMax = proctorTests[0].keyValues['rho_d_max_Mg_m3'] ?? '2.10';
+    proctorTextFr = `Les essais de compactage Proctor Modifié indiquent un optimum hydrique (w_OPM) de ${wOpt}% pour une densité sèche maximale (ρd_max) de ${rhoMax} Mg/m³.`;
+    proctorTextEn = `Modified Proctor compaction tests indicate an optimum moisture content (w_opt) around ${wOpt}% corresponding to a maximum dry density (ρd_max) of ${rhoMax} Mg/m³.`;
+  } else if (proctorTests.length > 1) {
+    const wOpts = proctorTests.map((t) => Number(t.keyValues['w_opt_percent'])).filter((n) => !isNaN(n));
+    const rhoMaxs = proctorTests.map((t) => Number(t.keyValues['rho_d_max_Mg_m3'])).filter((n) => !isNaN(n));
+    const avgW = wOpts.length ? (wOpts.reduce((a, b) => a + b, 0) / wOpts.length).toFixed(1) : '10.5';
+    const avgRho = rhoMaxs.length ? (rhoMaxs.reduce((a, b) => a + b, 0) / rhoMaxs.length).toFixed(2) : '2.10';
+    proctorTextFr = `Les essais de compactage Proctor Modifié (${proctorTests.length} essais) indiquent un optimum hydrique moyen (w_OPM) de ${avgW}% pour une densité sèche maximale moyenne (ρd_max) de ${avgRho} Mg/m³.`;
+    proctorTextEn = `Modified Proctor compaction tests (${proctorTests.length} tests) yield an average optimum moisture (w_opt) around ${avgW}% corresponding to a maximum dry density (ρd_max) of ${avgRho} Mg/m³.`;
+  } else {
+    proctorTextFr = `Les caractéristiques de compactage ont été évaluées conformément aux spécifications du cahier des charges.`;
+    proctorTextEn = `Compaction characteristics were assessed according to project technical specifications.`;
+  }
 
-  const proctorTextEn =
-    proctorTests.length > 0
-      ? `Modified Proctor compaction tests indicate an optimum moisture content (w_opt) around ${
-          proctorTests[0].keyValues['w_opt_percent'] ?? '10.5'
-        }% corresponding to a maximum dry density (ρd_max) of ${
-          proctorTests[0].keyValues['rho_d_max_Mg_m3'] ?? '2.10'
-        } Mg/m³.`
-      : `Compaction characteristics were assessed according to project technical specifications.`;
-
-  // Extract Grain Size metrics if present
+  // 2. Grain size metrics
   const grainTests = summary.testSummaries.filter((t) => t.testType === 'grain_size');
-  const grainTextFr =
-    grainTests.length > 0
-      ? `L'analyse granulométrique met en évidence une fraction fine (< 0.08 mm) de ${
-          grainTests[0].keyValues['fines_percent'] ?? '15'
-        }%, du sable (${grainTests[0].keyValues['sand_percent'] ?? '40'}%) et des graviers (${
-          grainTests[0].keyValues['gravel_percent'] ?? '45'
-        }%), avec une classification dominante de type ${grainTests[0].keyValues['classification'] || 'graveleux'}.`
-      : `La granulométrie des matériaux prélevés atteste d'une composition adaptée aux terrassements.`;
+  let grainTextFr = '';
+  let grainTextEn = '';
+  if (grainTests.length === 1) {
+    const fines = grainTests[0].keyValues['fines_percent'] ?? '15';
+    const sand = grainTests[0].keyValues['sand_percent'] ?? '40';
+    const gravel = grainTests[0].keyValues['gravel_percent'] ?? '45';
+    const classification = grainTests[0].keyValues['classification'] || 'graveleux';
+    grainTextFr = `L'analyse granulométrique met en évidence une fraction fine (< 0.08 mm) de ${fines}%, du sable (${sand}%) et des graviers (${gravel}%), avec une classification dominante de type ${classification}.`;
+    grainTextEn = `Particle size distribution analysis shows a fines fraction (< 0.08 mm) of ${fines}%, sand (${sand}%) and gravel (${gravel}%), classified predominantly as ${classification}.`;
+  } else if (grainTests.length > 1) {
+    const finesArr = grainTests.map((t) => Number(t.keyValues['fines_percent'])).filter((n) => !isNaN(n));
+    const sandArr = grainTests.map((t) => Number(t.keyValues['sand_percent'])).filter((n) => !isNaN(n));
+    const gravelArr = grainTests.map((t) => Number(t.keyValues['gravel_percent'])).filter((n) => !isNaN(n));
+    const avgFines = finesArr.length ? Math.round(finesArr.reduce((a, b) => a + b, 0) / finesArr.length) : '15';
+    const avgSand = sandArr.length ? Math.round(sandArr.reduce((a, b) => a + b, 0) / sandArr.length) : '40';
+    const avgGravel = gravelArr.length ? Math.round(gravelArr.reduce((a, b) => a + b, 0) / gravelArr.length) : '45';
+    const classes = Array.from(new Set(grainTests.map((t) => t.keyValues['classification']).filter(Boolean)));
+    const classStr = classes.length ? classes.join(', ') : 'graveleux';
+    grainTextFr = `L'analyse granulométrique (${grainTests.length} essais) met en évidence une fraction fine moyenne (< 0.08 mm) de ${avgFines}%, du sable (${avgSand}%) et des graviers (${avgGravel}%), avec une classification dominante de type ${classStr}.`;
+    grainTextEn = `Particle size distribution analysis (${grainTests.length} tests) shows an average fines fraction (< 0.08 mm) of ${avgFines}%, sand (${avgSand}%) and gravel (${avgGravel}%), classified predominantly as ${classStr}.`;
+  } else {
+    grainTextFr = `La granulométrie des matériaux prélevés atteste d'une composition adaptée aux terrassements.`;
+    grainTextEn = `The particle size distributions of the sampled soils confirm suitability for engineered earthworks.`;
+  }
 
-  const grainTextEn =
-    grainTests.length > 0
-      ? `Particle size distribution analysis shows a fines fraction (< 0.08 mm) of ${
-          grainTests[0].keyValues['fines_percent'] ?? '15'
-        }%, sand (${grainTests[0].keyValues['sand_percent'] ?? '40'}%) and gravel (${
-          grainTests[0].keyValues['gravel_percent'] ?? '45'
-        }%), classified predominantly as ${grainTests[0].keyValues['classification'] || 'gravelly soil'}.`
-      : `The particle size distributions of the sampled soils confirm suitability for engineered earthworks.`;
+  // 3. Atterberg limits if present
+  const atterbergTests = summary.testSummaries.filter((t) => t.testType === 'atterberg');
+  const atterbergTextFr = atterbergTests.length > 0 && atterbergTests[0].keyValues['PI'] !== undefined
+    ? `Les limites d'Atterberg donnent un indice de plasticité Ip de ${atterbergTests[0].keyValues['PI']}% (wL = ${atterbergTests[0].keyValues['LL']}%, wP = ${atterbergTests[0].keyValues['PL']}%), caractérisant le comportement plastique des fines.`
+    : '';
+  const atterbergTextEn = atterbergTests.length > 0 && atterbergTests[0].keyValues['PI'] !== undefined
+    ? `Atterberg limits determine a plasticity index PI of ${atterbergTests[0].keyValues['PI']}% (LL = ${atterbergTests[0].keyValues['LL']}%, PL = ${atterbergTests[0].keyValues['PL']}%), verifying fines plasticity.`
+    : '';
+
+  // 4. CBR bearing ratio if present
+  const cbrTests = summary.testSummaries.filter((t) => t.testType === 'cbr');
+  const cbrTextFr = cbrTests.length > 0 && cbrTests[0].keyValues['CBR_percent'] !== undefined
+    ? `L'essai de portance CBR après immersion aboutit à un indice de ${cbrTests[0].keyValues['CBR_percent']}%, qualifiant l'aptitude mécanique en plateforme.`
+    : '';
+  const cbrTextEn = cbrTests.length > 0 && cbrTests[0].keyValues['CBR_percent'] !== undefined
+    ? `California Bearing Ratio (CBR) testing yields a soaked value of ${cbrTests[0].keyValues['CBR_percent']}%, confirming structural subgrade bearing suitability.`
+    : '';
+
+  // 5. In-situ water content if present
+  const waterTests = summary.testSummaries.filter((t) => t.testType === 'water_content');
+  const waterTextFr = waterTests.length > 0 && waterTests[0].keyValues['w_n_percent'] !== undefined
+    ? `La teneur en eau naturelle in situ s'élève à ${waterTests[0].keyValues['w_n_percent']}%, servant de référence pour le malaxage et compactage.`
+    : '';
+  const waterTextEn = waterTests.length > 0 && waterTests[0].keyValues['w_n_percent'] !== undefined
+    ? `In-situ natural water content measures ${waterTests[0].keyValues['w_n_percent']}%, providing the baseline for moisture conditioning.`
+    : '';
 
   if (language === 'fr') {
+    const extraParts = [atterbergTextFr, cbrTextFr, waterTextFr].filter(Boolean).join(' ');
     return {
       introduction:
         `Le présent rapport d'étude géotechnique s'inscrit dans le cadre du projet « ${summary.projectName} » réalisé pour le compte de ${summary.clientName}.\n\n` +
@@ -167,17 +203,20 @@ export function getDeterministicStudyNarrative(
       discussion:
         `L'analyse croisée des résultats d'essais met en évidence une bonne homogénéité globale des sols étudiés.\n\n` +
         `${grainTextFr}\n\n` +
-        `${proctorTextFr} La sensibilité à l'eau est modérée, permettant une mise en œuvre aisée sous réserve d'un contrôle rigoureux de l'arrosage ou de l'aération sur chantier.`,
+        `${proctorTextFr} La sensibilité à l'eau est modérée, permettant une mise en œuvre aisée sous réserve d'un contrôle rigoureux de l'arrosage ou de l'aération sur chantier.` +
+        (extraParts ? `\n\n${extraParts}` : ''),
 
       recommendations:
         `Au vu des résultats obtenus, les recommandations géotechniques suivantes sont formulées :\n` +
         `1. Compactage : régalage par couches n'excédant pas 25 à 30 cm d'épaisseur foisonnée et compactage à l'énergie du Proctor Modifié (objectif minimal de 95% de l'OPM pour les remblais et 98% de l'OPM pour la couche de forme).\n` +
-        `2. Drainage : mise en place de fossés et exutoires pour préserver les plateformes de toute stagnation d'eaux pluviales.\n` +
-        `3. Contrôle : réalisation systématique de contrôles de densité in situ (gammadensimètre ou pénétromètre dynamique) lors de l'exécution.`,
+        (cbrTests.length > 0 ? `2. Portance : confirmation de la portance d'assise sur la base de l'indice CBR mesuré (${cbrTests[0].keyValues['CBR_percent']}%).\n` : '') +
+        `3. Drainage : mise en place de fossés et exutoires pour préserver les plateformes de toute stagnation d'eaux pluviales.\n` +
+        `4. Contrôle : réalisation systématique de contrôles de densité in situ (gammadensimètre ou pénétromètre dynamique) lors de l'exécution.`,
 
       isAiGenerated: false,
     };
   } else {
+    const extraParts = [atterbergTextEn, cbrTextEn, waterTextEn].filter(Boolean).join(' ');
     return {
       introduction:
         `This geotechnical study report has been prepared for the project "${summary.projectName}" on behalf of ${summary.clientName}.\n\n` +
@@ -190,13 +229,15 @@ export function getDeterministicStudyNarrative(
       discussion:
         `Cross-examination of the testing data demonstrates consistent engineering behavior across the sampled profiles.\n\n` +
         `${grainTextEn}\n\n` +
-        `${proctorTextEn} Moisture susceptibility remains manageable under standard jobsite water-conditioning practices.`,
+        `${proctorTextEn} Moisture susceptibility remains manageable under standard jobsite water-conditioning practices.` +
+        (extraParts ? `\n\n${extraParts}` : ''),
 
       recommendations:
         `Based on the laboratory findings, the following engineering recommendations are provided:\n` +
         `1. Compaction: loose layer thickness should not exceed 25 to 30 cm, compacted to at least 95% of Modified Proctor density for general fills and 98% for capping and subbase layers.\n` +
-        `2. Drainage: ensure adequate positive surface drainage during all construction stages to prevent saturation of compacted layers.\n` +
-        `3. Quality Assurance: perform routine in-situ density verification (nuclear gauge or sand cone) at regular intervals during fill placement.`,
+        (cbrTests.length > 0 ? `2. Subgrade: bearing layer verification confirmed by measured CBR value (${cbrTests[0].keyValues['CBR_percent']}%).\n` : '') +
+        `3. Drainage: ensure adequate positive surface drainage during all construction stages to prevent saturation of compacted layers.\n` +
+        `4. Quality Assurance: perform routine in-situ density verification (nuclear gauge or sand cone) at regular intervals during fill placement.`,
 
       isAiGenerated: false,
     };

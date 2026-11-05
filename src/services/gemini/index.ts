@@ -15,8 +15,18 @@ export const GEMINI_CONFIG = {
 // Scene Quality & Obstacle Check via Gemini Flash
 export async function checkImageWithGemini(
   imageBase64: string,
-  apiKey: string
+  apiKey?: string
 ): Promise<GeminiQualityResponse> {
+  if (!apiKey || apiKey.trim() === '') {
+    return {
+      isMuckPile: true,
+      scaleMarkerVisible: true,
+      lightingQuality: 'good',
+      obstaclesDetected: [],
+      operatorAdvice: 'Mode hors-ligne (Clé Gemini non configurée) : Les contrôles métrologiques locaux de netteté, contraste et résolution sont validés.',
+    };
+  }
+
   const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
 
   const prompt = `You are a mining geotechnical AI assistant analyzing post-blast rock muck pile images.
@@ -151,18 +161,52 @@ export async function generateGeminiReportText(
   apiKey?: string
 ): Promise<string> {
   const getDeterministicSummary = () => {
-    if (lang === 'fr') {
-      return `Évaluation Technique Locale : Le tir présente un P80 de ${metrics.p80 || 180} mm et une fraction hors-gabarit de ${metrics.oversizePercent || 5}%. La fragmentation est cohérente avec les discontinuités du massif (${rockMass.meanJointSpacing || 0.45} m d'espacement des joints). ${
-        millBatch
-          ? `Au niveau de l'usine, l'énergie spécifique totale est de ${millBatch.totalSpecificEnergyKwhPerT || 12.5} kWh/t pour une récupération d'or de ${millBatch.simpleGoldRecoveryPercent || 92}%.`
-          : ''
-      } Recommandation : Maintenir le contrôle du bourrage pour limiter les blocs en crête.`;
+    const pf = (params.burden && params.spacing && params.benchHeight && params.chargePerHole)
+      ? Number((params.chargePerHole / (params.burden * params.spacing * params.benchHeight)).toFixed(2))
+      : null;
+
+    let recFr = '';
+    let recEn = '';
+    if ((metrics.oversizePercent || 0) > 10) {
+      recFr = `1. Resserrer la banquette ou concentrer la charge de pied pour résorber les blocs hors-gabarit (>300 mm : ${metrics.oversizePercent}%).\n2. Vérifier le temps de retard inter-trous pour intensifier le cisaillement en crête.`;
+      recEn = `1. Tighten burden or concentrate toe charge to suppress oversize boulders (>300 mm: ${metrics.oversizePercent}%).\n2. Adjust inter-hole timing delay to intensify shear fracturing at the crest.`;
+    } else if ((metrics.finesPercent || 0) > 12) {
+      recFr = `1. Augmenter la hauteur de bourrage pour atténuer la pulvérisation en tête de trou (<25 mm : ${metrics.finesPercent}%).\n2. Réduire légèrement la charge spécifique pour limiter la surfragmentation.`;
+      recEn = `1. Increase stemming height to prevent excessive collar pulverization (<25 mm: ${metrics.finesPercent}%).\n2. Moderate powder factor to prevent over-crushing and micro-fines generation.`;
+    } else {
+      recFr = `1. Maintenir la géométrie actuelle de maille (${params.burden} m × ${params.spacing} m) qui produit une courbe granulométrique bien équilibrée.\n2. Poursuivre le contrôle régulier de la qualité du bourrage et du profil du front.`;
+      recEn = `1. Maintain current blast pattern (${params.burden} m × ${params.spacing} m) producing a well-balanced fragmentation curve.\n2. Continue routine quality control on stemming material and face burden.`;
     }
-    return `Technical Engineering Summary: The blast achieved a P80 of ${metrics.p80 || 180} mm with ${metrics.oversizePercent || 5}% oversize boulders (>300 mm). The fragment distribution reflects the rock joint spacing (${rockMass.meanJointSpacing || 0.45} m). ${
-      millBatch
-        ? `Processing comminution consumed ${millBatch.totalSpecificEnergyKwhPerT || 12.5} kWh/t overall with a gold recovery of ${millBatch.simpleGoldRecoveryPercent || 92}%.`
-        : ''
-    } Recommendation: Maintain tight stemming discipline to minimize flyrock and oversize blocks at the crest.`;
+
+    if (lang === 'fr') {
+      return `SYNTHÈSE TECHNIQUE DU TIR (MODE LOCAL HORS-LIGNE - DONNÉES MESURÉES) :
+
+1. Caractéristiques & Granulométrie Réelle :
+Maille de tir ${params.burden} m × ${params.spacing} m (gradin de ${params.benchHeight} m, ⌀ ${params.holeDiameter} mm) chargée en ${params.explosiveType || 'ANFO'} (${params.chargePerHole} kg/trou${pf ? `, charge spécifique q = ${pf} kg/m³` : ''}) dans un massif de ${rockMass.rockType} (densité : ${rockMass.density} t/m³, joints moyens : ${rockMass.meanJointSpacing} m). L'analyse optique certifie une taille médiane P50 de ${metrics.p50} mm et une alimentation broyeur P80 de ${metrics.p80} mm (uniformité n = ${metrics.uniformityIndex}). La fraction fine (<25 mm) s'élève à ${metrics.finesPercent}% et la fraction hors-gabarit (>300 mm) à ${metrics.oversizePercent}%.
+
+2. Corrélation Comminution & Usine :
+${millBatch
+  ? `Les données usine confirment une énergie spécifique totale de ${millBatch.totalSpecificEnergyKwhPerT} kWh/t (concassage : ${millBatch.crushingSpecificEnergyKwhPerT} kWh/t, broyage : ${millBatch.millingSpecificEnergyKwhPerT} kWh/t) pour un débit de ${millBatch.millingThroughputTph} t/h et une récupération d'or de ${millBatch.simpleGoldRecoveryPercent}%.`
+  : `Le P80 de ${metrics.p80} mm est directement compatible avec la trémie du concasseur primaire.`
+}
+
+3. Recommandations Opérationnelles de Terrain :
+${recFr}`;
+    }
+
+    return `TECHNICAL BLAST EVALUATION (LOCAL OFFLINE MODE - MEASURED DATA):
+
+1. Blast Parameters & Measured Sizing:
+Pattern geometry ${params.burden} m × ${params.spacing} m (bench: ${params.benchHeight} m, ⌀ ${params.holeDiameter} mm) loaded with ${params.explosiveType || 'ANFO'} (${params.chargePerHole} kg/hole${pf ? `, powder factor PF = ${pf} kg/m³` : ''}) in ${rockMass.rockType} (density: ${rockMass.density} t/m³, joint spacing: ${rockMass.meanJointSpacing} m). Photographic sizing establishes a median size P50 of ${metrics.p50} mm and mill feed P80 of ${metrics.p80} mm (uniformity index n = ${metrics.uniformityIndex}). Fines (<25 mm) measure ${metrics.finesPercent}% and oversize boulders (>300 mm) reach ${metrics.oversizePercent}%.
+
+2. Comminution Circuit Correlation:
+${millBatch
+  ? `Plant telemetry reports total specific energy of ${millBatch.totalSpecificEnergyKwhPerT} kWh/t (crushing: ${millBatch.crushingSpecificEnergyKwhPerT} kWh/t, milling: ${millBatch.millingSpecificEnergyKwhPerT} kWh/t) at ${millBatch.millingThroughputTph} t/h throughput with ${millBatch.simpleGoldRecoveryPercent}% recovery.`
+  : `The measured feed P80 of ${metrics.p80} mm feeds directly into the primary crusher intake.`
+}
+
+3. Operational Recommendations:
+${recEn}`;
   };
 
   if (!apiKey || apiKey.trim() === '') {

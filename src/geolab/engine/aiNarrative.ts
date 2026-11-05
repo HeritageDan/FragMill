@@ -104,6 +104,28 @@ function getDeterministicNarrative(analysis: GeoLabAnalysis, lang: 'en' | 'fr'):
     return `Natural moisture content determination per ${analysis.standard} via oven drying at 105°C yields a mean water content of ${res.meanWaterContentPercent ?? '-'}%. The difference between duplicate specimens is ${res.differenceBetweenSpecimensPercent ?? 0}%, satisfying the repeatability threshold of ${res.maxTolerancePercent ?? 1}%. Recommendation: Use this in-situ moisture baseline to calculate moisture adjustment requirements during earthwork compaction.`;
   }
 
+  if ((testType as string) === 'atterberg') {
+    const wl = res.liquidLimit ?? '-';
+    const wp = res.plasticLimit ?? '-';
+    const ip = res.plasticityIndex ?? '-';
+    const state = typeof ip === 'number'
+      ? (ip < 7 ? (lang === 'fr' ? 'sol peu plastique' : 'low plasticity') : ip < 17 ? (lang === 'fr' ? 'sol moyennement plastique' : 'medium plasticity') : (lang === 'fr' ? 'sol très plastique' : 'highly plastic clay'))
+      : '';
+    if (lang === 'fr') {
+      return `L'essai des limites d'Atterberg selon la norme ${analysis.standard} donne une limite de liquidité wL = ${wl} %, une limite de plasticité wP = ${wp} % et un indice de plasticité Ip = ${ip} % (${state}). Recommandation : Intégrer cette plasticité pour l'évaluation de la sensibilité au retrait-gonflement et le comportement hydrique des remblais.`;
+    }
+    return `Atterberg limits test per ${analysis.standard} yields liquid limit wL = ${wl}%, plastic limit wP = ${wp}%, and plasticity index PI = ${ip}% (${state}). Recommendation: Incorporate this plasticity index in soil classification, swell-shrink susceptibility assessment, and fill placement specifications.`;
+  }
+
+  if ((testType as string) === 'cbr') {
+    const cbr = res.cbrIndex ?? res.cbrImmersionIndex ?? '-';
+    const swell = res.swellingPercent ?? 0;
+    if (lang === 'fr') {
+      return `L'essai CBR selon la norme ${analysis.standard} indique un indice portant immédiat/après immersion CBR = ${cbr} % pour un gonflement linéaire de ${swell} %. Cette portance qualifie la classe d'assise de plateforme. Recommandation : Utiliser cet indice CBR pour le dimensionnement des épaisseurs de chaussée et l'évaluation de la couche de forme.`;
+    }
+    return `California Bearing Ratio (CBR) test according to ${analysis.standard} indicates a bearing index CBR = ${cbr}% with a linear swell of ${swell}%. Recommendation: Apply this CBR value for subgrade class evaluation and pavement layer thickness design.`;
+  }
+
   if (testType === 'specific_gravity') {
     const val = res.meanGs ?? res.specificGravity ?? '-';
     const dens = res.solidDensityGcm3 ?? res.solidDensityMgM3 ?? '-';
