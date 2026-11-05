@@ -13,6 +13,7 @@ interface PredictOptimiseWorkspaceViewProps {
   blasts: Blast[];
   activeBlastId: string;
   onSelectBlast: (id: string) => void;
+  onUpdateBlast?: (updated: Blast) => void;
   onUpdateMillBatch: (blastId: string, millBatch: MillBatch) => void;
   project?: Project | null;
   site?: Site | null;
@@ -26,6 +27,7 @@ export const PredictOptimiseWorkspaceView: React.FC<PredictOptimiseWorkspaceView
   blasts,
   activeBlastId,
   onSelectBlast,
+  onUpdateBlast,
   onUpdateMillBatch,
   project,
   site,
@@ -75,6 +77,7 @@ export const PredictOptimiseWorkspaceView: React.FC<PredictOptimiseWorkspaceView
           blasts={blasts}
           activeBlastId={activeBlastId}
           onSelectBlast={onSelectBlast}
+          onUpdateBlast={onUpdateBlast}
           project={project || undefined}
           site={site || undefined}
           lang={lang}

@@ -583,6 +583,13 @@ export interface Blast {
   economicParams?: EconomicParameters;
   drillHoles?: DetailedDrillHole[];
   droneSurvey?: DroneOrthomosaicData;
+  kuzRamTables?: KuzRamRockTables;
+  timingConfig?: {
+    patternType: 'v_echelon' | 'row_by_row' | 'diagonal_cut' | 'center_lift' | 'electronic_custom';
+    surfaceDelayMs: number;
+    inHoleDelayMs: number;
+    distanceToStructureM?: number;
+  };
   createdAt: number;
   updatedAt: number;
 }

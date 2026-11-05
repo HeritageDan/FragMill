@@ -12,6 +12,7 @@ import { getTestDefinition } from '../tests/index';
 import type { ProctorInput, ProctorResults, ProctorFitMethod } from '../tests/proctor';
 import type { GrainSizeInput, GrainSizeResults } from '../tests/grainSize';
 import type { WaterContentInput, WaterContentResults } from '../tests/waterContent';
+import { renderTestChartPng, isTestWithGraph } from '../studies/engine/chartRenderer';
 
 export interface ExcelGenerationOptions {
   analysis: GeoLabAnalysis;
@@ -97,6 +98,28 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
     zip.file(`xl/media/${logo.fileName}`, logo.b64, { base64: true });
   }
 
+  // Render High-Resolution Chart PNG matching software UI exactly
+  const testId = testDef?.id || analysis.testType;
+  let chartPngBytes: Uint8Array | null = null;
+  if (isTestWithGraph(testId)) {
+    try {
+      chartPngBytes = await renderTestChartPng(
+        analysis.testType,
+        analysis.rawInput,
+        analysis.computedResults,
+        lang,
+        orgProfile.primaryColor
+      );
+    } catch (err) {
+      console.warn('Failed to render chart PNG for Excel:', err);
+    }
+  }
+
+  const hasChartImage = Boolean(chartPngBytes && chartPngBytes.length > 0);
+  if (hasChartImage && chartPngBytes) {
+    zip.file('xl/media/chartImage.png', chartPngBytes);
+  }
+
   // Build Sheet XML based on test type
   const { sheetXml, chartXml, hasChart } = buildTestSheetAndChart(
     testDef.id,
@@ -109,10 +132,10 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
     watermarkText
   );
 
-  const hasDrawing = hasChart || logos.length > 0;
+  const hasDrawing = hasChart || logos.length > 0 || hasChartImage;
 
   // [Content_Types].xml
-  zip.file('[Content_Types].xml', getContentTypesXml(hasChart, hasDrawing, logos));
+  zip.file('[Content_Types].xml', getContentTypesXml(hasChart, hasDrawing, logos, hasChartImage));
 
   // _rels/.rels
   zip.file('_rels/.rels', getGlobalRelsXml());
@@ -128,7 +151,8 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
   zip.file('xl/styles.xml', getStylesXml(orgProfile.primaryColor));
 
   // xl/worksheets/sheet1.xml
-  zip.file('xl/worksheets/sheet1.xml', sheetXml);
+  const finalSheetXml = hasDrawing ? sheetXml : sheetXml.replace(/<drawing\s+r:id="rId1"\s*\/>/, '');
+  zip.file('xl/worksheets/sheet1.xml', finalSheetXml);
 
   if (hasDrawing) {
     // xl/worksheets/_rels/sheet1.xml.rels
@@ -141,10 +165,10 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
     );
 
     // xl/drawings/drawing1.xml
-    zip.file('xl/drawings/drawing1.xml', getDrawingXml(logos, hasChart));
+    zip.file('xl/drawings/drawing1.xml', getDrawingXml(logos, hasChart, hasChartImage));
 
     // xl/drawings/_rels/drawing1.xml.rels
-    zip.file('xl/drawings/_rels/drawing1.xml.rels', getDrawingRelsXml(logos, hasChart));
+    zip.file('xl/drawings/_rels/drawing1.xml.rels', getDrawingRelsXml(logos, hasChart, hasChartImage));
 
     if (hasChart && chartXml) {
       // xl/charts/chart1.xml
@@ -495,7 +519,14 @@ function buildProctorSheet(
 </worksheet>`;
 
   // Build DrawingML Chart (Scatter chart with polynomial compaction curve and saturation curve)
-  const chartXml = buildProctorChartXml(10, lastDataRow, lang, res.fitMethod, res.fittedCoefficients?.polynomialOrder);
+  const chartXml = buildProctorChartXml(
+    10,
+    lastDataRow,
+    lang,
+    res.fitMethod,
+    res.fittedCoefficients?.polynomialOrder,
+    pts
+  );
 
   return { sheetXml, chartXml, hasChart: true };
 }
@@ -505,7 +536,8 @@ function buildProctorChartXml(
   endRow: number,
   lang: 'en' | 'fr',
   fitMethod: ProctorFitMethod = 'quadratic',
-  polyOrder: number = 2
+  polyOrder: number = 2,
+  pts: Array<{ waterContentPercent: number; dryDensityGcm3: number; saturationWaterContentPercent: number }> = []
 ): string {
   const sheetName = lang === 'fr' ? 'Rapport' : 'Report';
   const chartTitle = lang === 'fr' ? 'COURBE PROCTOR ET SATURATION' : 'PROCTOR COMPACTION CURVE';
@@ -556,11 +588,21 @@ function buildProctorChartXml(
           <c:xVal>
             <c:numRef>
               <c:f>'${sheetName}'!$B$${startRow}:$B$${endRow}</c:f>
+              ${pts.length > 0 ? `<c:numCache>
+                <c:formatCode>0.0</c:formatCode>
+                <c:ptCount val="${pts.length}"/>
+                ${pts.map((p, i) => `<c:pt idx="${i}"><c:v>${p.waterContentPercent}</c:v></c:pt>`).join('')}
+              </c:numCache>` : ''}
             </c:numRef>
           </c:xVal>
           <c:yVal>
             <c:numRef>
               <c:f>'${sheetName}'!$D$${startRow}:$D$${endRow}</c:f>
+              ${pts.length > 0 ? `<c:numCache>
+                <c:formatCode>0.000</c:formatCode>
+                <c:ptCount val="${pts.length}"/>
+                ${pts.map((p, i) => `<c:pt idx="${i}"><c:v>${p.dryDensityGcm3}</c:v></c:pt>`).join('')}
+              </c:numCache>` : ''}
             </c:numRef>
           </c:yVal>
           <c:smooth val="0"/>
@@ -582,11 +624,21 @@ function buildProctorChartXml(
           <c:xVal>
             <c:numRef>
               <c:f>'${sheetName}'!$F$${startRow}:$F$${endRow}</c:f>
+              ${pts.length > 0 ? `<c:numCache>
+                <c:formatCode>0.0</c:formatCode>
+                <c:ptCount val="${pts.length}"/>
+                ${pts.map((p, i) => `<c:pt idx="${i}"><c:v>${p.saturationWaterContentPercent}</c:v></c:pt>`).join('')}
+              </c:numCache>` : ''}
             </c:numRef>
           </c:xVal>
           <c:yVal>
             <c:numRef>
               <c:f>'${sheetName}'!$D$${startRow}:$D$${endRow}</c:f>
+              ${pts.length > 0 ? `<c:numCache>
+                <c:formatCode>0.000</c:formatCode>
+                <c:ptCount val="${pts.length}"/>
+                ${pts.map((p, i) => `<c:pt idx="${i}"><c:v>${p.dryDensityGcm3}</c:v></c:pt>`).join('')}
+              </c:numCache>` : ''}
             </c:numRef>
           </c:yVal>
           <c:smooth val="1"/>
@@ -768,12 +820,17 @@ function buildGrainSizeSheet(
   <drawing r:id="rId1"/>
 </worksheet>`;
 
-  const chartXml = buildGrainSizeChartXml(9, lastDataRow, lang);
+  const chartXml = buildGrainSizeChartXml(9, lastDataRow, lang, rows);
 
   return { sheetXml, chartXml, hasChart: true };
 }
 
-function buildGrainSizeChartXml(startRow: number, endRow: number, lang: 'en' | 'fr'): string {
+function buildGrainSizeChartXml(
+  startRow: number,
+  endRow: number,
+  lang: 'en' | 'fr',
+  rows: Array<{ sieveMm: number; passingPercent: number }> = []
+): string {
   const sheetName = lang === 'fr' ? 'Rapport' : 'Report';
   const chartTitle = lang === 'fr' ? 'COURBE GRANULOMÉTRIQUE' : 'PARTICLE SIZE DISTRIBUTION';
   const serTitle = lang === 'fr' ? 'Passant cumulé' : 'Cumulative Passing';
@@ -796,11 +853,21 @@ function buildGrainSizeChartXml(startRow: number, endRow: number, lang: 'en' | '
           <c:xVal>
             <c:numRef>
               <c:f>'${sheetName}'!$A$${startRow}:$A$${endRow}</c:f>
+              ${rows.length > 0 ? `<c:numCache>
+                <c:formatCode>0.000</c:formatCode>
+                <c:ptCount val="${rows.length}"/>
+                ${rows.map((r, i) => `<c:pt idx="${i}"><c:v>${r.sieveMm}</c:v></c:pt>`).join('')}
+              </c:numCache>` : ''}
             </c:numRef>
           </c:xVal>
           <c:yVal>
             <c:numRef>
               <c:f>'${sheetName}'!$E$${startRow}:$E$${endRow}</c:f>
+              ${rows.length > 0 ? `<c:numCache>
+                <c:formatCode>0.0</c:formatCode>
+                <c:ptCount val="${rows.length}"/>
+                ${rows.map((r, i) => `<c:pt idx="${i}"><c:v>${r.passingPercent}</c:v></c:pt>`).join('')}
+              </c:numCache>` : ''}
             </c:numRef>
           </c:yVal>
           <c:smooth val="0"/>
@@ -1166,7 +1233,7 @@ function buildGenericSheet(
 // -------------------------------------------------------------
 // OpenXML Packaging Helpers
 // -------------------------------------------------------------
-function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean): string {
+function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean, hasChartImage: boolean = false): string {
   let anchorsXml = '';
 
   // Logo Anchors
@@ -1196,12 +1263,38 @@ function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean): string {
     </xdr:twoCellAnchor>`;
   });
 
-  // Chart Anchor
+  // Rendered Chart Image Anchor (Matching software UI pixel-for-pixel)
+  if (hasChartImage) {
+    anchorsXml += `
+    <xdr:twoCellAnchor editAs="oneCell">
+      <xdr:from><xdr:col>7</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>15000</xdr:rowOff></xdr:from>
+      <xdr:to><xdr:col>14</xdr:col><xdr:colOff>100000</xdr:colOff><xdr:row>23</xdr:row><xdr:rowOff>40000</xdr:rowOff></xdr:to>
+      <xdr:pic>
+        <xdr:nvPicPr>
+          <xdr:cNvPr id="200" name="TestChartImage"/>
+          <xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
+        </xdr:nvPicPr>
+        <xdr:blipFill>
+          <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rIdChartImg"/>
+          <a:stretch><a:fillRect/></a:stretch>
+        </xdr:blipFill>
+        <xdr:spPr>
+          <a:xfrm><a:off x="0" y="0"/><a:ext cx="5600000" cy="3400000"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+        </xdr:spPr>
+      </xdr:pic>
+      <xdr:clientData/>
+    </xdr:twoCellAnchor>`;
+  }
+
+  // Native DrawingML Chart Anchor
   if (hasChart) {
+    const rowFrom = hasChartImage ? 25 : 3;
+    const rowTo = hasChartImage ? 45 : 23;
     anchorsXml += `
     <xdr:twoCellAnchor>
-      <xdr:from><xdr:col>6</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
-      <xdr:to><xdr:col>13</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>23</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+      <xdr:from><xdr:col>7</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${rowFrom}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+      <xdr:to><xdr:col>14</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${rowTo}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
       <xdr:graphicFrame macro="">
         <xdr:nvGraphicFramePr>
           <xdr:cNvPr id="2" name="Chart"/>
@@ -1224,11 +1317,14 @@ function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean): string {
 </xdr:wsDr>`;
 }
 
-function getDrawingRelsXml(logos: EmbeddedLogo[], hasChart: boolean): string {
+function getDrawingRelsXml(logos: EmbeddedLogo[], hasChart: boolean, hasChartImage: boolean = false): string {
   let rels = '';
   logos.forEach((logo) => {
     rels += `\n  <Relationship Id="${logo.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${logo.fileName}"/>`;
   });
+  if (hasChartImage) {
+    rels += `\n  <Relationship Id="rIdChartImg" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/chartImage.png"/>`;
+  }
   if (hasChart) {
     rels += `\n  <Relationship Id="rIdChart" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/>`;
   }
@@ -1238,7 +1334,7 @@ function getDrawingRelsXml(logos: EmbeddedLogo[], hasChart: boolean): string {
 </Relationships>`;
 }
 
-function getContentTypesXml(hasChart: boolean, hasDrawing: boolean, logos: EmbeddedLogo[]): string {
+function getContentTypesXml(hasChart: boolean, hasDrawing: boolean, logos: EmbeddedLogo[], hasChartImage: boolean = false): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>

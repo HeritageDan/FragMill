@@ -126,8 +126,8 @@ export function computeBlastDiagnosticSummary(
     geomFr += `Rapport de rigidité souple (H/B = ${stiffnessHB}) : bon déplacement du tas, veiller à la déviation des trous profonds. `;
     geomEn += `Flexible bench ratio (H/B = ${stiffnessHB}): excellent heave, monitor deep hole deviation. `;
   } else {
-    geomFr += `Rapport de rigidité optimal (H/B = ${stiffnessHB} ∈ [2.0 ; 3.5]). `;
-    geomEn += `Optimal stiffness ratio (H/B = ${stiffnessHB} ∈ [2.0 ; 3.5]). `;
+    geomFr += `Rapport de rigidité optimal (H/B = ${stiffnessHB} dans [2.0, 3.5]). `;
+    geomEn += `Optimal stiffness ratio (H/B = ${stiffnessHB} in [2.0, 3.5]). `;
   }
 
   let stemmingStatus: 'safe' | 'short_flyrock_risk' | 'excessive_boulder_risk' = 'safe';
@@ -286,7 +286,7 @@ export function generateFullDynamicBlastEvaluationText(
     return `ÉVALUATION TECHNIQUE GÉOTECHNIQUE & ANALYSE DE TIR (MODE DYNAMIQUE SCÉNARIO) :
 
 1. Caractérisation du Massif & Bilan Énergétique :
-Maille de tir ${p.burden} m × ${p.spacing} m (gradin de ${p.benchHeight} m, ⌀ ${p.holeDiameter} mm) chargée en ${p.explosiveType || 'ANFO'} (${p.chargePerHole} kg/trou) dans un massif de ${rock.rockType} (densité : ${rock.density} t/m³, UCS : ${rock.ucsMPa} MPa).
+Maille de tir ${p.burden} m × ${p.spacing} m (gradin de ${p.benchHeight} m, diam. ${p.holeDiameter} mm) chargée en ${p.explosiveType || 'ANFO'} (${p.chargePerHole} kg/trou) dans un massif de ${rock.rockType} (densité : ${rock.density} t/m³, UCS : ${rock.ucsMPa} MPa).
 Diagnostic : ${diag.energyMatch.analysisFr}
 Granulométrie optique mesurée : P50 = ${metrics.p50} mm, P80 = ${metrics.p80} mm, uniformité n = ${metrics.uniformityIndex}. Fines (<25 mm) : ${metrics.finesPercent}%, Gros blocs (>300 mm) : ${metrics.oversizePercent}%.
 
@@ -315,7 +315,7 @@ ${
   return `GEOTECHNICAL BLAST AUDIT & COMPREHENSIVE SCENARIO EVALUATION:
 
 1. Rock Mass Characteristics & Energy Allocation:
-Pattern geometry ${p.burden} m × ${p.spacing} m (bench: ${p.benchHeight} m, ⌀ ${p.holeDiameter} mm) loaded with ${p.explosiveType || 'ANFO'} (${p.chargePerHole} kg/hole) in ${rock.rockType} (density: ${rock.density} t/m³, UCS: ${rock.ucsMPa} MPa).
+Pattern geometry ${p.burden} m × ${p.spacing} m (bench: ${p.benchHeight} m, diam. ${p.holeDiameter} mm) loaded with ${p.explosiveType || 'ANFO'} (${p.chargePerHole} kg/hole) in ${rock.rockType} (density: ${rock.density} t/m³, UCS: ${rock.ucsMPa} MPa).
 Engineering Verdict: ${diag.energyMatch.analysisEn}
 Photographic sizing results: P50 = ${metrics.p50} mm, P80 = ${metrics.p80} mm, uniformity index n = ${metrics.uniformityIndex}. Fines (<25 mm): ${metrics.finesPercent}%, Oversize (>300 mm): ${metrics.oversizePercent}%.
 

@@ -868,7 +868,7 @@ export async function generateGeminiReportText(
 
 1. Caractérisation du Massif & Bilan Énergétique :
 ${energyDiagnosisFr}
-Paramètres de maille : ${burden} m × ${spacing} m (gradin ${benchH} m, ⌀ ${params.holeDiameter} mm, charge ${charge} kg/trou en ${params.explosiveType || 'ANFO'}). Massif rocheux : ${rockMass.rockType} (densité ${density} t/m³, UCS ${ucs} MPa). Granulométrie optique : P50 = ${p50} mm, P80 = ${p80} mm (uniformité n = ${uniformity}).
+Paramètres de maille : ${burden} m × ${spacing} m (gradin ${benchH} m, diam. ${params.holeDiameter} mm, charge ${charge} kg/trou en ${params.explosiveType || 'ANFO'}). Massif rocheux : ${rockMass.rockType} (densité ${density} t/m³, UCS ${ucs} MPa). Granulométrie optique : P50 = ${p50} mm, P80 = ${p80} mm (uniformité n = ${uniformity}).
 
 2. Ratios Géométriques du Gradin & Séquence d'Initiation :
 - Géométrie : ${geomDiagnosisFr}
@@ -886,7 +886,7 @@ ${recsFr.join('\n')}`;
 
 1. Rock Mass Characteristics & Energy Allocation:
 ${energyDiagnosisEn}
-Pattern geometry: ${burden} m × ${spacing} m (bench ${benchH} m, ⌀ ${params.holeDiameter} mm, charge ${charge} kg/hole with ${params.explosiveType || 'ANFO'}). Rock mass: ${rockMass.rockType} (density ${density} t/m³, UCS ${ucs} MPa). Photographic sizing: P50 = ${p50} mm, P80 = ${p80} mm (uniformity n = ${uniformity}).
+Pattern geometry: ${burden} m × ${spacing} m (bench ${benchH} m, diam. ${params.holeDiameter} mm, charge ${charge} kg/hole with ${params.explosiveType || 'ANFO'}). Rock mass: ${rockMass.rockType} (density ${density} t/m³, UCS ${ucs} MPa). Photographic sizing: P50 = ${p50} mm, P80 = ${p80} mm (uniformity n = ${uniformity}).
 
 2. Bench Geometry Ratios & 3D Initiation Dynamics:
 - Geometry ratios: ${geomDiagnosisEn}

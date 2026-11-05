@@ -242,10 +242,10 @@ describe('Advanced Mining Suite Tests', () => {
       expect(frBlob.size).toBeGreaterThan(1000);
     });
 
-    it('generates English and French Excel workbooks', () => {
-      const enWb = exportBlastWorkbookXlsx(dummyBlastForPdf, dummyRun, 'en');
+    it('generates English and French Excel workbooks', async () => {
+      const enWb = await exportBlastWorkbookXlsx(dummyBlastForPdf, dummyRun, 'en');
       expect(enWb).toBeInstanceOf(Blob);
-      const frWb = exportBlastWorkbookXlsx(dummyBlastForPdf, dummyRun, 'fr');
+      const frWb = await exportBlastWorkbookXlsx(dummyBlastForPdf, dummyRun, 'fr');
       expect(frWb).toBeInstanceOf(Blob);
     });
 

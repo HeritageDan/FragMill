@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type {
   Blast,
   ImageRecord,
@@ -321,8 +321,58 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   const [meanJointSpacing, setMeanJointSpacing] = useState(blast.rockMass.meanJointSpacing);
   const [jointOrientation, setJointOrientation] = useState(blast.rockMass.jointOrientation);
 
-  // Synchronize local editable fields when blast prop updates (e.g. from Excel/CSV import)
+  // Form ref for debounced & unmount auto-saving
+  const formValuesRef = useRef({
+    benchHeight,
+    holeDiameter,
+    holeDepth,
+    subdrill,
+    burden,
+    spacing,
+    stemmingLength,
+    numberOfHoles,
+    chargePerHole,
+    explosiveType,
+    rockType,
+    density,
+    meanJointSpacing,
+    jointOrientation,
+    aiCommentary,
+  });
+
+  formValuesRef.current = {
+    benchHeight,
+    holeDiameter,
+    holeDepth,
+    subdrill,
+    burden,
+    spacing,
+    stemmingLength,
+    numberOfHoles,
+    chargePerHole,
+    explosiveType,
+    rockType,
+    density,
+    meanJointSpacing,
+    jointOrientation,
+    aiCommentary,
+  };
+
+  const debounceTimerRef = useRef<any>(null);
+  const lastSavedPayloadRef = useRef<string>('');
+  const lastSelfUpdateTimestampRef = useRef<number>(0);
+  const activeBlastIdRef = useRef<string>(blast.id);
+
+  // Synchronize local editable fields when blast prop updates (e.g. from Excel/CSV import or switching blast)
   useEffect(() => {
+    const isNewBlast = activeBlastIdRef.current !== blast.id;
+    activeBlastIdRef.current = blast.id;
+
+    // If same blast and this update was caused by our own auto-save, ignore to avoid clobbering typing
+    if (!isNewBlast && blast.updatedAt && blast.updatedAt <= lastSelfUpdateTimestampRef.current) {
+      return;
+    }
+
     const initialBench =
       blast.drillHoles && blast.drillHoles.length > 0
         ? blast.parameters.benchHeight && blast.parameters.benchHeight > 6
@@ -343,7 +393,167 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
     setDensity(blast.rockMass.density);
     setMeanJointSpacing(blast.rockMass.meanJointSpacing);
     setJointOrientation(blast.rockMass.jointOrientation);
+    setAiCommentary(blast.notes || '');
+
+    lastSavedPayloadRef.current = JSON.stringify({
+      benchHeight: initialBench,
+      holeDiameter: blast.parameters.holeDiameter,
+      holeDepth: blast.parameters.holeDepth || 6.8,
+      subdrill: blast.parameters.subdrill || 0.8,
+      burden: blast.parameters.burden,
+      spacing: blast.parameters.spacing,
+      stemmingLength: blast.parameters.stemmingLength,
+      numberOfHoles: blast.parameters.numberOfHoles || 30,
+      chargePerHole: blast.parameters.chargePerHole,
+      explosiveType: blast.parameters.explosiveType,
+      rockType: blast.rockMass.rockType,
+      density: blast.rockMass.density,
+      meanJointSpacing: blast.rockMass.meanJointSpacing,
+      jointOrientation: blast.rockMass.jointOrientation,
+      aiCommentary: blast.notes || '',
+    });
   }, [blast]);
+
+  // Check if real drillhole dataset is loaded
+  const hasDrillHoles = Boolean(blast.drillHoles && blast.drillHoles.length > 0);
+
+  const flushSaveBlast = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    const current = formValuesRef.current;
+    const payloadStr = JSON.stringify(current);
+    if (payloadStr === lastSavedPayloadRef.current) {
+      return;
+    }
+    lastSavedPayloadRef.current = payloadStr;
+    const now = Date.now();
+    lastSelfUpdateTimestampRef.current = now;
+
+    if (hasDrillHoles && blast.drillHoles) {
+      const updatedSummary = calculateDrillHoleSummary(blast.drillHoles, current.benchHeight);
+      const updated: Blast = {
+        ...blast,
+        parameters: {
+          ...blast.parameters,
+          benchHeight: current.benchHeight,
+          subdrill: updatedSummary.avgSubdrillM,
+          numberOfHoles: updatedSummary.totalHoles,
+          holeDepth: updatedSummary.avgDepthM,
+          holeDiameter: updatedSummary.avgDiameterMm,
+          burden: updatedSummary.avgBurdenM,
+          spacing: updatedSummary.avgSpacingM,
+          chargePerHole: updatedSummary.avgChargePerHoleKg,
+          stemmingLength: updatedSummary.avgStemmingM,
+        },
+        rockMass: {
+          ...blast.rockMass,
+          rockType: current.rockType,
+          density: current.density,
+          meanJointSpacing: current.meanJointSpacing,
+          jointOrientation: current.jointOrientation,
+        },
+        notes: current.aiCommentary,
+        updatedAt: now,
+      };
+      onUpdateBlast(updated);
+    } else {
+      const updated: Blast = {
+        ...blast,
+        parameters: {
+          ...blast.parameters,
+          benchHeight: current.benchHeight,
+          holeDiameter: current.holeDiameter,
+          holeDepth: current.holeDepth,
+          subdrill: current.subdrill,
+          burden: current.burden,
+          spacing: current.spacing,
+          stemmingLength: current.stemmingLength,
+          numberOfHoles: current.numberOfHoles,
+          chargePerHole: current.chargePerHole,
+          explosiveType: current.explosiveType,
+          chargingProfile: blast.parameters.chargingProfile,
+        },
+        rockMass: {
+          ...blast.rockMass,
+          rockType: current.rockType,
+          density: current.density,
+          meanJointSpacing: current.meanJointSpacing,
+          jointOrientation: current.jointOrientation,
+        },
+        notes: current.aiCommentary,
+        updatedAt: now,
+      };
+      onUpdateBlast(updated);
+    }
+  }, [blast, hasDrillHoles, onUpdateBlast]);
+
+  // Debounced auto-save effect
+  useEffect(() => {
+    const current = {
+      benchHeight,
+      holeDiameter,
+      holeDepth,
+      subdrill,
+      burden,
+      spacing,
+      stemmingLength,
+      numberOfHoles,
+      chargePerHole,
+      explosiveType,
+      rockType,
+      density,
+      meanJointSpacing,
+      jointOrientation,
+      aiCommentary,
+    };
+    const payloadStr = JSON.stringify(current);
+    if (!lastSavedPayloadRef.current) {
+      lastSavedPayloadRef.current = payloadStr;
+      return;
+    }
+    if (payloadStr === lastSavedPayloadRef.current) {
+      return;
+    }
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      flushSaveBlast();
+    }, 350);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [
+    benchHeight,
+    holeDiameter,
+    holeDepth,
+    subdrill,
+    burden,
+    spacing,
+    stemmingLength,
+    numberOfHoles,
+    chargePerHole,
+    explosiveType,
+    rockType,
+    density,
+    meanJointSpacing,
+    jointOrientation,
+    aiCommentary,
+    flushSaveBlast,
+  ]);
+
+  // Flush on unmount so tab navigation never loses data!
+  useEffect(() => {
+    return () => {
+      flushSaveBlast();
+    };
+  }, [flushSaveBlast]);
 
   const blastState = getBlastState(blast);
   const isMultiImageComposite = blastState.optical.isMultiImageComposite;
@@ -396,68 +606,13 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
 
   const activeRun = isCompositeSelected ? compositeRun : singleImageRun;
 
-  // Check if real drillhole dataset is loaded
-  const hasDrillHoles = Boolean(blast.drillHoles && blast.drillHoles.length > 0);
   const holesSummary = hasDrillHoles
     ? calculateDrillHoleSummary(blast.drillHoles!, benchHeight)
     : null;
 
   // Handle saving blast parameter edits
   const handleSaveBlastParameters = () => {
-    if (hasDrillHoles && blast.drillHoles) {
-      const updatedSummary = calculateDrillHoleSummary(blast.drillHoles, benchHeight);
-      const updated: Blast = {
-        ...blast,
-        parameters: {
-          ...blast.parameters,
-          benchHeight,
-          subdrill: updatedSummary.avgSubdrillM,
-          numberOfHoles: updatedSummary.totalHoles,
-          holeDepth: updatedSummary.avgDepthM,
-          holeDiameter: updatedSummary.avgDiameterMm,
-          burden: updatedSummary.avgBurdenM,
-          spacing: updatedSummary.avgSpacingM,
-          chargePerHole: updatedSummary.avgChargePerHoleKg,
-          stemmingLength: updatedSummary.avgStemmingM,
-        },
-        rockMass: {
-          ...blast.rockMass,
-          rockType,
-          density,
-          meanJointSpacing,
-          jointOrientation,
-        },
-        updatedAt: Date.now(),
-      };
-      onUpdateBlast(updated);
-    } else {
-      const updated: Blast = {
-        ...blast,
-        parameters: {
-          ...blast.parameters,
-          benchHeight,
-          holeDiameter,
-          holeDepth,
-          subdrill,
-          burden,
-          spacing,
-          stemmingLength,
-          numberOfHoles,
-          chargePerHole,
-          explosiveType,
-          chargingProfile: blast.parameters.chargingProfile,
-        },
-        rockMass: {
-          ...blast.rockMass,
-          rockType,
-          density,
-          meanJointSpacing,
-          jointOrientation,
-        },
-        updatedAt: Date.now(),
-      };
-      onUpdateBlast(updated);
-    }
+    flushSaveBlast();
     setSaveSuccessMsg(true);
     setTimeout(() => setSaveSuccessMsg(false), 2500);
   };
@@ -991,8 +1146,8 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
               </button>
 
               <button
-                onClick={() => {
-                  const blob = exportBlastWorkbookXlsx(blast, activeRun, lang);
+                onClick={async () => {
+                  const blob = await exportBlastWorkbookXlsx(blast, activeRun, lang);
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
@@ -2015,6 +2170,10 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <span className="text-[11px] font-medium text-emerald-700 flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+              {isFrench ? 'Modifications auto-enregistrées' : 'All edits auto-saved'}
+            </span>
             {saveSuccessMsg && (
               <span className="text-xs font-bold text-emerald-600 flex items-center gap-1 animate-pulse">
                 <CheckCircle2 className="w-3.5 h-3.5" /> {t('success', lang)}

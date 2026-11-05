@@ -55,6 +55,108 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
   const [concentrateGrade, setConcentrateGrade] = useState(millBatch?.concentrateGradeGpt || 140);
   const [notes, setNotes] = useState(millBatch?.processingNotes || '');
 
+  const liveFormRef = React.useRef({
+    batchTonnage,
+    truckCount,
+    boulders,
+    crushingTime,
+    crushingEnergy,
+    millingThroughput,
+    millingEnergy,
+    headGrade,
+    tailsGrade,
+    concentrateGrade,
+    notes,
+  });
+
+  liveFormRef.current = {
+    batchTonnage,
+    truckCount,
+    boulders,
+    crushingTime,
+    crushingEnergy,
+    millingThroughput,
+    millingEnergy,
+    headGrade,
+    tailsGrade,
+    concentrateGrade,
+    notes,
+  };
+
+  const lastSavedMillBatchStr = React.useRef(JSON.stringify(liveFormRef.current));
+
+  const flushSaveMillBatch = React.useCallback(() => {
+    if (!selectedBlast) return;
+    const cur = liveFormRef.current;
+    const curStr = JSON.stringify(cur);
+    if (curStr === lastSavedMillBatchStr.current) return;
+    lastSavedMillBatchStr.current = curStr;
+
+    const crushSpec = Number((cur.batchTonnage > 0 ? cur.crushingEnergy / cur.batchTonnage : 0).toFixed(2));
+    const millSpec = Number((cur.batchTonnage > 0 ? cur.millingEnergy / cur.batchTonnage : 0).toFixed(2));
+    const totSpec = Number((crushSpec + millSpec).toFixed(2));
+    const recPercent = Number(
+      (cur.headGrade > 0
+        ? Math.max(0, Math.min(100, ((cur.headGrade - cur.tailsGrade) / cur.headGrade) * 100))
+        : 90
+      ).toFixed(1)
+    );
+
+    const updated: MillBatch = {
+      id: millBatch?.id || `mb-${selectedBlast.id}`,
+      blastId: selectedBlast.id,
+      batchTonnageTonnes: cur.batchTonnage,
+      truckCount: cur.truckCount,
+      meanLoadTonnes: Number((cur.batchTonnage / Math.max(1, cur.truckCount)).toFixed(1)),
+      bouldersSecondaryBreakingCount: cur.boulders,
+      crushingTimeHours: cur.crushingTime,
+      crushingEnergyKwh: cur.crushingEnergy,
+      millingThroughputTph: cur.millingThroughput,
+      millingEnergyKwh: cur.millingEnergy,
+      headGradeGpt: cur.headGrade,
+      tailsGradeGpt: cur.tailsGrade,
+      concentrateGradeGpt: cur.concentrateGrade,
+      processingNotes: cur.notes,
+      crushingSpecificEnergyKwhPerT: crushSpec,
+      millingSpecificEnergyKwhPerT: millSpec,
+      totalSpecificEnergyKwhPerT: totSpec,
+      simpleGoldRecoveryPercent: recPercent,
+      oversizeRejectsPercent: Number(((cur.boulders * 1.5 * 100) / Math.max(1, cur.batchTonnage)).toFixed(1)),
+      createdAt: millBatch?.createdAt || Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    onUpdateMillBatch(selectedBlast.id, updated);
+  }, [selectedBlast, millBatch, onUpdateMillBatch]);
+
+  useEffect(() => {
+    const curStr = JSON.stringify(liveFormRef.current);
+    if (curStr === lastSavedMillBatchStr.current) return;
+    const timer = setTimeout(() => {
+      flushSaveMillBatch();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [
+    batchTonnage,
+    truckCount,
+    boulders,
+    crushingTime,
+    crushingEnergy,
+    millingThroughput,
+    millingEnergy,
+    headGrade,
+    tailsGrade,
+    concentrateGrade,
+    notes,
+    flushSaveMillBatch,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      flushSaveMillBatch();
+    };
+  }, [flushSaveMillBatch]);
+
   useEffect(() => {
     if (activeBlastId) {
       setSelectedBlastId(activeBlastId);
@@ -71,6 +173,19 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
         setTailsGrade(b.millBatch.tailsGradeGpt);
         setConcentrateGrade(b.millBatch.concentrateGradeGpt || 140);
         setNotes(b.millBatch.processingNotes || '');
+        lastSavedMillBatchStr.current = JSON.stringify({
+          batchTonnage: b.millBatch.batchTonnageTonnes,
+          truckCount: b.millBatch.truckCount || 75,
+          boulders: b.millBatch.bouldersSecondaryBreakingCount || 0,
+          crushingTime: b.millBatch.crushingTimeHours,
+          crushingEnergy: b.millBatch.crushingEnergyKwh,
+          millingThroughput: b.millBatch.millingThroughputTph,
+          millingEnergy: b.millBatch.millingEnergyKwh,
+          headGrade: b.millBatch.headGradeGpt,
+          tailsGrade: b.millBatch.tailsGradeGpt,
+          concentrateGrade: b.millBatch.concentrateGradeGpt || 140,
+          notes: b.millBatch.processingNotes || '',
+        });
       }
     }
   }, [activeBlastId, blasts]);

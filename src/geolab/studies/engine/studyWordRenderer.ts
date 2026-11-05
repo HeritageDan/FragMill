@@ -6,7 +6,7 @@
  */
 
 import type { DocumentModel } from './documentModel';
-import { renderChartToPng } from './chartRenderer';
+import { renderChartToPng, renderTestChartPng } from './chartRenderer';
 
 export interface WordRenderProgress {
   current: number;
@@ -614,12 +614,13 @@ export async function generateStudyDocxReport(
       // Embedded Chart PNG
       if (d.chartType && d.analysis.computedResults) {
         try {
-          const chartBytes = await renderChartToPng({
-            type: d.chartType,
-            results: d.analysis.computedResults,
-            primaryColor: model.primaryColor,
+          const chartBytes = await renderTestChartPng(
+            d.analysis.testType,
+            d.analysis.rawInput,
+            d.analysis.computedResults,
             lang,
-          });
+            model.primaryColor
+          );
 
           children.push(
             new docx.Paragraph({

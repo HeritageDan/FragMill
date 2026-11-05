@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Blast } from '../../types';
 import type { HoleTimingInfo } from '../../types/advanced';
 import {
@@ -27,6 +27,7 @@ interface BlastTimingSimulatorViewProps {
   project?: Project;
   site?: Site;
   lang?: 'en' | 'fr';
+  onUpdateBlast?: (updated: Blast) => void;
 }
 
 export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> = ({
@@ -34,17 +35,62 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
   project,
   site,
   lang = 'en',
+  onUpdateBlast,
 }) => {
   const isFrench = lang === 'fr';
 
-  const [patternType, setPatternType] = useState<InitiationPatternType>('v_echelon');
-  const [surfaceDelayMs, setSurfaceDelayMs] = useState<number>(25);
-  const [inHoleDelayMs, setInHoleDelayMs] = useState<number>(400);
+  const initialConfig = blast.timingConfig || (blast.parameters as any)?.timingParams;
+
+  const [patternType, setPatternType] = useState<InitiationPatternType>(
+    initialConfig?.patternType || 'v_echelon'
+  );
+  const [surfaceDelayMs, setSurfaceDelayMs] = useState<number>(
+    initialConfig?.surfaceDelayMs ?? 25
+  );
+  const [inHoleDelayMs, setInHoleDelayMs] = useState<number>(
+    initialConfig?.inHoleDelayMs ?? 400
+  );
   const [currentTimeMs, setCurrentTimeMs] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [distanceToStructureM, setDistanceToStructureM] = useState<number>(350);
+  const [distanceToStructureM, setDistanceToStructureM] = useState<number>(
+    initialConfig?.distanceToStructureM ?? 350
+  );
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const timingRef = useRef({ patternType, surfaceDelayMs, inHoleDelayMs, distanceToStructureM });
+  timingRef.current = { patternType, surfaceDelayMs, inHoleDelayMs, distanceToStructureM };
+  const lastSavedTimingStr = useRef(JSON.stringify(timingRef.current));
+
+  const flushSaveTiming = useCallback(() => {
+    if (!onUpdateBlast) return;
+    const current = timingRef.current;
+    const curStr = JSON.stringify(current);
+    if (curStr === lastSavedTimingStr.current) return;
+    lastSavedTimingStr.current = curStr;
+
+    const updatedBlast: Blast = {
+      ...blast,
+      timingConfig: current,
+      updatedAt: Date.now(),
+    };
+    onUpdateBlast(updatedBlast);
+  }, [blast, onUpdateBlast]);
+
+  useEffect(() => {
+    const curStr = JSON.stringify({ patternType, surfaceDelayMs, inHoleDelayMs, distanceToStructureM });
+    if (curStr === lastSavedTimingStr.current) return;
+    const timer = setTimeout(() => {
+      flushSaveTiming();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [patternType, surfaceDelayMs, inHoleDelayMs, distanceToStructureM, flushSaveTiming]);
+
+  useEffect(() => {
+    return () => {
+      flushSaveTiming();
+    };
+  }, [flushSaveTiming]);
 
   const dia = blast.parameters.holeDiameter || 79;
   const nHoles = blast.parameters.numberOfHoles || 50;

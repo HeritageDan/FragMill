@@ -563,6 +563,7 @@ function AppContent() {
               blasts={blasts}
               activeBlastId={activeBlastId}
               onSelectBlast={handleSelectBlast}
+              onUpdateBlast={handleUpdateBlast}
               onUpdateMillBatch={handleUpdateMillBatch}
               project={activeProject || undefined}
               site={activeSite || undefined}

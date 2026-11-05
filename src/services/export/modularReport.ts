@@ -3,6 +3,7 @@ import type {
   Blast,
   Project,
   Site,
+  CumulativePoint,
 } from '../../types';
 import type { Language } from '../../i18n';
 import type {
@@ -83,6 +84,23 @@ export async function generateModularVaultPdfReport(
   });
   doc.setLineHeightFactor(1.5);
 
+  // Global String Sanitizer: converts unicode characters that break standard jsPDF WinAnsi fonts
+  const cleanPdfText = (text: string): string => {
+    if (!text) return '';
+    return text
+      .replace(/[\u03A3\u03a3]/g, 'Sum')
+      .replace(/[\u2022]/g, '-')
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2713\u2714]/g, '[OK]')
+      .replace(/[\u2013\u2014\u2212]/g, '-')
+      .replace(/[\u2265]/g, '>=')
+      .replace(/[\u2264]/g, '<=')
+      .replace(/[\u00D7]/g, 'x')
+      .replace(/[\u2300\u2205]/g, 'D')
+      .replace(/[\u2208]/g, 'in');
+  };
+
   const allOrderedKeys = (Object.keys(REPORT_SECTIONS_REGISTRY) as ReportSectionKey[]).sort(
     (a, b) => REPORT_SECTIONS_REGISTRY[a].order - REPORT_SECTIONS_REGISTRY[b].order
   );
@@ -96,48 +114,66 @@ export async function generateModularVaultPdfReport(
 
   const finalKeys = keysToRender.length > 0 ? keysToRender : allOrderedKeys;
 
-  // Header Helper with Organization Info & Logo
+  // Header Helper with Organization Info & Logo (Zero-Collision Geometry)
   const drawHeader = (title: string, subTitle: string) => {
+    const cleanTitle = cleanPdfText(title);
+    const cleanSub = cleanPdfText(subTitle);
+
     doc.setFillColor(31, 56, 100); // Deep Navy #1F3864
-    doc.rect(0, 0, 210, 22, 'F');
+    doc.rect(0, 0, 210, 25, 'F');
 
     const headerLogo = orgProfile?.headerLogos?.leftBase64 || orgProfile?.headerLogos?.rightBase64 || orgProfile?.logoBase64;
     let titleX = 14;
     if (headerLogo) {
       try {
-        doc.addImage(headerLogo, 'PNG', 14, 3, 20, 16);
-        titleX = 37;
+        doc.addImage(headerLogo, 'PNG', 14, 3, 20, 19);
+        titleX = 38;
       } catch {
         titleX = 14;
       }
     }
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(11);
-    doc.setFont('times', 'bold');
-    doc.text(title, titleX, 10, { maxWidth: headerLogo ? 92 : 114 });
+    const titleMaxW = headerLogo ? 92 : 114;
 
-    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('times', 'bold');
+    doc.setFontSize(9.5);
+    const titleLines = doc.splitTextToSize(cleanTitle, titleMaxW) as string[];
+
+    let titleY = 7.5;
+    let subTitleY = 17.5;
+    if (titleLines.length === 1) {
+      titleY = 10.0;
+      subTitleY = 16.5;
+    } else if (titleLines.length >= 3) {
+      titleY = 6.0;
+      subTitleY = 19.5;
+    }
+
+    doc.text(titleLines, titleX, titleY);
+
+    doc.setFontSize(7.0);
     doc.setFont('times', 'normal');
     doc.setTextColor(226, 232, 240);
-    doc.text(subTitle, titleX, 16.5, { maxWidth: headerLogo ? 92 : 114 });
+    const subLines = doc.splitTextToSize(cleanSub, titleMaxW) as string[];
+    doc.text(subLines.slice(0, 2), titleX, subTitleY);
 
     // Right-hand side: Organization Name and Credentials
-    const orgName = orgProfile?.companyName?.trim() || 'FraGeo Suite';
+    const orgName = cleanPdfText(orgProfile?.companyName?.trim() || 'FraGeo Suite');
     doc.setFontSize(9);
     doc.setFont('times', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text(orgName, 196, 9.5, { align: 'right', maxWidth: 66 });
+    doc.text(orgName, 196, 9.0, { align: 'right', maxWidth: 66 });
 
     doc.setFontSize(6.5);
     doc.setFont('times', 'normal');
     doc.setTextColor(203, 213, 225);
     const orgContactParts = [
-      orgProfile?.address ? orgProfile.address.split(',')[0].trim() : '',
+      orgProfile?.address ? cleanPdfText(orgProfile.address.split(',')[0].trim()) : '',
       orgProfile?.phone ? `Tél: ${orgProfile.phone}` : '',
       orgProfile?.email,
     ].filter(Boolean);
-    const orgContactText = orgContactParts.slice(0, 2).join(' • ');
+    const orgContactText = orgContactParts.slice(0, 2).join(' | ');
     if (orgContactText) {
       doc.text(orgContactText, 196, 14, { align: 'right', maxWidth: 66 });
     }
@@ -145,7 +181,7 @@ export async function generateModularVaultPdfReport(
       doc.text(
         isFr ? `Agrément N° : ${orgProfile.accreditationNumber}` : `Accreditation No: ${orgProfile.accreditationNumber}`,
         196,
-        18,
+        18.5,
         { align: 'right', maxWidth: 66 }
       );
     }
@@ -172,12 +208,12 @@ export async function generateModularVaultPdfReport(
       if (curY > 255) {
         doc.addPage();
         drawHeader(pageHeaderTitle, pageHeaderSub);
-        curY = 26;
+        curY = 29;
       }
       doc.setFont('times', 'bold');
       doc.setFontSize(9.5);
       doc.setTextColor(31, 56, 100);
-      doc.text(title, 14, curY);
+      doc.text(cleanPdfText(title), 14, curY);
       curY += 5.0;
     }
 
@@ -189,8 +225,9 @@ export async function generateModularVaultPdfReport(
     doc.setFont('times', 'bold');
     doc.setFontSize(8);
     const headerLines = headers.map((h, i) => {
+      const cleanH = cleanPdfText(String(h));
       const maxW = Math.max(8, widths[i] - cellPadding * 2);
-      return doc.splitTextToSize(String(h), maxW) as string[];
+      return doc.splitTextToSize(cleanH, maxW) as string[];
     });
     const maxHeaderLines = Math.max(1, ...headerLines.map((l) => l.length));
     const headerLineHeight = 3.2;
@@ -220,7 +257,7 @@ export async function generateModularVaultPdfReport(
     doc.setFontSize(7.5);
     rows.forEach((row, rIdx) => {
       const cellLines = row.map((cellVal, cIdx) => {
-        const str = String(cellVal ?? '');
+        const str = cleanPdfText(String(cellVal ?? ''));
         const maxW = Math.max(8, widths[cIdx] - cellPadding * 2);
         return doc.splitTextToSize(str, maxW) as string[];
       });
@@ -233,7 +270,7 @@ export async function generateModularVaultPdfReport(
       if (curY + rowHeight > 280) {
         doc.addPage();
         drawHeader(pageHeaderTitle, pageHeaderSub);
-        curY = 26;
+        curY = 29;
         curY = drawTableHeaderBlock(curY);
       }
 
@@ -278,38 +315,52 @@ export async function generateModularVaultPdfReport(
     const lineH = 4.0; // 1.5 line spacing at font size 7.5
     doc.setFont('times', 'normal');
     doc.setFontSize(7.5);
-    const split = doc.splitTextToSize(bodyText.trim(), innerW);
-    const textHeight = split.length * lineH;
-    const boxH = Math.max(20, textHeight + 14);
+    const cleanB = cleanPdfText(bodyText.trim());
+    const split = doc.splitTextToSize(cleanB, innerW) as string[];
 
-    if (curY + boxH > 280) {
-      doc.addPage();
-      drawHeader(activeHeaderTitle, activeHeaderSub);
-      curY = 26;
+    const maxLinesPerCard = 32;
+    let offset = 0;
+
+    while (offset < split.length) {
+      const chunk = split.slice(offset, offset + maxLinesPerCard);
+      offset += maxLinesPerCard;
+      const textHeight = chunk.length * lineH;
+      const boxH = Math.max(18, textHeight + 13);
+
+      if (curY + boxH > 275) {
+        doc.addPage();
+        drawHeader(activeHeaderTitle, activeHeaderSub);
+        curY = 29;
+      }
+
+      doc.setFillColor(...bgColor);
+      doc.setDrawColor(...borderColor);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(14, curY, 182, boxH, 2, 2, 'FD');
+
+      doc.setFillColor(...headerColor);
+      doc.roundedRect(14, curY, 182, 6.5, 2, 2, 'F');
+      doc.rect(14, curY + 3.5, 182, 3, 'F');
+
+      doc.setFont('times', 'bold');
+      doc.setFontSize(8);
+      const titleColor = getContrastTextColor(...headerColor);
+      doc.setTextColor(...titleColor);
+      const cardTitle = offset <= maxLinesPerCard
+        ? cleanPdfText(title)
+        : `${cleanPdfText(title)} ${isFr ? '(SUITE)' : '(CONTINUED)'}`;
+      doc.text(cardTitle, paddingX, curY + 4.8);
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(7.5);
+      const bodyColor = getContrastTextColor(...bgColor);
+      doc.setTextColor(...bodyColor);
+      doc.text(chunk, paddingX, curY + 11.5, { align: 'justify', maxWidth: innerW });
+
+      curY += boxH + 6;
     }
 
-    doc.setFillColor(...bgColor);
-    doc.setDrawColor(...borderColor);
-    doc.setLineWidth(0.5);
-    doc.roundedRect(14, curY, 182, boxH, 2, 2, 'FD');
-
-    doc.setFillColor(...headerColor);
-    doc.roundedRect(14, curY, 182, 6.5, 2, 2, 'F');
-    doc.rect(14, curY + 3.5, 182, 3, 'F');
-
-    doc.setFont('times', 'bold');
-    doc.setFontSize(8);
-    const titleColor = getContrastTextColor(...headerColor);
-    doc.setTextColor(...titleColor);
-    doc.text(title, paddingX, curY + 4.8);
-
-    doc.setFont('times', 'normal');
-    doc.setFontSize(7.5);
-    const bodyColor = getContrastTextColor(...bgColor);
-    doc.setTextColor(...bodyColor);
-    doc.text(split, paddingX, curY + 11.5, { align: 'justify', maxWidth: innerW });
-
-    return curY + boxH + 6;
+    return curY;
   };
 
   const drawMetaBanner = (
@@ -327,7 +378,8 @@ export async function generateModularVaultPdfReport(
     doc.setFontSize(8);
     const wrappedLines: string[] = [];
     lines.forEach((l) => {
-      const split = doc.splitTextToSize(l, innerW) as string[];
+      const cleanL = cleanPdfText(l);
+      const split = doc.splitTextToSize(cleanL, innerW) as string[];
       wrappedLines.push(...split);
     });
 
@@ -335,7 +387,7 @@ export async function generateModularVaultPdfReport(
     if (curY + boxH > 280) {
       doc.addPage();
       drawHeader(activeHeaderTitle, activeHeaderSub);
-      curY = 26;
+      curY = 29;
     }
 
     doc.setFillColor(...bgColor);
@@ -456,14 +508,14 @@ export async function generateModularVaultPdfReport(
     activeHeaderSub = headerSub;
 
     drawHeader(headerTitle, headerSub);
-    let y = 28;
+    let y = 29;
 
     // Helper to embed graphics with auto page break
     const addImageWithPageCheck = (imgDataUrl: string, width = 182, height = 92) => {
       if (y + height > 280) {
         doc.addPage();
         drawHeader(activeHeaderTitle, activeHeaderSub);
-        y = 26;
+        y = 29;
       }
       doc.addImage(imgDataUrl, 'PNG', 14, y, width, height);
       y += height + 5;
@@ -683,15 +735,15 @@ export async function generateModularVaultPdfReport(
       );
 
       const colX = [18, 62, 106, 150];
-      const p10Val = blastState.optical.p10Mm;
-      const p20Val = blastState.optical.p20Mm;
-      const p50Val = blastState.optical.p50Mm;
-      const p80Val = blastState.optical.p80Mm;
-      const p90Val = blastState.optical.p90Mm;
-      const pMaxVal = blastState.optical.topSizeMm;
-      const unifVal = blastState.optical.uniformityIndex;
-      const overVal = blastState.optical.oversizePercent;
-      const finesVal = blastState.optical.finesPercent;
+      const p10Val = mMetrics?.p10 ?? p.p10 ?? blastState.optical.p10Mm;
+      const p20Val = mMetrics?.p20 ?? p.p20 ?? blastState.optical.p20Mm;
+      const p50Val = mMetrics?.p50 ?? p.p50 ?? blastState.optical.p50Mm;
+      const p80Val = mMetrics?.p80 ?? p.p80 ?? blastState.optical.p80Mm;
+      const p90Val = mMetrics?.p90 ?? p.p90 ?? blastState.optical.p90Mm;
+      const pMaxVal = mMetrics?.pMax ?? p.topSize ?? blastState.optical.topSizeMm;
+      const unifVal = mMetrics?.uniformityIndex ?? p.uniformityIndex ?? blastState.optical.uniformityIndex;
+      const overVal = mMetrics?.oversizePercent ?? p.oversizePercent ?? blastState.optical.oversizePercent;
+      const finesVal = mMetrics?.finesPercent ?? p.finesPercent ?? blastState.optical.finesPercent;
 
       // Metric Headers
       doc.setFontSize(7.5);
@@ -739,7 +791,7 @@ export async function generateModularVaultPdfReport(
       // PAGE BREAK FOR STATISTICAL REGRESSIONS & SAMPLING
       doc.addPage();
       drawHeader(activeHeaderTitle, activeHeaderSub);
-      y = 26;
+      y = 29;
 
       // 4. NON-LINEAR REGRESSION CURVE FITTING & MATHEMATICAL MODELS
       y = drawTable(
@@ -926,7 +978,7 @@ export async function generateModularVaultPdfReport(
       // PAGE BREAK FOR TECHNICAL ENGINEERING DRAWINGS & GRAPHICS (PAGE 3)
       doc.addPage();
       drawHeader(activeHeaderTitle, activeHeaderSub);
-      y = 26;
+      y = 29;
 
       // 8. LOGARITHMIC PASSING CHART (All 3 curves)
       doc.setFontSize(9.5);
@@ -942,13 +994,26 @@ export async function generateModularVaultPdfReport(
       y += 5.0;
 
       const sieveCurve = blastState.sieve.hasSieveData && blast.groundTruth?.sieveData ? computeSieveDistribution(blast.groundTruth.sieveData).curve : undefined;
+      const rrFitCurve: CumulativePoint[] = [];
+      if (mMetrics?.rosinRammlerFit?.xc && mMetrics?.rosinRammlerFit?.n) {
+        for (let s = 1; s <= 800; s = Math.round(s * 1.25 + 1)) {
+          const pct = (1 - Math.exp(-Math.pow(s / mMetrics.rosinRammlerFit.xc, mMetrics.rosinRammlerFit.n))) * 100;
+          rrFitCurve.push({ sizeMm: s, passingPercent: Math.min(100, pct) });
+        }
+      }
+
       const logChart = renderLogarithmicPassingChart({
-        measuredPoints: blastState.optical.curve,
-        kuzRamPoints: kuzRam.predictedCurve,
+        measuredPoints: mMetrics?.rawCurve ?? blastState.optical.curve,
+        kuzRamPoints: p.predictedCurve ?? kuzRam.predictedCurve,
+        swebrecPoints: mMetrics?.correctedCurve ?? blastState.optical.curve,
+        xpFragPoints: (kuzRam as any)?.xpFragCurve,
+        rosinRammlerPoints: rrFitCurve.length > 0 ? rrFitCurve : undefined,
         sievePoints: sieveCurve,
         p10: p10Val,
+        p20: p20Val,
         p50: p50Val,
         p80: p80Val,
+        p90: p90Val,
         lang: isFr ? 'fr' : 'en',
       });
       addImageWithPageCheck(logChart, 182, 88);
@@ -972,7 +1037,7 @@ export async function generateModularVaultPdfReport(
       // PAGE BREAK FOR COMPUTER VISION PROCESSING PIPELINE (PAGE 4)
       doc.addPage();
       drawHeader(activeHeaderTitle, activeHeaderSub);
-      y = 26;
+      y = 29;
 
       // 10. COMPUTER VISION PROCESSING PIPELINE GALLERY (8 Stages)
       doc.setFontSize(9.5);
@@ -1058,49 +1123,82 @@ export async function generateModularVaultPdfReport(
       );
 
       // 11. AVIS TECHNIQUE & SYNTHÈSE GÉOTECHNIQUE DU TIR
-      const notesToPrint = (blast.notes && blast.notes.trim().length > 0)
+      const rawNotesToPrint = (blast.notes && blast.notes.trim().length > 0)
         ? blast.notes.trim()
         : generateFullDynamicBlastEvaluationText(blast, blastState, isFr ? 'fr' : 'en');
 
-      if (notesToPrint && notesToPrint.length > 0) {
-        const innerW = 174;
-        const lineH = 4.0; // 1.5 line spacing at font size 7.5
-        doc.setFont('times', 'normal');
-        doc.setFontSize(7.5);
-        const splitNotes = doc.splitTextToSize(notesToPrint, innerW);
-        const boxH = Math.max(22, splitNotes.length * lineH + 14);
+      if (rawNotesToPrint && rawNotesToPrint.length > 0) {
+        const cleanedNotes = cleanPdfText(rawNotesToPrint)
+          .replace(/\*\*([^*]+)\*\*/g, '$1')
+          .replace(/\*([^*]+)\*/g, '$1')
+          .replace(/`([^`]+)`/g, '$1');
 
-        if (y + boxH > 280) {
+        // Check if remaining space on current page is tight; if so, break page cleanly
+        if (y > 195) {
           doc.addPage();
           drawHeader(activeHeaderTitle, activeHeaderSub);
-          y = 26;
+          y = 29;
         }
 
-        doc.setFillColor(248, 250, 252);
-        doc.setDrawColor(59, 130, 246);
-        doc.setLineWidth(0.5);
-        doc.roundedRect(14, y, 182, boxH, 2, 2, 'FD');
-
-        doc.setFillColor(31, 56, 100);
-        doc.roundedRect(14, y, 182, 7, 2, 2, 'F');
-        doc.rect(14, y + 4, 182, 3, 'F');
-
+        // Section main heading
         doc.setFont('times', 'bold');
-        doc.setFontSize(8);
-        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10);
+        doc.setTextColor(31, 56, 100);
         doc.text(
           isFr
             ? "11. AVIS TECHNIQUE & ÉVALUATION D'INGÉNIERIE GÉOTECHNIQUE DU TIR"
             : '11. GEOTECHNICAL BLAST ENGINEERING EVALUATION & AUDIT',
-          18,
-          y + 5
+          14,
+          y
         );
+        y += 6;
 
-        doc.setFont('times', 'normal');
-        doc.setFontSize(7.5);
-        doc.setTextColor(17, 24, 39); // Deep dark/black on light background
-        doc.text(splitNotes, 18, y + 12, { align: 'justify', maxWidth: innerW });
-        y += boxH + 6;
+        // Split into logical sections based on headings (markdown ## or numbered 1., 2., 3., 4.)
+        const rawLines = cleanedNotes.split(/\r?\n/);
+        const sections: Array<{ title: string; lines: string[] }> = [];
+        let curSectionTitle = isFr
+          ? "11.1 ÉVALUATION DE LA FRAGMENTATION & BILAN ÉNERGÉTIQUE"
+          : '11.1 BLAST FRAGMENTATION & ENERGY EVALUATION';
+        let curSectionLines: string[] = [];
+
+        for (const line of rawLines) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            if (curSectionLines.length > 0 && curSectionLines[curSectionLines.length - 1] !== '') {
+              curSectionLines.push('');
+            }
+            continue;
+          }
+
+          const mdMatch = trimmed.match(/^#{1,3}\s+(.*)/);
+          const numMatch = trimmed.match(/^([0-9]+\.\s+[^:]{3,70}):?$/);
+
+          if (mdMatch) {
+            if (curSectionLines.some((l) => l.trim().length > 0)) {
+              sections.push({ title: curSectionTitle, lines: curSectionLines });
+              curSectionLines = [];
+            }
+            curSectionTitle = mdMatch[1].replace(/[:#]/g, '').trim().toUpperCase();
+          } else if (numMatch && !trimmed.toLowerCase().includes('mm') && !trimmed.toLowerCase().includes('m³') && !trimmed.toLowerCase().includes('kg')) {
+            if (curSectionLines.some((l) => l.trim().length > 0)) {
+              sections.push({ title: curSectionTitle, lines: curSectionLines });
+              curSectionLines = [];
+            }
+            curSectionTitle = numMatch[1].replace(/[:#]/g, '').trim().toUpperCase();
+          } else {
+            curSectionLines.push(trimmed);
+          }
+        }
+
+        if (curSectionLines.some((l) => l.trim().length > 0)) {
+          sections.push({ title: curSectionTitle, lines: curSectionLines });
+        }
+
+        // Render each section as an individual styled card using drawSynthesisCard
+        for (const sec of sections) {
+          const secBody = sec.lines.join('\n');
+          y = drawSynthesisCard(sec.title, secBody, y);
+        }
       }
     }
 
@@ -1517,8 +1615,8 @@ export async function generateModularVaultPdfReport(
 
         y = drawMetaBanner([
           isFr
-            ? `RÉCONCILIATION PHYSIQUE : Écart P50 : ${errP50.toFixed(1)}% | Écart P80 : ${errP80.toFixed(1)}% | MAPE : ${mape.toFixed(1)}% | Formule : MAPE = 1/N Σ|P_opt - P_tamis| / P_tamis`
-            : `PHYSICAL RECONCILIATION: P50 Error: ${errP50.toFixed(1)}% | P80 Error: ${errP80.toFixed(1)}% | MAPE: ${mape.toFixed(1)}% | Formula: MAPE = 1/N Σ|P_opt - P_sieve| / P_sieve`,
+            ? `RÉCONCILIATION PHYSIQUE : Écart P50 : ${errP50.toFixed(1)}% | Écart P80 : ${errP80.toFixed(1)}% | MAPE : ${mape.toFixed(1)}% | Formule : MAPE = (1/N) * Somme(|P_opt - P_tamis| / P_tamis)`
+            : `PHYSICAL RECONCILIATION: P50 Error: ${errP50.toFixed(1)}% | P80 Error: ${errP80.toFixed(1)}% | MAPE: ${mape.toFixed(1)}% | Formula: MAPE = (1/N) * Sum(|P_opt - P_sieve| / P_sieve)`,
           isFr
             ? `ÉCHANTILLON TAMISÉ : Masse : ${sMass} kg | Biais Stéréologique K_bias = ${k_bias} | Corrélation R² = ${r2Val}`
             : `SCREENED SAMPLE: Mass: ${sMass} kg | Stereological Bias K_bias = ${k_bias} | Correlation R² = ${r2Val}`,
@@ -1721,7 +1819,7 @@ export async function generateModularVaultPdfReport(
         [isFr ? 'Orientation des Diaclases (JPA)' : 'Joint Plane Angle (JPA)', `${comps.jpa.toFixed(1)}`, isFr ? (comps.jpa === 30 ? 'Pendage perpendiculaire (30)' : comps.jpa === 40 ? 'Pendage vers le front (40)' : 'Pendage hors du front (20)') : `Joint dip orientation code (${comps.jpa})`],
         [isFr ? 'Influence Densité Roche (RDI)' : 'Rock Density Influence (RDI)', `${comps.rdi.toFixed(2)}`, `RDI = 25 × ${blastState.rock.densityTPerM3.toFixed(2)} - 50 = ${comps.rdi.toFixed(2)}`],
         [isFr ? 'Facteur de Dureté UCS / E (HF)' : 'Hardness Factor (HF)', `${comps.hf.toFixed(2)}`, `UCS ${blastState.rock.ucsMPa} MPa, E ${blastState.rock.youngsModulusGPa} GPa (HF = ${comps.hf.toFixed(2)})`],
-        [isFr ? 'Somme des Composantes Cunningham' : 'Sum of Components (Σ)', `${comps.sum.toFixed(2)}`, isFr ? 'Somme exacte RMD + JPS + JPA + RDI + HF' : 'Exact sum of 5 components'],
+        [isFr ? 'Somme des Composantes Cunningham' : 'Sum of Components (Total)', `${comps.sum.toFixed(2)}`, isFr ? 'Somme exacte RMD + JPS + JPA + RDI + HF' : 'Exact sum of 5 components'],
         [isFr ? 'Facteur de Roche Global A' : 'Cunningham Rock Factor A', `${rockFactorA}`, isFr ? `A = 0.06 × ${comps.sum.toFixed(2)} = ${rockFactorA}` : `A = 0.06 × ${comps.sum.toFixed(2)} = ${rockFactorA}`],
       ];
 
@@ -1798,7 +1896,7 @@ export async function generateModularVaultPdfReport(
     doc.setFont('times', 'normal');
     doc.setFontSize(7.5);
     warnings.forEach((warn, idx) => {
-      doc.text(`• ${warn}`, 18, qaY + 11 + idx * 6.5, { maxWidth: 174 });
+      doc.text(`- ${cleanPdfText(warn)}`, 18, qaY + 11 + idx * 6.5, { maxWidth: 174 });
     });
     qaY += 15 + warnings.length * 6.5;
   } else {
@@ -1809,8 +1907,8 @@ export async function generateModularVaultPdfReport(
     doc.setFontSize(8.5);
     doc.text(
       isFr
-        ? '✓ TOUTES LES VÉRIFICATIONS PHYSIQUES SONT CONFORMES (Profondeur, Capacité linéaire, Bourrage, Fits).'
-        : '✓ ALL PHYSICAL INPUT CHECKS PASSED (Hole Depth, Linear Capacity, Deck Sums, Regression Fits).',
+        ? '[CONFORME] TOUTES LES VÉRIFICATIONS PHYSIQUES SONT CONFORMES (Profondeur, Capacité linéaire, Bourrage, Fits).'
+        : '[PASS] ALL PHYSICAL INPUT CHECKS PASSED (Hole Depth, Linear Capacity, Deck Sums, Regression Fits).',
       18,
       qaY + 9
     );
@@ -1822,7 +1920,7 @@ export async function generateModularVaultPdfReport(
     [
       isFr ? 'Tir & Géométrie' : 'Blast Geometry',
       isFr ? 'Plan de Tir Certifié' : 'Certified Blast Plan',
-      isFr ? `Gradin ${blastState.geometry.benchElevationRL} RL, ${blastState.geometry.numberOfHoles} trous, Ø${blastState.geometry.holeDiameterMm}mm` : `Bench ${blastState.geometry.benchElevationRL} RL, ${blastState.geometry.numberOfHoles} holes, Ø${blastState.geometry.holeDiameterMm}mm`,
+      isFr ? `Gradin ${blastState.geometry.benchElevationRL} RL, ${blastState.geometry.numberOfHoles} trous, diam. ${blastState.geometry.holeDiameterMm}mm` : `Bench ${blastState.geometry.benchElevationRL} RL, ${blastState.geometry.numberOfHoles} holes, diam. ${blastState.geometry.holeDiameterMm}mm`,
       isFr ? 'Conforme' : 'Verified',
     ],
     [
@@ -1873,7 +1971,7 @@ export async function generateModularVaultPdfReport(
   if (qaY + 36 > 280) {
     doc.addPage();
     drawHeader(qaTitle, qaSub);
-    qaY = 26;
+    qaY = 29;
   }
   doc.setFillColor(248, 250, 252);
   doc.rect(14, qaY + 5, 182, 32, 'F');
@@ -1883,7 +1981,7 @@ export async function generateModularVaultPdfReport(
   doc.setFont('times', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(31, 56, 100);
-  doc.text(isFr ? 'VISA DE VALIDATION D’INGÉNIERIE MINIÈRE :' : 'MINING ENGINEERING AUDIT SIGN-OFF:', 18, qaY + 11);
+  doc.text(isFr ? "VISA DE VALIDATION D'INGÉNIERIE MINIÈRE :" : 'MINING ENGINEERING AUDIT SIGN-OFF:', 18, qaY + 11);
 
   doc.setFont('times', 'normal');
   doc.setFontSize(7.5);
@@ -1903,11 +2001,11 @@ export async function generateModularVaultPdfReport(
     doc.setFontSize(8);
     doc.setFont('times', 'normal');
     doc.setTextColor(148, 163, 184);
-    const orgPrefix = orgProfile?.companyName ? `${orgProfile.companyName} • ` : '';
+    const orgPrefix = orgProfile?.companyName ? `${cleanPdfText(orgProfile.companyName)} | ` : '';
     doc.text(
       isFr
-        ? `${orgPrefix}FRAGEO SUITE • Rapport Modulaire d'Ingénierie Personnalisé • Page ${i} sur ${totalPages}`
-        : `${orgPrefix}FRAGEO SUITE • Custom Modular Engineering Report • Page ${i} of ${totalPages}`,
+        ? `${orgPrefix}FRAGEO SUITE | Rapport Modulaire d'Ingénierie Personnalisé | Page ${i} sur ${totalPages}`
+        : `${orgPrefix}FRAGEO SUITE | Custom Modular Engineering Report | Page ${i} of ${totalPages}`,
       105,
       291,
       { align: 'center' }

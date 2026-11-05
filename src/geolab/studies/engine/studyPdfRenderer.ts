@@ -14,7 +14,7 @@ import jsPDF from 'jspdf';
 import type { DocumentModel } from './documentModel';
 import { renderAnalysisSheet } from '../../engine/pdfGenerator';
 import { setupUnicodeFont } from '../../engine/pdfFonts';
-import { drawVectorMultiGrainSizeChart } from './chartRenderer';
+import { drawVectorMultiGrainSizeChart, renderTestChartDataUrlSync } from './chartRenderer';
 import type { ProctorResults } from '../../tests/proctor';
 import type { GrainSizeResults } from '../../tests/grainSize';
 
@@ -935,7 +935,7 @@ function renderAnalysisDetailSection(
     sectionTitle?: string;
     inputs: Array<{ label: string; value: string | number; unit?: string }>;
     results: Array<{ label: string; value: string | number; unit?: string }>;
-    chartType?: 'proctor' | 'grain_size';
+    chartType?: string;
     observations?: string;
   },
   prR: number,
@@ -1003,15 +1003,40 @@ function renderAnalysisDetailSection(
 
   cursorY += 30;
 
-  // Vector Chart for Proctor or Grain Size
-  if (detail.chartType === 'proctor' && detail.analysis.computedResults) {
-    const res: ProctorResults = detail.analysis.computedResults;
-    drawVectorProctorChartDirect(doc, margin, cursorY, contentWidth, 80, res, prR, prG, prB, lang);
-    cursorY += 86;
-  } else if (detail.chartType === 'grain_size' && detail.analysis.computedResults) {
-    const res: GrainSizeResults = detail.analysis.computedResults;
-    drawVectorGrainSizeChartDirect(doc, margin, cursorY, contentWidth, 80, res, prR, prG, prB, lang);
-    cursorY += 86;
+  // Exact Chart for all tests with graphs
+  if (detail.chartType && detail.analysis.computedResults) {
+    const hexColor = `#${prR.toString(16).padStart(2, '0')}${prG.toString(16).padStart(2, '0')}${prB.toString(16).padStart(2, '0')}`;
+    const chartDataUrl = renderTestChartDataUrlSync(
+      detail.analysis.testType,
+      detail.analysis.rawInput,
+      detail.analysis.computedResults,
+      lang,
+      hexColor
+    );
+    if (chartDataUrl && chartDataUrl.startsWith('data:image/png')) {
+      try {
+        doc.addImage(chartDataUrl, 'PNG', margin, cursorY, contentWidth, 80);
+        cursorY += 86;
+      } catch {
+        if (detail.chartType === 'proctor') {
+          const res: ProctorResults = detail.analysis.computedResults;
+          drawVectorProctorChartDirect(doc, margin, cursorY, contentWidth, 80, res, prR, prG, prB, lang);
+          cursorY += 86;
+        } else if (detail.chartType === 'grain_size') {
+          const res: GrainSizeResults = detail.analysis.computedResults;
+          drawVectorGrainSizeChartDirect(doc, margin, cursorY, contentWidth, 80, res, prR, prG, prB, lang);
+          cursorY += 86;
+        }
+      }
+    } else if (detail.chartType === 'proctor') {
+      const res: ProctorResults = detail.analysis.computedResults;
+      drawVectorProctorChartDirect(doc, margin, cursorY, contentWidth, 80, res, prR, prG, prB, lang);
+      cursorY += 86;
+    } else if (detail.chartType === 'grain_size') {
+      const res: GrainSizeResults = detail.analysis.computedResults;
+      drawVectorGrainSizeChartDirect(doc, margin, cursorY, contentWidth, 80, res, prR, prG, prB, lang);
+      cursorY += 86;
+    }
   }
 
   // Observations

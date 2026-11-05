@@ -118,6 +118,7 @@ export const BlastWorkspaceView: React.FC<BlastWorkspaceViewProps> = ({
           project={project || undefined}
           site={site || undefined}
           lang={lang}
+          onUpdateBlast={onUpdateBlast}
         />
       )}
     </div>

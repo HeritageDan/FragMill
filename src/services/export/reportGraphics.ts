@@ -39,15 +39,21 @@ function createHiDPICanvas(width = 800, height = 480): { canvas: HTMLCanvasEleme
 }
 
 // ---------------------------------------------------------------------------
-// 1. Semi-Logarithmic Cumulative Passing Curves (All 3 Plotted Curves)
+// 1. Semi-Logarithmic Cumulative Passing Curves (Matches FragmentationCharts.tsx)
 // ---------------------------------------------------------------------------
 export interface LogCurveOptions {
   measuredPoints?: CumulativePoint[];
   kuzRamPoints?: CumulativePoint[];
+  swebrecPoints?: CumulativePoint[];
+  xpFragPoints?: CumulativePoint[];
+  rosinRammlerPoints?: CumulativePoint[];
+  true3DPoints?: CumulativePoint[];
   sievePoints?: CumulativePoint[];
   p10?: number;
+  p20?: number;
   p50?: number;
   p80?: number;
+  p90?: number;
   title?: string;
   lang?: 'fr' | 'en';
 }
@@ -77,8 +83,8 @@ export function renderLogarithmicPassingChart(options: LogCurveOptions): string 
   ctx.font = '11px "Helvetica Neue", Arial, sans-serif';
   ctx.fillText(
     isFr
-      ? 'Comparaison multi-modèles : Mesuré Optique (Bleu) | Modèle Kuz-Ram (Violet) | Vérité Terrain Tamis (Vert)'
-      : 'Multi-model comparison: Optical Measured (Blue) | Kuz-Ram Model (Purple) | Sieve Ground Truth (Green)',
+      ? 'Analyse multi-modèles : Image 2D (Bleu) | Kuz-Ram (Rouge) | Swebrec (Ambre) | xP-frag (Teal) | Tamis (Gris foncé)'
+      : 'Multi-model analysis: 2D Raw Sizing (Blue) | Kuz-Ram (Red) | Swebrec (Amber) | xP-frag (Teal) | Sieve (Slate)',
     padding.left,
     48
   );
@@ -160,7 +166,11 @@ export function renderLogarithmicPassingChart(options: LogCurveOptions): string 
   ctx.fillStyle = '#334155';
   ctx.font = 'bold 12px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText(isFr ? 'Ouverture de maille équivalente / Taille (mm, Échelle Logarithmique)' : 'Equivalent Screen Aperture / Size (mm, Logarithmic Scale)', padding.left + plotW / 2, padding.top + plotH + 45);
+  ctx.fillText(
+    isFr ? 'Ouverture de maille équivalente / Taille (mm, Échelle Logarithmique)' : 'Equivalent Screen Aperture / Size (mm, Logarithmic Scale)',
+    padding.left + plotW / 2,
+    padding.top + plotH + 45
+  );
 
   ctx.save();
   ctx.translate(25, padding.top + plotH / 2);
@@ -168,15 +178,22 @@ export function renderLogarithmicPassingChart(options: LogCurveOptions): string 
   ctx.fillText(isFr ? 'Passant Cumulé (% Massique / Volumique)' : 'Cumulative Passing (% Mass / Volume)', 0, 0);
   ctx.restore();
 
-  // Helper to draw smooth curves
-  const drawCurve = (points: CumulativePoint[], color: string, lineWidth: number, isDashed = false) => {
+  // Helper to draw smooth curves with specific styles matching FragmentationCharts.tsx
+  const drawCurve = (
+    points: CumulativePoint[] | undefined,
+    color: string,
+    lineWidth: number,
+    dashPattern: number[] = [],
+    markerType: 'circle' | 'diamond' | 'none' = 'circle'
+  ) => {
     if (!points || points.length === 0) return;
     const sorted = [...points].sort((a, b) => a.sizeMm - b.sizeMm);
 
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
-    if (isDashed) ctx.setLineDash([5, 4]);
+    if (dashPattern.length > 0) ctx.setLineDash(dashPattern);
+    else ctx.setLineDash([]);
 
     ctx.beginPath();
     sorted.forEach((pt, idx) => {
@@ -188,19 +205,29 @@ export function renderLogarithmicPassingChart(options: LogCurveOptions): string 
     ctx.stroke();
 
     // Draw markers
-    ctx.fillStyle = color;
-    sorted.forEach((pt) => {
-      const x = xToPx(pt.sizeMm);
-      const y = yToPx(pt.passingPercent);
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
-    });
+    if (markerType !== 'none') {
+      ctx.fillStyle = color;
+      sorted.forEach((pt) => {
+        const x = xToPx(pt.sizeMm);
+        const y = yToPx(pt.passingPercent);
+        ctx.beginPath();
+        if (markerType === 'diamond') {
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(Math.PI / 4);
+          ctx.fillRect(-3, -3, 6, 6);
+          ctx.restore();
+        } else {
+          ctx.arc(x, y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+    }
 
     ctx.restore();
   };
 
-  // Generate synthetic points if not fully provided
+  // Generate synthetic fallback points if not provided
   const measured = options.measuredPoints && options.measuredPoints.length > 0
     ? options.measuredPoints
     : [
@@ -216,42 +243,45 @@ export function renderLogarithmicPassingChart(options: LogCurveOptions): string 
         { sizeMm: 550, passingPercent: 100 },
       ];
 
-  const kuzRam = options.kuzRamPoints && options.kuzRamPoints.length > 0
-    ? options.kuzRamPoints
-    : [
-        { sizeMm: 2, passingPercent: 2 },
-        { sizeMm: 10, passingPercent: 8 },
-        { sizeMm: 25, passingPercent: 18 },
-        { sizeMm: 50, passingPercent: 30 },
-        { sizeMm: 90, passingPercent: 46 },
-        { sizeMm: 140, passingPercent: 60 },
-        { sizeMm: 210, passingPercent: 78 },
-        { sizeMm: 310, passingPercent: 90 },
-        { sizeMm: 450, passingPercent: 97 },
-        { sizeMm: 600, passingPercent: 100 },
-      ];
+  const kuzRam = options.kuzRamPoints;
+  const swebrec = options.swebrecPoints;
+  const xpFrag = options.xpFragPoints;
+  const rrCurve = options.rosinRammlerPoints;
+  const true3D = options.true3DPoints;
+  const sieve = options.sievePoints;
 
-  const sieve = options.sievePoints && options.sievePoints.length > 0
-    ? options.sievePoints
-    : [
-        { sizeMm: 4.75, passingPercent: 5 },
-        { sizeMm: 9.5, passingPercent: 11 },
-        { sizeMm: 19, passingPercent: 19 },
-        { sizeMm: 37.5, passingPercent: 29 },
-        { sizeMm: 75, passingPercent: 45 },
-        { sizeMm: 125, passingPercent: 64 },
-        { sizeMm: 200, passingPercent: 82 },
-        { sizeMm: 300, passingPercent: 96 },
-      ];
+  // 1. Kuz-Ram Theoretical (Crimson Red #DC2626, dashed [6, 3])
+  if (kuzRam && kuzRam.length > 0) {
+    drawCurve(kuzRam, '#DC2626', 2.5, [6, 3], 'none');
+  }
 
-  // Draw 1. Sieve Ground Truth (Green dashed)
-  drawCurve(sieve, '#10B981', 2.2, true);
+  // 2. Swebrec Extrapolated (Amber #D97706, dashed [5, 2, 2, 2])
+  if (swebrec && swebrec.length > 0) {
+    drawCurve(swebrec, '#D97706', 2.5, [5, 2, 2, 2], 'none');
+  }
 
-  // Draw 2. Kuz-Ram Model (Purple solid)
-  drawCurve(kuzRam, '#8B5CF6', 2.4, false);
+  // 2b. xP-frag (Teal #0D9488, dashed [8, 4])
+  if (xpFrag && xpFrag.length > 0) {
+    drawCurve(xpFrag, '#0D9488', 2.5, [8, 4], 'none');
+  }
 
-  // Draw 3. Measured Optical Curve (Deep Blue solid)
-  drawCurve(measured, '#2563EB', 3.0, false);
+  // 3. Rosin-Rammler Fitted (Purple #9333EA, dotted [3, 3])
+  if (rrCurve && rrCurve.length > 0) {
+    drawCurve(rrCurve, '#9333EA', 2.5, [3, 3], 'none');
+  }
+
+  // 4. True 3D Stereology (Emerald Green #059669, solid)
+  if (true3D && true3D.length > 0) {
+    drawCurve(true3D, '#059669', 2.8, [], 'none');
+  }
+
+  // 5. 2D Raw Sizing (Royal Blue #1D4ED8, solid with circle points)
+  drawCurve(measured, '#1D4ED8', 2.6, [], 'circle');
+
+  // 6. Physical Sieve Ground Truth (Dark Slate #0F172A, dashed with diamond markers)
+  if (sieve && sieve.length > 0) {
+    drawCurve(sieve, '#0F172A', 2.0, [4, 4], 'diamond');
+  }
 
   // Highlight P10, P50, P80 lines
   const p50Val = options.p50 || 128;
@@ -289,39 +319,116 @@ export function renderLogarithmicPassingChart(options: LogCurveOptions): string 
   drawPercentileLine(p50Val, 'P50', '#D97706');
   drawPercentileLine(p80Val, 'P80', '#DC2626');
 
-  // Legend Box (Top Right)
-  const legX = padding.left + plotW - 270;
-  const legY = padding.top + 15;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-  ctx.fillRect(legX, legY, 255, 80);
+  // Build Dynamic Legend Items matching present curves
+  interface LegendEntry {
+    color: string;
+    text: string;
+    dash: number[];
+    isDiamond?: boolean;
+  }
+  const legendEntries: LegendEntry[] = [
+    {
+      color: '#1D4ED8',
+      text: isFr ? 'Image 2D Brute (FragMill)' : '2D Raw Sizing (FragMill)',
+      dash: [],
+    },
+  ];
+
+  if (kuzRam && kuzRam.length > 0) {
+    legendEntries.push({
+      color: '#DC2626',
+      text: isFr ? 'Kuz-Ram (Théorique)' : 'Kuz-Ram (Theoretical)',
+      dash: [6, 3],
+    });
+  }
+
+  if (swebrec && swebrec.length > 0) {
+    legendEntries.push({
+      color: '#D97706',
+      text: isFr ? 'Modèle Swebrec' : 'Swebrec Fit',
+      dash: [5, 2, 2, 2],
+    });
+  }
+
+  if (xpFrag && xpFrag.length > 0) {
+    legendEntries.push({
+      color: '#0D9488',
+      text: 'xP-frag (2019)',
+      dash: [8, 4],
+    });
+  }
+
+  if (rrCurve && rrCurve.length > 0) {
+    legendEntries.push({
+      color: '#9333EA',
+      text: isFr ? 'Rosin-Rammler' : 'Rosin-Rammler Fit',
+      dash: [3, 3],
+    });
+  }
+
+  if (true3D && true3D.length > 0) {
+    legendEntries.push({
+      color: '#059669',
+      text: isFr ? 'Stéréologie 3D' : '3D Stereology',
+      dash: [],
+    });
+  }
+
+  if (sieve && sieve.length > 0) {
+    legendEntries.push({
+      color: '#0F172A',
+      text: isFr ? 'Tamis Réel (Pesée)' : 'Sieve Ground Truth',
+      dash: [4, 4],
+      isDiamond: true,
+    });
+  }
+
+  // Draw Legend Box (Top Right)
+  const itemHeight = 18;
+  const legBoxH = Math.max(50, legendEntries.length * itemHeight + 12);
+  const legW = 265;
+  const legX = padding.left + plotW - legW - 10;
+  const legY = padding.top + 10;
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
+  ctx.fillRect(legX, legY, legW, legBoxH);
   ctx.strokeStyle = '#CBD5E1';
   ctx.lineWidth = 1;
-  ctx.strokeRect(legX, legY, 255, 80);
+  ctx.strokeRect(legX, legY, legW, legBoxH);
 
-  const drawLegendItem = (yOff: number, color: string, text: string, dashed = false) => {
-    ctx.strokeStyle = color;
+  legendEntries.forEach((entry, idx) => {
+    const yOff = legY + 12 + idx * itemHeight;
+
+    ctx.save();
+    ctx.strokeStyle = entry.color;
     ctx.lineWidth = 2.5;
-    ctx.setLineDash(dashed ? [4, 3] : []);
+    if (entry.dash.length > 0) ctx.setLineDash(entry.dash);
+    else ctx.setLineDash([]);
+
     ctx.beginPath();
-    ctx.moveTo(legX + 12, legY + yOff);
-    ctx.lineTo(legX + 38, legY + yOff);
+    ctx.moveTo(legX + 10, yOff);
+    ctx.lineTo(legX + 34, yOff);
     ctx.stroke();
 
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(legX + 25, legY + yOff, 3, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = entry.color;
+    if (entry.isDiamond) {
+      ctx.save();
+      ctx.translate(legX + 22, yOff);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillRect(-3, -3, 6, 6);
+      ctx.restore();
+    } else {
+      ctx.beginPath();
+      ctx.arc(legX + 22, yOff, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
 
-    ctx.setLineDash([]);
     ctx.fillStyle = '#1E293B';
-    ctx.font = 'bold 11px Arial';
+    ctx.font = 'bold 10px Arial';
     ctx.textAlign = 'left';
-    ctx.fillText(text, legX + 46, legY + yOff + 4);
-  };
-
-  drawLegendItem(20, '#2563EB', isFr ? '1. Mesuré Optique (Fragmill)' : '1. Optical Measured (Fragmill)', false);
-  drawLegendItem(42, '#8B5CF6', isFr ? '2. Prédiction Kuz-Ram Cunningham' : '2. Cunningham Kuz-Ram Model', false);
-  drawLegendItem(64, '#10B981', isFr ? '3. Vérité Terrain Tamisage Physique' : '3. Physical Sieve Ground Truth', true);
+    ctx.fillText(entry.text, legX + 42, yOff + 3.5);
+  });
 
   return canvas.toDataURL('image/png', 0.95);
 }

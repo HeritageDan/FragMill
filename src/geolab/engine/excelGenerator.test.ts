@@ -471,5 +471,104 @@ describe('GeoLab Excel Generator with Native DrawingML Charts', () => {
     expect(chartEnXml).toContain("'Report'!$F$");
     expect(chartEnXml).not.toContain('GeoLab Report');
   });
+
+  it('embeds high-resolution chart image in Excel and validates <c:numCache> for Proctor', async () => {
+    const rawInput = {
+      mouldType: 'cbr' as const,
+      mouldVolumeCm3: 2124,
+      particleDensityGs: 2.82,
+      targetCompactionPercent: 95,
+      points: [
+        { pointIndex: 1, waterContentPercent: 4.3, dryDensityGcm3: 2.115 },
+        { pointIndex: 2, waterContentPercent: 6.7, dryDensityGcm3: 2.213 },
+        { pointIndex: 3, waterContentPercent: 8.2, dryDensityGcm3: 2.21 },
+        { pointIndex: 4, waterContentPercent: 10.5, dryDensityGcm3: 2.129 },
+        { pointIndex: 5, waterContentPercent: 12.0, dryDensityGcm3: 2.04 },
+      ],
+    };
+    const computedResults = proctorTestDefinition.calculate(rawInput);
+    const analysis: GeoLabAnalysis = {
+      id: 'analysis-proctor-chart-test',
+      sampleId: 'sample-1',
+      testType: 'proctor',
+      standard: 'NF P94-093',
+      reportNumber: 'GL-2026-CHART-01',
+      version: 1,
+      status: 'approved',
+      testedDate: '2026-10-22',
+      rawInput,
+      computedResults,
+      qualityWarnings: [],
+      createdAt: '2026-11-01',
+      updatedAt: '2026-11-01',
+    };
+
+    const blob = await generateGeoLabExcelReport({
+      analysis,
+      client: mockClient,
+      project: mockProject,
+      sample: mockSample,
+      orgProfile: mockOrg,
+      testDef: proctorTestDefinition,
+    });
+
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+
+    // 1. Drawing XML references chart image
+    expect(zip.file('xl/drawings/drawing1.xml')).not.toBeNull();
+    const drawingXml = await zip.file('xl/drawings/drawing1.xml')!.async('string');
+    expect(drawingXml).toContain('TestChartImage');
+    expect(drawingXml).toContain('r:embed="rIdChartImg"');
+
+    // 2. Media contains chart image binary
+    expect(zip.file('xl/media/chartImage.png')).not.toBeNull();
+
+    // 3. DrawingML chart has <c:numCache> with correct points
+    const chartXml = await zip.file('xl/charts/chart1.xml')!.async('string');
+    expect(chartXml).toContain('<c:numCache>');
+    expect(chartXml).toContain('<c:ptCount val="5"/>');
+    expect(chartXml).toContain('<c:v>4.3</c:v>');
+    expect(chartXml).toContain('<c:v>2.115</c:v>');
+  });
+
+  it('embeds chart image in Excel results for tests with graphs (e.g. water content)', async () => {
+    const rawInput = {
+      specimens: [
+        { specimenId: 'A', containerId: 'T1', tareMassG: 45.2, wetSoilPlusTareG: 198.6, drySoilPlusTareG: 183.8 },
+        { specimenId: 'B', containerId: 'T2', tareMassG: 44.8, wetSoilPlusTareG: 202.1, drySoilPlusTareG: 187.1 },
+      ],
+    };
+    const computedResults = waterContentTestDefinition.calculate(rawInput);
+    const analysis: GeoLabAnalysis = {
+      id: 'analysis-water-chart-test',
+      sampleId: 'sample-1',
+      testType: 'water_content',
+      standard: 'NF P94-050',
+      reportNumber: 'GL-2026-WATER-CHART',
+      version: 1,
+      status: 'approved',
+      testedDate: '2026-10-24',
+      rawInput,
+      computedResults,
+      qualityWarnings: [],
+      createdAt: '2026-11-01',
+      updatedAt: '2026-11-01',
+    };
+
+    const blob = await generateGeoLabExcelReport({
+      analysis,
+      client: mockClient,
+      project: mockProject,
+      sample: mockSample,
+      orgProfile: mockOrg,
+      testDef: waterContentTestDefinition,
+    });
+
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    expect(zip.file('xl/drawings/drawing1.xml')).not.toBeNull();
+    const drawingXml = await zip.file('xl/drawings/drawing1.xml')!.async('string');
+    expect(drawingXml).toContain('TestChartImage');
+    expect(zip.file('xl/media/chartImage.png')).not.toBeNull();
+  });
 });
 

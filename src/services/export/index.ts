@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 import type {
   Blast,
   ImageRecord,
@@ -16,6 +17,7 @@ import { db, getSettings } from '../../db';
 
 import { getBlastState } from '../blastState';
 import { generateFullDynamicBlastEvaluationText } from './blastScenarioDiagnostics';
+import { renderLogarithmicPassingChart } from './reportGraphics';
 
 // Generate Comprehensive Multi-Page Engineering Blast PDF Report (Bilingual: EN / FR)
 export async function generateBlastPdfReport(
@@ -426,8 +428,8 @@ export function exportFragmentsCsv(fragments: Fragment[], blastId: string): stri
   return Papa.unparse(data);
 }
 
-// Export Full Excel Workbook (.xlsx) (Bilingual: EN / FR)
-export function exportBlastWorkbookXlsx(blast: Blast, run: SegmentationRun, lang: Language = 'en'): Blob {
+// Export Full Excel Workbook (.xlsx) with embedded logarithmic distribution curve (Bilingual: EN / FR)
+export async function exportBlastWorkbookXlsx(blast: Blast, run: SegmentationRun, lang: Language = 'en'): Promise<Blob> {
   const isFr = lang === 'fr';
   const wb = XLSX.utils.book_new();
 
@@ -496,7 +498,103 @@ export function exportBlastWorkbookXlsx(blast: Blast, run: SegmentationRun, lang
   XLSX.utils.book_append_sheet(wb, wsCurve, isFr ? 'Courbe Granulométrique' : 'Distribution Curve');
 
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+  try {
+    const zip = await JSZip.loadAsync(out);
+
+    // Generate high-resolution logarithmic chart PNG matching software UI
+    const chartDataUrl = renderLogarithmicPassingChart({
+      measuredPoints: run.metrics.rawCurve,
+      swebrecPoints: run.metrics.correctedCurve,
+      p10: run.metrics.p10,
+      p20: run.metrics.p20,
+      p50: run.metrics.p50,
+      p80: run.metrics.p80,
+      p90: run.metrics.p90,
+      title: isFr ? 'Courbe Granulométrique Cumulative' : 'Cumulative Particle Size Distribution',
+      lang: isFr ? 'fr' : 'en',
+    });
+
+    const b64 = chartDataUrl.split(',')[1];
+    if (b64) {
+      zip.file('xl/media/chart1.png', b64, { base64: true });
+
+      // Drawing XML anchored to columns D to L, rows 1 to 23 of Sheet 1 (Summary)
+      const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <xdr:twoCellAnchor editAs="oneCell">
+    <xdr:from><xdr:col>3</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>15000</xdr:rowOff></xdr:from>
+    <xdr:to><xdr:col>12</xdr:col><xdr:colOff>100000</xdr:colOff><xdr:row>22</xdr:row><xdr:rowOff>40000</xdr:rowOff></xdr:to>
+    <xdr:pic>
+      <xdr:nvPicPr>
+        <xdr:cNvPr id="2" name="FragmentationChart"/>
+        <xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
+      </xdr:nvPicPr>
+      <xdr:blipFill>
+        <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId1"/>
+        <a:stretch><a:fillRect/></a:stretch>
+      </xdr:blipFill>
+      <xdr:spPr>
+        <a:xfrm><a:off x="0" y="0"/><a:ext cx="5800000" cy="3500000"/></a:xfrm>
+        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+      </xdr:spPr>
+    </xdr:pic>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+</xdr:wsDr>`;
+      zip.file('xl/drawings/drawing1.xml', drawingXml);
+
+      const drawingRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/chart1.png"/>
+</Relationships>`;
+      zip.file('xl/drawings/_rels/drawing1.xml.rels', drawingRelsXml);
+
+      const sheet1Rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+</Relationships>`;
+      zip.file('xl/worksheets/_rels/sheet1.xml.rels', sheet1Rels);
+
+      // Add drawing tag to sheet1.xml
+      const sheetFile = zip.file('xl/worksheets/sheet1.xml');
+      if (sheetFile) {
+        let sheet1Xml = await sheetFile.async('string');
+        if (!sheet1Xml.includes('<drawing r:id="rId1"/>')) {
+          sheet1Xml = sheet1Xml.replace(
+            '</worksheet>',
+            '<drawing xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/></worksheet>'
+          );
+          zip.file('xl/worksheets/sheet1.xml', sheet1Xml);
+        }
+      }
+
+      // Update [Content_Types].xml
+      const ctFile = zip.file('[Content_Types].xml');
+      if (ctFile) {
+        let ctXml = await ctFile.async('string');
+        if (!ctXml.includes('Extension="png"')) {
+          ctXml = ctXml.replace('</Types>', '<Default Extension="png" ContentType="image/png"/></Types>');
+        }
+        if (!ctXml.includes('drawing1.xml')) {
+          ctXml = ctXml.replace(
+            '</Types>',
+            '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>'
+          );
+        }
+        zip.file('[Content_Types].xml', ctXml);
+      }
+    }
+
+    const packaged = await zip.generateAsync({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    return packaged;
+  } catch (err) {
+    console.warn('Failed to embed chart image into blast workbook:', err);
+    return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
 }
 
 // Export COCO Instance Segmentation JSON dataset (anonymized)

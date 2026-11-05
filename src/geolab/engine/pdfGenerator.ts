@@ -13,6 +13,7 @@ import type { ProctorInput, ProctorResults } from '../tests/proctor';
 import type { GrainSizeInput, GrainSizeResults } from '../tests/grainSize';
 import type { WaterContentInput, WaterContentResults } from '../tests/waterContent';
 import { setupUnicodeFont } from './pdfFonts';
+import { renderTestChartDataUrlSync, isTestWithGraph } from '../studies/engine/chartRenderer';
 
 export interface PdfGenerationOptions {
   analysis: GeoLabAnalysis;
@@ -620,7 +621,17 @@ function renderProctorPdfSection(
 
   // Right column: Vector Chart (Width: rightWidth, Height: 70mm)
   const chartHeight = 65;
-  drawVectorProctorChart(doc, rightX, startY, rightWidth, chartHeight, res, prR, prG, prB, lang);
+  const hexColor = `#${prR.toString(16).padStart(2, '0')}${prG.toString(16).padStart(2, '0')}${prB.toString(16).padStart(2, '0')}`;
+  const chartImg = renderTestChartDataUrlSync('proctor', analysis.rawInput, res, lang, hexColor);
+  if (chartImg && chartImg.startsWith('data:image/png')) {
+    try {
+      doc.addImage(chartImg, 'PNG', rightX, startY, rightWidth, chartHeight);
+    } catch {
+      drawVectorProctorChart(doc, rightX, startY, rightWidth, chartHeight, res, prR, prG, prB, lang);
+    }
+  } else {
+    drawVectorProctorChart(doc, rightX, startY, rightWidth, chartHeight, res, prR, prG, prB, lang);
+  }
 }
 
 function drawVectorProctorChart(
@@ -812,8 +823,18 @@ function renderGrainSizePdfSection(
     tableY += 5;
   });
 
-  // Vector Logarithmic Chart
-  drawVectorGrainSizeChart(doc, rightX, startY, rightWidth, 65, res, prR, prG, prB, lang);
+  // Logarithmic Chart
+  const hexColor = `#${prR.toString(16).padStart(2, '0')}${prG.toString(16).padStart(2, '0')}${prB.toString(16).padStart(2, '0')}`;
+  const chartImg = renderTestChartDataUrlSync('grain_size', analysis.rawInput, res, lang, hexColor);
+  if (chartImg && chartImg.startsWith('data:image/png')) {
+    try {
+      doc.addImage(chartImg, 'PNG', rightX, startY, rightWidth, 65);
+    } catch {
+      drawVectorGrainSizeChart(doc, rightX, startY, rightWidth, 65, res, prR, prG, prB, lang);
+    }
+  } else {
+    drawVectorGrainSizeChart(doc, rightX, startY, rightWidth, 65, res, prR, prG, prB, lang);
+  }
 }
 
 function drawVectorGrainSizeChart(
@@ -1134,6 +1155,23 @@ function renderGenericTestPdfSection(
     });
 
     cursorY += 8.5; // Always skip a blank line after a table before starting a new paragraph
+  }
+
+  // 4. Exact Test Graph (for tests with graphs)
+  if (isTestWithGraph(analysis.testType) && analysis.computedResults) {
+    const hexColor = `#${prR.toString(16).padStart(2, '0')}${prG.toString(16).padStart(2, '0')}${prB.toString(16).padStart(2, '0')}`;
+    const chartImg = renderTestChartDataUrlSync(analysis.testType, analysis.rawInput, analysis.computedResults, lang, hexColor);
+    if (chartImg && chartImg.startsWith('data:image/png')) {
+      const chartH = 65;
+      if (cursorY + chartH > 275) {
+        doc.addPage();
+        cursorY = 25;
+      }
+      try {
+        doc.addImage(chartImg, 'PNG', startX, cursorY, totalWidth, chartH);
+        cursorY += chartH + 5;
+      } catch {}
+    }
   }
 
   return cursorY;

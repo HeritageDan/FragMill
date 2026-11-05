@@ -29,6 +29,7 @@ interface KuzRamViewProps {
   blasts: Blast[];
   activeBlastId?: string;
   onSelectBlast?: (blastId: string) => void;
+  onUpdateBlast?: (updated: Blast) => void;
   project?: Project;
   site?: Site;
   lang?: 'en' | 'fr';
@@ -38,6 +39,7 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
   blasts,
   activeBlastId,
   onSelectBlast,
+  onUpdateBlast,
   project,
   site,
   lang = 'en',
@@ -45,7 +47,7 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
   const [selectedBlastId, setSelectedBlastId] = useState<string>(activeBlastId || blasts[0]?.id || '');
   const selectedBlast = blasts.find((b) => b.id === selectedBlastId) || blasts[0];
 
-  const getInitialRockTables = (b?: Blast): KuzRamRockTables => {
+  const getDefaultBaselineRockTables = (b?: Blast): KuzRamRockTables => {
     if (!b) return DEFAULT_ROCK_TABLES;
     const rm = b.rockMass;
     let jpa = 30;
@@ -73,7 +75,40 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
     };
   };
 
+  const getInitialRockTables = (b?: Blast): KuzRamRockTables => {
+    if (!b) return DEFAULT_ROCK_TABLES;
+    if (b.kuzRamTables) {
+      return b.kuzRamTables;
+    }
+    return getDefaultBaselineRockTables(b);
+  };
+
   const [tables, setTables] = useState<KuzRamRockTables>(() => getInitialRockTables(selectedBlast));
+
+  const tablesRef = React.useRef(tables);
+  tablesRef.current = tables;
+  const lastSavedTablesStr = React.useRef(JSON.stringify(tables));
+
+  const flushSaveTables = React.useCallback(() => {
+    if (!selectedBlast || !onUpdateBlast) return;
+    const current = tablesRef.current;
+    const curStr = JSON.stringify(current);
+    if (curStr === lastSavedTablesStr.current) {
+      return;
+    }
+    lastSavedTablesStr.current = curStr;
+
+    const updatedBlast: Blast = {
+      ...selectedBlast,
+      kuzRamTables: current,
+      rockMass: {
+        ...selectedBlast.rockMass,
+        density: current.density,
+      },
+      updatedAt: Date.now(),
+    };
+    onUpdateBlast(updatedBlast);
+  }, [selectedBlast, onUpdateBlast]);
 
   useEffect(() => {
     if (activeBlastId) {
@@ -83,11 +118,32 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
 
   useEffect(() => {
     if (selectedBlast) {
-      setTables(getInitialRockTables(selectedBlast));
+      const initial = getInitialRockTables(selectedBlast);
+      setTables(initial);
+      lastSavedTablesStr.current = JSON.stringify(initial);
     }
   }, [selectedBlastId]);
 
-  const initialTables = React.useMemo(() => getInitialRockTables(selectedBlast), [selectedBlast]);
+  // Debounced auto-save when tables change
+  useEffect(() => {
+    const curStr = JSON.stringify(tables);
+    if (curStr === lastSavedTablesStr.current) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      flushSaveTables();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [tables, flushSaveTables]);
+
+  // Flush on unmount so switching tabs preserves all Cunningham inputs
+  useEffect(() => {
+    return () => {
+      flushSaveTables();
+    };
+  }, [flushSaveTables]);
+
+  const initialTables = React.useMemo(() => getDefaultBaselineRockTables(selectedBlast), [selectedBlast]);
   const isTablesModified = React.useMemo(() => {
     return (
       Math.abs(tables.density - initialTables.density) > 0.001 ||
@@ -308,9 +364,17 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
                 {t('rockFactorA', lang)} = {calculatedA}
               </span>
               {isTablesModified && (
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                  {lang === 'fr' ? 'Valeur modifiée' : 'Modified value'}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const baseline = getDefaultBaselineRockTables(selectedBlast);
+                    setTables(baseline);
+                  }}
+                  className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 cursor-pointer transition-colors"
+                  title={lang === 'fr' ? 'Réinitialiser aux valeurs géotechniques par défaut' : 'Reset to geotechnical defaults'}
+                >
+                  {lang === 'fr' ? 'Réinitialiser' : 'Reset'}
+                </button>
               )}
             </div>
           </div>
