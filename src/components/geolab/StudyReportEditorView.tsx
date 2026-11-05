@@ -374,6 +374,8 @@ export const StudyReportEditorView: React.FC<Props> = ({
         analyses: includedAnalyses,
         samples,
         apiKey,
+        provider: isClaude ? 'anthropic' : 'gemini',
+        model: isClaude ? appSettings.claudeModel : appSettings.geminiModelFlash,
         language: lang,
       });
       setNarrativeDraft(draft);
@@ -392,14 +394,31 @@ export const StudyReportEditorView: React.FC<Props> = ({
       if (titleLower.includes('introduction') || titleLower.includes('objet')) {
         return { ...sec, content: narrativeDraft.introduction };
       }
-      if (titleLower.includes('matériau') || titleLower.includes('material') || titleLower.includes('sol')) {
+      if (
+        titleLower.includes('matériau') ||
+        titleLower.includes('material') ||
+        titleLower.includes('sol') ||
+        titleLower.includes('échantillonnage') ||
+        titleLower.includes('sampling')
+      ) {
         return { ...sec, content: narrativeDraft.materials };
       }
-      if (titleLower.includes('discussion') || titleLower.includes('interprétation') || titleLower.includes('résultat')) {
+      if (titleLower.includes('discussion') || titleLower.includes('interprétation')) {
         return { ...sec, content: narrativeDraft.discussion };
       }
-      if (titleLower.includes('recommandation') || titleLower.includes('conclusion')) {
-        return { ...sec, content: narrativeDraft.recommendations };
+      if (titleLower.includes('recommandation')) {
+        const hasDiscussionSection = study.sections.some((s) => {
+          const t = (s.title[lang] || s.title.fr || s.title.en || '').toLowerCase();
+          return t.includes('discussion') || t.includes('interprétation');
+        });
+        const recContent =
+          !hasDiscussionSection && narrativeDraft.discussion
+            ? `${narrativeDraft.discussion}\n\n${narrativeDraft.recommendations}`
+            : narrativeDraft.recommendations;
+        return { ...sec, content: recContent };
+      }
+      if (titleLower.includes('conclusion')) {
+        return { ...sec, content: narrativeDraft.conclusion || narrativeDraft.recommendations };
       }
       return sec;
     });
@@ -1456,6 +1475,23 @@ export const StudyReportEditorView: React.FC<Props> = ({
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-purple-500 leading-relaxed font-mono"
                     />
                   </div>
+
+                  {/* Section 5: Conclusion */}
+                  {narrativeDraft.conclusion && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                        {lang === 'fr' ? '5. Conclusion Générale' : '5. General Conclusion'}
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={narrativeDraft.conclusion}
+                        onChange={(e) =>
+                          setNarrativeDraft({ ...narrativeDraft, conclusion: e.target.value })
+                        }
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-purple-500 leading-relaxed font-mono"
+                      />
+                    </div>
+                  )}
                 </div>
               ) : null}
             </div>

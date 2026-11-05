@@ -147,6 +147,8 @@ export const AnalysisDetailView: React.FC<Props> = ({
         analysis,
         language,
         apiKey,
+        provider: isClaude ? 'anthropic' : 'gemini',
+        model: isClaude ? appSettings.claudeModel : appSettings.geminiModelFlash,
       });
       setNarrativeText(text);
       if (!apiKey || apiKey.trim() === '') {

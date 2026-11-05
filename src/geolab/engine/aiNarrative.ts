@@ -1,19 +1,22 @@
-import { postGeminiGenerateContent } from '../../services/gemini';
+import { postAiGenerateContent } from '../../services/ai';
 import type { GeoLabAnalysis } from '../../types/geolab';
+import type { AiProvider } from '../../types';
 import { getTestDefinition } from '../tests/index';
 
 export interface AiNarrativeOptions {
   analysis: GeoLabAnalysis;
   apiKey?: string;
+  provider?: AiProvider;
+  model?: string;
   language?: 'en' | 'fr';
 }
 
 /**
- * Generates an engineering interpretation narrative using Gemini (or deterministic fallback),
- * strictly without altering or recalculating any numeric results.
+ * Generates an engineering interpretation narrative using universal AI (Claude / Gemini),
+ * or deterministic fallback, strictly without altering or recalculating any numeric results.
  */
 export async function generateGeoLabNarrative(options: AiNarrativeOptions): Promise<string> {
-  const { analysis, apiKey } = options;
+  const { analysis, apiKey, provider, model } = options;
   const lang = options.language || 'fr';
   const testDef = getTestDefinition(analysis.testType);
 
@@ -28,7 +31,7 @@ export async function generateGeoLabNarrative(options: AiNarrativeOptions): Prom
     return `${disclaimer}\n\n${deterministicFallback}`;
   }
 
-  const prompt = `You are a Senior Geotechnical Laboratory Materials Engineer reviewing an official test report.
+  const prompt = `You are a Senior Geotechnical Laboratory Materials Engineer reviewing an official test certificate.
 TEST TYPE: ${testDef.name[lang]} (${analysis.standard})
 SAMPLE: ${analysis.sampleId} | REPORT NO: ${analysis.reportNumber}
 
@@ -39,39 +42,39 @@ QUALITY WARNINGS / ANOMALIES:
 ${JSON.stringify(analysis.qualityWarnings || [], null, 2)}
 
 STRICT RULES:
-1. Provide a professional, concise 2-paragraph geotechnical interpretation in ${lang === 'fr' ? 'FRENCH' : 'ENGLISH'}.
-2. Describe and interpret the soil behavior (compaction response, grading classification, or moisture state).
-3. Cite the exact computed numbers provided above (e.g. OPM, dry density, Cu, Cc, fines %, water content). NEVER invent or modify any numerical values.
-4. Flag any anomalies or specification limits mentioned.
-5. End with a practical geotechnical recommendation for earthworks or foundation placement.
-6. Prepend the response with: "${disclaimer}"`;
+1. Provide a professional, concise, highly informative 2-paragraph geotechnical interpretation in ${lang === 'fr' ? 'FRENCH' : 'ENGLISH'}.
+2. Accurately describe and interpret the physical and mechanical properties measured for this specific test (${testDef.name[lang]}).
+3. Cite the EXACT computed values and units provided above (e.g. Gs, dry density, moisture content, fines %, Cu, Cc, LA, MDE, CBR). NEVER invent or modify any numerical values.
+4. If this test is ${testDef.name[lang]}, do NOT confuse it with or discuss unrelated tests.
+5. If any anomaly, repeatability variance (e.g. repeatability threshold exceeded), or quality warning is triggered, address it with professional engineering objectivity.
+6. End with a practical geotechnical recommendation for earthworks or foundation placement.
+7. Prepend the response with: "${disclaimer}"`;
 
   try {
-    const res = await postGeminiGenerateContent(
+    const res = await postAiGenerateContent(
       apiKey,
       [{ parts: [{ text: prompt }] }],
       {
+        provider,
+        model,
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 500,
+          maxOutputTokens: 600,
         },
       }
     );
 
-    if (res.ok && res.data) {
-      const text = res.data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text && text.trim().length > 0) {
-        return text.trim();
-      }
+    if (res.ok && res.text && res.text.trim().length > 0) {
+      return res.text.trim();
     }
     return `${disclaimer}\n\n${deterministicFallback}`;
   } catch (err: any) {
-    console.warn('Gemini narrative call failed:', err?.message);
+    console.warn('AI narrative call failed, using deterministic fallback:', err?.message);
     return `${disclaimer}\n\n${deterministicFallback}`;
   }
 }
 
-function getDeterministicNarrative(analysis: GeoLabAnalysis, lang: 'en' | 'fr'): string {
+export function getDeterministicNarrative(analysis: GeoLabAnalysis, lang: 'en' | 'fr'): string {
   const { testType, computedResults } = analysis;
   const res: any = computedResults || {};
 
@@ -90,10 +93,19 @@ function getDeterministicNarrative(analysis: GeoLabAnalysis, lang: 'en' | 'fr'):
   }
 
   if (testType === 'water_content') {
-    if (lang === 'fr') {
-      return `La détermination de la teneur en eau naturelle selon la norme ${analysis.standard} par étuvage à 105°C indique une valeur moyenne de ${res.meanWaterContentPercent ?? '-'} %. L'écart entre éprouvettes est de ${res.differenceBetweenSpecimensPercent ?? 0} %, satisfaisant le critère de répétabilité fixé à ${res.maxTolerancePercent ?? 1} %. Recommandation : Intégrer cette valeur hydrique d'état initial pour le dimensionnement des besoins d'humidification ou d'aération lors de la mise en œuvre.`;
+    const mean = res.meanWaterContentPercent ?? res.averageWaterContent;
+    const diff = res.differenceBetweenSpecimensPercent ?? 0;
+    const tol = res.maxTolerancePercent ?? 1;
+    if (mean === undefined || mean === null) {
+      if (lang === 'fr') {
+        return `La détermination de la teneur en eau selon la norme ${analysis.standard} est en cours de validation métrologique.`;
+      }
+      return `Water content determination per ${analysis.standard} is currently in progress.`;
     }
-    return `Natural moisture content determination per ${analysis.standard} via oven drying at 105°C yields a mean water content of ${res.meanWaterContentPercent ?? '-'}%. The difference between duplicate specimens is ${res.differenceBetweenSpecimensPercent ?? 0}%, satisfying the repeatability threshold of ${res.maxTolerancePercent ?? 1}%. Recommendation: Use this in-situ moisture baseline to calculate moisture adjustment requirements during earthwork compaction.`;
+    if (lang === 'fr') {
+      return `La détermination de la teneur en eau naturelle selon la norme ${analysis.standard} par étuvage à 105°C indique une valeur moyenne de ${mean} %. L'écart entre éprouvettes est de ${diff} %, satisfaisant le critère de répétabilité fixé à ${tol} %. Recommandation : Intégrer cette valeur hydrique d'état initial pour le dimensionnement des besoins d'humidification ou d'aération lors de la mise en œuvre.`;
+    }
+    return `Natural moisture content determination per ${analysis.standard} via oven drying at 105°C yields a mean water content of ${mean}%. The difference between duplicate specimens is ${diff}%, satisfying the repeatability threshold of ${tol}%. Recommendation: Use this in-situ moisture baseline to calculate moisture adjustment requirements during earthwork compaction.`;
   }
 
   if ((testType as string) === 'atterberg') {
@@ -120,13 +132,21 @@ function getDeterministicNarrative(analysis: GeoLabAnalysis, lang: 'en' | 'fr'):
 
   if (testType === 'specific_gravity') {
     const val = res.meanGs ?? res.specificGravity ?? '-';
-    const dens = res.solidDensityGcm3 ?? res.solidDensityMgM3 ?? '-';
+    const dens = res.solidDensityGcm3 ?? res.solidDensityMgM3 ?? res.densityTm3 ?? val;
     const diff = res.differenceGs ?? 0;
     const tol = res.maxToleranceGs ?? 0.03;
+    const accepted = res.repeatabilityAccepted ?? (typeof diff === 'number' && diff <= tol);
+    const alertFr = !accepted
+      ? ` Attention : l'écart entre prises (ΔGs = ${diff}) dépasse la tolérance normative (${tol}) ; une confirmation métrologique est recommandée.`
+      : ` L'écart entre déterminations (ΔGs = ${diff}) respecte la tolérance de répétabilité (${tol}).`;
+    const alertEn = !accepted
+      ? ` Note: variance between duplicate trials (ΔGs = ${diff}) exceeds normative tolerance (${tol}); retesting is recommended.`
+      : ` Difference between trials (ΔGs = ${diff}) satisfies repeatability criteria (${tol}).`;
+
     if (lang === 'fr') {
-      return `La détermination de la masse volumique des grains solides selon la norme ${analysis.standard} par la méthode du pycnomètre indique une valeur moyenne Gs = ${val} (masse volumique réelle des grains ρs = ${dens} g/cm³). L'écart entre déterminations est de ${diff}, respectant la tolérance de répétabilité de ${tol}. Recommandation : Intégrer cette masse volumique absolue pour les calculs de compacité, d'indice des vides et la construction des courbes de saturation à Sr = 100%.`;
+      return `La détermination de la masse volumique des particules solides selon la norme ${analysis.standard} par la méthode du pycnomètre indique une valeur moyenne Gs = ${val} (masse volumique absolue ρs = ${dens} t/m³).${alertFr} Recommandation : Intégrer cette masse volumique absolue pour les calculs de compacité, de porosité, d'indice des vides et la construction des courbes de saturation à Sr = 100%.`;
     }
-    return `Specific gravity determination in accordance with ${analysis.standard} using the pycnometer method yields a mean Gs of ${val} (particle solid density ρs = ${dens} g/cm³). The difference between determinations is ${diff}, satisfying the repeatability criterion of ${tol}. Recommendation: Use this solid density value in phase relationship calculations, void ratio determination, and zero-air-voids saturation curves.`;
+    return `Specific gravity determination in accordance with ${analysis.standard} using the pycnometer method yields a mean Gs of ${val} (particle solid density ρs = ${dens} t/m³).${alertEn} Recommendation: Use this solid density value in phase relationship calculations, void ratio determination, and zero-air-voids saturation curves.`;
   }
 
   if (testType === 'bulk_density') {

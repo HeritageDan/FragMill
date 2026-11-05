@@ -17,6 +17,7 @@ import { getStudyTemplate } from '../templates';
 import { DEFAULT_NARRATIVES } from '../templates/characterisationSoils';
 import { checkStudyConsistency } from './studyConsistencyChecker';
 import { getTestDefinition } from '../../tests/index';
+import { getDeterministicNarrative } from '../../engine/aiNarrative';
 
 export interface CoverBlockData {
   bilingualHeader?: { col1Text: string; col2Text: string };
@@ -416,7 +417,13 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
               inputs,
               results,
               chartType: a.testType === 'proctor' || a.testType === 'grain_size' ? a.testType : undefined,
-              observations: a.observations || undefined,
+              observations: (() => {
+                let obs = a.observations || undefined;
+                if (obs && (obs.includes('undefined%') || (a.testType !== 'water_content' && obs.toLowerCase().includes('moisture content determination')))) {
+                  obs = getDeterministicNarrative(a, lang);
+                }
+                return obs;
+              })(),
             },
           });
           isFirstDetail = false;

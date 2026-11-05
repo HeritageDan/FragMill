@@ -132,7 +132,31 @@ export async function getSettings(): Promise<AppSettings> {
   if (s.geminiModelPro === 'gemini-2.5-pro') {
     s.geminiModelPro = 'gemini-1.5-pro';
   }
+
+  // Self-healing migration: sanitize any legacy corrupted observations (e.g. "undefined%")
+  sanitizeCorruptAnalyses().catch(() => {});
+
   return s;
+}
+
+export async function sanitizeCorruptAnalyses(): Promise<void> {
+  try {
+    const all = await db.analyses.toArray();
+    for (const a of all) {
+      if (
+        a.observations &&
+        (a.observations.includes('undefined%') ||
+          (a.testType !== 'water_content' && a.observations.toLowerCase().includes('moisture content determination')))
+      ) {
+        await db.analyses.update(a.id, {
+          observations: undefined,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }
+  } catch {
+    // ignore
+  }
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {

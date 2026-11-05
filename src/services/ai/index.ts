@@ -58,7 +58,7 @@ export function detectAiProvider(apiKey?: string, explicitProvider?: AiProvider)
   if (explicitProvider) return explicitProvider;
   const key = apiKey ? apiKey.trim() : '';
   if (key.startsWith('sk-ant-') || key.startsWith('sk-')) return 'anthropic';
-  if (key.startsWith('AIzaSy')) return 'gemini';
+  if (key.startsWith('AIzaSy') || key.toLowerCase().includes('gemini')) return 'gemini';
   return 'anthropic';
 }
 
@@ -136,6 +136,16 @@ export async function postClaudeMessages(
   for (const model of candidateModels) {
     lastModelTried = model;
     try {
+      const requestBody: any = {
+        model,
+        max_tokens: options?.maxTokens || 2500,
+        messages,
+      };
+      // Anthropic deprecated 'temperature' on Claude 5/5.5 models (passing it returns 400 invalid_request_error)
+      if (options?.temperature !== undefined && !model.includes('-5')) {
+        requestBody.temperature = options.temperature;
+      }
+
       const response = await fetch(CLAUDE_CONFIG.baseUrl, {
         method: 'POST',
         headers: {
@@ -144,18 +154,14 @@ export async function postClaudeMessages(
           'anthropic-version': CLAUDE_CONFIG.apiVersion,
           'anthropic-dangerous-direct-browser-access': 'true',
         },
-        body: JSON.stringify({
-          model,
-          max_tokens: options?.maxTokens || 1024,
-          temperature: options?.temperature ?? 0.2,
-          messages,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       lastStatus = response.status;
       if (response.ok) {
         const data = await response.json();
-        const text = data.content?.[0]?.text || '';
+        const textPart = data.content?.find((c: any) => c.type === 'text');
+        const text = textPart ? textPart.text : (data.content?.[0]?.text || '');
         return {
           ok: true,
           text,
