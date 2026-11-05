@@ -48,6 +48,72 @@ export async function generateStudyDocxReport(
   // Lazy dynamic import of docx
   const docx = await import('docx');
 
+  const getHexLuminance = (hex: string): number => {
+    const clean = hex.replace('#', '');
+    const r = parseInt(clean.substring(0, 2), 16) || 0;
+    const g = parseInt(clean.substring(2, 4), 16) || 0;
+    const b = parseInt(clean.substring(4, 6), 16) || 0;
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  };
+
+  const getContrastColor = (bgHex: string): string => {
+    const lum = getHexLuminance(bgHex);
+    return lum < 140 ? 'FFFFFF' : '0F172A';
+  };
+
+  const parseMarkdownToRuns = (
+    text: string,
+    baseOptions: {
+      italics?: boolean;
+      color?: string;
+      size?: number;
+      font?: string;
+      bold?: boolean;
+    } = {}
+  ): any[] => {
+    const runs: any[] = [];
+    const font = baseOptions.font || 'Times New Roman';
+    const tokens = text.split(/(\*\*.*?\*\*|\*[^*\n]+?\*)/g);
+
+    for (const token of tokens) {
+      if (!token) continue;
+      if (token.startsWith('**') && token.endsWith('**') && token.length >= 4) {
+        const content = token.slice(2, -2).trim();
+        runs.push(
+          new docx.TextRun({
+            ...baseOptions,
+            text: content,
+            bold: true,
+            font,
+          })
+        );
+      } else if (token.startsWith('*') && token.endsWith('*') && token.length >= 2) {
+        const content = token.slice(1, -1).trim();
+        runs.push(
+          new docx.TextRun({
+            ...baseOptions,
+            text: content,
+            italics: true,
+            font,
+          })
+        );
+      } else {
+        const clean = token.replace(/\*/g, '');
+        if (clean) {
+          runs.push(
+            new docx.TextRun({
+              ...baseOptions,
+              text: clean,
+              font,
+            })
+          );
+        }
+      }
+    }
+
+    return runs.length > 0 ? runs : [new docx.TextRun({ ...baseOptions, text: '', font })];
+  };
+
   onProgress?.({ current: 2, total: 4, message: lang === 'fr' ? 'Construction des sections...' : 'Building document sections...' });
   await yieldToMain();
 
@@ -84,14 +150,49 @@ export async function generateStudyDocxReport(
       );
     }
 
+    // Organisation Logos / Main Logo
+    const coverLogo =
+      cover.headerLogos?.leftBase64 ||
+      cover.headerLogos?.centerBase64 ||
+      cover.headerLogos?.rightBase64 ||
+      cover.logoBase64 ||
+      model.organisation.logoBase64;
+    if (coverLogo) {
+      try {
+        const logoBytes = base64ToUint8Array(coverLogo);
+        children.push(
+          new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER,
+            spacing: { before: 120, after: 120 },
+            children: [
+              new docx.ImageRun({
+                data: logoBytes,
+                transformation: { width: 130, height: 65 },
+                type: coverLogo.includes('image/jpeg') || coverLogo.includes('image/jpg') ? 'jpg' : 'png',
+              }),
+            ],
+          })
+        );
+      } catch {
+        // ignore invalid logo bytes
+      }
+    }
+
     // Company / Lab Title
     children.push(
       new docx.Paragraph({
-        text: cover.companyName,
         heading: docx.HeadingLevel.TITLE,
         alignment: docx.AlignmentType.CENTER,
-        spacing: { before: 240, after: 80 },
-        run: { color: hexPrimary, bold: true, size: 36 },
+        spacing: { before: 180, after: 80 },
+        children: [
+          new docx.TextRun({
+            text: cover.companyName,
+            color: hexPrimary,
+            bold: true,
+            size: 36,
+            font: 'Times New Roman',
+          }),
+        ],
       })
     );
 
@@ -99,10 +200,16 @@ export async function generateStudyDocxReport(
     if (contactParts.length > 0) {
       children.push(
         new docx.Paragraph({
-          text: contactParts.join(' • '),
           alignment: docx.AlignmentType.CENTER,
           spacing: { after: 80 },
-          run: { color: '64748B', size: 18 },
+          children: [
+            new docx.TextRun({
+              text: contactParts.join(' • '),
+              color: '64748B',
+              size: 18,
+              font: 'Times New Roman',
+            }),
+          ],
         })
       );
     }
@@ -110,17 +217,26 @@ export async function generateStudyDocxReport(
     if (cover.accreditationNumber) {
       children.push(
         new docx.Paragraph({
-          text: `Agrément / Accréditation N° : ${cover.accreditationNumber}`,
           alignment: docx.AlignmentType.CENTER,
           spacing: { after: 200 },
-          run: { color: '64748B', size: 18, bold: true },
+          children: [
+            new docx.TextRun({
+              text: `Agrément / Accréditation N° : ${cover.accreditationNumber}`,
+              color: '64748B',
+              size: 18,
+              bold: true,
+              font: 'Times New Roman',
+            }),
+          ],
         })
       );
     }
 
-    // Title Box (with responsive font sizing for long titles)
+    // Title Box (with responsive font sizing for long titles and WCAG contrast)
     const titleLen = cover.studyTitle.length;
     const wordTitleSize = titleLen > 90 ? 24 : titleLen > 50 ? 28 : 32;
+    const titleTextColor = getContrastColor(hexPrimary);
+    const subtitleColor = titleTextColor === 'FFFFFF' ? 'E2E8F0' : '334155';
 
     children.push(
       new docx.Table({
@@ -133,24 +249,44 @@ export async function generateStudyDocxReport(
                 margins: { top: 240, bottom: 240, left: 240, right: 240 },
                 children: [
                   new docx.Paragraph({
-                    text: cover.studyTitle.toUpperCase(),
                     alignment: docx.AlignmentType.CENTER,
-                    run: { color: 'FFFFFF', bold: true, size: wordTitleSize },
+                    children: [
+                      new docx.TextRun({
+                        text: cover.studyTitle.toUpperCase(),
+                        bold: true,
+                        color: titleTextColor,
+                        size: wordTitleSize,
+                        font: 'Times New Roman',
+                      }),
+                    ],
                   }),
                   new docx.Paragraph({
-                    text:
-                      lang === 'fr'
-                        ? "RAPPORT GÉOTECHNIQUE D'ÉTUDE DE SOLS ET MATÉRIAUX"
-                        : 'GEOTECHNICAL MATERIALS INVESTIGATION STUDY',
                     alignment: docx.AlignmentType.CENTER,
                     spacing: { before: 80 },
-                    run: { color: 'F1F5F9', size: 20 },
+                    children: [
+                      new docx.TextRun({
+                        text:
+                          lang === 'fr'
+                            ? "RAPPORT GÉOTECHNIQUE D'ÉTUDE DE SOLS ET MATÉRIAUX"
+                            : 'GEOTECHNICAL MATERIALS INVESTIGATION STUDY',
+                        color: subtitleColor,
+                        size: 20,
+                        font: 'Times New Roman',
+                      }),
+                    ],
                   }),
                   new docx.Paragraph({
-                    text: lang === 'fr' ? `Rapport N° : ${cover.reportNumber || 'N/A'}` : `Report No: ${cover.reportNumber || 'N/A'}`,
                     alignment: docx.AlignmentType.CENTER,
                     spacing: { before: 80 },
-                    run: { color: 'FFFFFF', bold: true, size: 22 },
+                    children: [
+                      new docx.TextRun({
+                        text: lang === 'fr' ? `Rapport N° : ${cover.reportNumber || 'N/A'}` : `Report No: ${cover.reportNumber || 'N/A'}`,
+                        bold: true,
+                        color: titleTextColor,
+                        size: 22,
+                        font: 'Times New Roman',
+                      }),
+                    ],
                   }),
                 ],
               }),
@@ -172,11 +308,11 @@ export async function generateStudyDocxReport(
             new docx.TableCell({
               width: { size: 35, type: docx.WidthType.PERCENTAGE },
               shading: { fill: 'F8FAFC' },
-              children: [new docx.Paragraph({ text: label, run: { bold: true, size: 18 } })],
+              children: [new docx.Paragraph({ children: [new docx.TextRun({ text: label, bold: true, size: 18, font: 'Times New Roman' })] })],
             }),
             new docx.TableCell({
               width: { size: 65, type: docx.WidthType.PERCENTAGE },
-              children: [new docx.Paragraph({ text: val, run: { size: 18 } })],
+              children: [new docx.Paragraph({ children: [new docx.TextRun({ text: val, size: 18, font: 'Times New Roman' })] })],
             }),
           ],
         })
@@ -202,10 +338,29 @@ export async function generateStudyDocxReport(
       children.push(new docx.Paragraph({ spacing: { after: 200 } }));
     }
 
-    // Revision Table
+    // Revision Table (with white text on dark primary header)
     const revisions = cover.revisions.length > 0
       ? cover.revisions
       : [{ index: 0, date: new Date().toISOString().split('T')[0], nature: 'Initial issue', preparedBy: '', checkedBy: '', approvedBy: '' }];
+
+    const revHeaderTextColor = getContrastColor(hexPrimary);
+    const makeHeaderCell = (label: string) =>
+      new docx.TableCell({
+        shading: { fill: hexPrimary },
+        children: [
+          new docx.Paragraph({
+            children: [
+              new docx.TextRun({
+                text: label,
+                bold: true,
+                color: revHeaderTextColor,
+                size: 16,
+                font: 'Times New Roman',
+              }),
+            ],
+          }),
+        ],
+      });
 
     children.push(
       new docx.Table({
@@ -213,23 +368,23 @@ export async function generateStudyDocxReport(
         rows: [
           new docx.TableRow({
             children: [
-              new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: 'Ind.', run: { bold: true, color: 'FFFFFF', size: 16 } })] }),
-              new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: 'Date', run: { bold: true, color: 'FFFFFF', size: 16 } })] }),
-              new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Nature des modifications' : 'Nature of changes', run: { bold: true, color: 'FFFFFF', size: 16 } })] }),
-              new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Rédigé' : 'Prepared', run: { bold: true, color: 'FFFFFF', size: 16 } })] }),
-              new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Vérifié' : 'Checked', run: { bold: true, color: 'FFFFFF', size: 16 } })] }),
-              new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Approuvé' : 'Approved', run: { bold: true, color: 'FFFFFF', size: 16 } })] }),
+              makeHeaderCell('Ind.'),
+              makeHeaderCell('Date'),
+              makeHeaderCell(lang === 'fr' ? 'Nature des modifications' : 'Nature of changes'),
+              makeHeaderCell(lang === 'fr' ? 'Rédigé' : 'Prepared'),
+              makeHeaderCell(lang === 'fr' ? 'Vérifié' : 'Checked'),
+              makeHeaderCell(lang === 'fr' ? 'Approuvé' : 'Approved'),
             ],
           }),
           ...revisions.map((rev) =>
             new docx.TableRow({
               children: [
-                new docx.TableCell({ children: [new docx.Paragraph({ text: String(rev.index), run: { size: 16 } })] }),
-                new docx.TableCell({ children: [new docx.Paragraph({ text: rev.date || '-', run: { size: 16 } })] }),
-                new docx.TableCell({ children: [new docx.Paragraph({ text: rev.nature || '-', run: { size: 16 } })] }),
-                new docx.TableCell({ children: [new docx.Paragraph({ text: rev.preparedBy || '-', run: { size: 16 } })] }),
-                new docx.TableCell({ children: [new docx.Paragraph({ text: rev.checkedBy || '-', run: { size: 16 } })] }),
-                new docx.TableCell({ children: [new docx.Paragraph({ text: rev.approvedBy || '-', run: { size: 16 } })] }),
+                new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: String(rev.index), size: 16, font: 'Times New Roman' })] })] }),
+                new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: rev.date || '-', size: 16, font: 'Times New Roman' })] })] }),
+                new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: rev.nature || '-', size: 16, font: 'Times New Roman' })] })] }),
+                new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: rev.preparedBy || '-', size: 16, font: 'Times New Roman' })] })] }),
+                new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: rev.checkedBy || '-', size: 16, font: 'Times New Roman' })] })] }),
+                new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: rev.approvedBy || '-', size: 16, font: 'Times New Roman' })] })] }),
               ],
             })
           ),
@@ -313,14 +468,16 @@ export async function generateStudyDocxReport(
       continue;
     }
 
-    // Heading for Section
-    children.push(
-      new docx.Paragraph({
-        text: block.title,
-        heading: docx.HeadingLevel.HEADING_1,
-        spacing: { before: 240, after: 120 },
-      })
-    );
+    // Heading for Section (analysisDetail handles its own Section 4 Heading 1 + Test Heading 2)
+    if (block.type !== 'analysisDetail') {
+      children.push(
+        new docx.Paragraph({
+          text: block.title,
+          heading: docx.HeadingLevel.HEADING_1,
+          spacing: { before: 240, after: 120 },
+        })
+      );
+    }
 
     if (block.type === 'narrative' && block.narrativeData) {
       const lines = block.narrativeData.markdown.split('\n');
@@ -336,47 +493,66 @@ export async function generateStudyDocxReport(
               spacing: { before: 180, after: 80 },
             })
           );
-        } else if (line.startsWith('- ')) {
+        } else if (line.startsWith('- ') || line.startsWith('* ')) {
           children.push(
             new docx.Paragraph({
-              text: line.replace('- ', ''),
               bullet: { level: 0 },
               alignment: docx.AlignmentType.JUSTIFIED,
               spacing: { line: 360, lineRule: docx.LineRuleType.AUTO, after: 60 },
+              children: parseMarkdownToRuns(line.replace(/^[-*]\s+/, ''), { font: 'Times New Roman' }),
             })
           );
         } else {
           children.push(
             new docx.Paragraph({
-              text: line,
               alignment: docx.AlignmentType.JUSTIFIED,
               spacing: { line: 360, lineRule: docx.LineRuleType.AUTO, after: 120 },
+              children: parseMarkdownToRuns(line, { font: 'Times New Roman' }),
             })
           );
         }
       }
     } else if (block.type === 'analysisSummaryTable' && block.summaryRows) {
+      const sumHeaderTextColor = getContrastColor(hexPrimary);
+      const makeSummaryHeaderCell = (label: string) =>
+        new docx.TableCell({
+          shading: { fill: hexPrimary },
+          children: [
+            new docx.Paragraph({
+              children: [
+                new docx.TextRun({
+                  text: label,
+                  bold: true,
+                  color: sumHeaderTextColor,
+                  size: 18,
+                  font: 'Times New Roman',
+                }),
+              ],
+            }),
+          ],
+        });
+
       children.push(
         new docx.Table({
           width: { size: 100, type: docx.WidthType.PERCENTAGE },
           rows: [
             new docx.TableRow({
               children: [
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Échantillon' : 'Sample', run: { bold: true, color: 'FFFFFF' } })] }),
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Type d’essai' : 'Test Type', run: { bold: true, color: 'FFFFFF' } })] }),
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Norme' : 'Standard', run: { bold: true, color: 'FFFFFF' } })] }),
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: 'Date', run: { bold: true, color: 'FFFFFF' } })] }),
-                new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Résultats clés' : 'Key Results', run: { bold: true, color: 'FFFFFF' } })] }),
+                makeSummaryHeaderCell(lang === 'fr' ? 'Échantillon' : 'Sample'),
+                makeSummaryHeaderCell(lang === 'fr' ? 'Type d’essai' : 'Test Type'),
+                makeSummaryHeaderCell(lang === 'fr' ? 'Norme' : 'Standard'),
+                makeSummaryHeaderCell('Date'),
+                makeSummaryHeaderCell(lang === 'fr' ? 'Résultats clés' : 'Key Results'),
               ],
             }),
             ...block.summaryRows.map((r) =>
               new docx.TableRow({
                 children: [
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: r.sampleId })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: r.testLabel })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: r.standard })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: r.testedDate })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: r.keyResultsText })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: r.sampleId, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: r.testLabel, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: r.standard, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: r.testedDate, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: r.keyResultsText, font: 'Times New Roman' })] })] }),
                 ],
               })
             ),
@@ -388,6 +564,26 @@ export async function generateStudyDocxReport(
     } else if (block.type === 'analysisDetail' && block.detailData) {
       const d = block.detailData;
 
+      // Section 4 Heading if this is the first analysis detail item
+      if (d.sectionTitle) {
+        children.push(
+          new docx.Paragraph({
+            text: d.sectionTitle,
+            heading: docx.HeadingLevel.HEADING_1,
+            spacing: { before: 240, after: 120 },
+          })
+        );
+      }
+
+      // Test Subheading (Heading 2)
+      children.push(
+        new docx.Paragraph({
+          text: block.title,
+          heading: docx.HeadingLevel.HEADING_2,
+          spacing: { before: 180, after: 80 },
+        })
+      );
+
       // KPI Results Table
       children.push(
         new docx.Table({
@@ -395,17 +591,17 @@ export async function generateStudyDocxReport(
           rows: [
             new docx.TableRow({
               children: [
-                new docx.TableCell({ shading: { fill: 'F1F5F9' }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Paramètre' : 'Parameter', run: { bold: true } })] }),
-                new docx.TableCell({ shading: { fill: 'F1F5F9' }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Valeur calculée' : 'Computed Value', run: { bold: true } })] }),
-                new docx.TableCell({ shading: { fill: 'F1F5F9' }, children: [new docx.Paragraph({ text: 'Unité', run: { bold: true } })] }),
+                new docx.TableCell({ shading: { fill: 'F1F5F9' }, children: [new docx.Paragraph({ children: [new docx.TextRun({ text: lang === 'fr' ? 'Paramètre' : 'Parameter', bold: true, font: 'Times New Roman' })] })] }),
+                new docx.TableCell({ shading: { fill: 'F1F5F9' }, children: [new docx.Paragraph({ children: [new docx.TextRun({ text: lang === 'fr' ? 'Valeur calculée' : 'Computed Value', bold: true, font: 'Times New Roman' })] })] }),
+                new docx.TableCell({ shading: { fill: 'F1F5F9' }, children: [new docx.Paragraph({ children: [new docx.TextRun({ text: 'Unité', bold: true, font: 'Times New Roman' })] })] }),
               ],
             }),
             ...d.results.map((res) =>
               new docx.TableRow({
                 children: [
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: res.label })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: String(res.value), run: { bold: true } })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: res.unit || '-' })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: res.label, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: String(res.value), bold: true, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: res.unit || '-', font: 'Times New Roman' })] })] }),
                 ],
               })
             ),
@@ -444,86 +640,181 @@ export async function generateStudyDocxReport(
       }
 
       if (d.observations) {
-        children.push(
-          new docx.Paragraph({
-            text: `Observations : ${d.observations}`,
-            spacing: { before: 100, after: 100 },
-            run: { italics: true, color: '475569' },
-          })
-        );
+        const obsParagraphs = d.observations.split(/\n+/).map((p) => p.trim()).filter(Boolean);
+        for (let i = 0; i < obsParagraphs.length; i++) {
+          const paraText = obsParagraphs[i];
+          const isHeading =
+            paraText.startsWith('**') &&
+            paraText.endsWith('**') &&
+            paraText.length > 4 &&
+            !paraText.slice(2, -2).includes('**');
+
+          if (isHeading) {
+            children.push(
+              new docx.Paragraph({
+                children: [
+                  new docx.TextRun({
+                    text: paraText.slice(2, -2).trim(),
+                    bold: true,
+                    size: 20,
+                    color: '1E293B',
+                    font: 'Times New Roman',
+                  }),
+                ],
+                spacing: { before: 140, after: 60 },
+              })
+            );
+          } else {
+            const isFirst = i === 0;
+            const prefixRuns = isFirst
+              ? [
+                  new docx.TextRun({
+                    text: 'Observations : ',
+                    bold: true,
+                    color: '475569',
+                    font: 'Times New Roman',
+                  }),
+                ]
+              : [];
+            const bodyRuns = parseMarkdownToRuns(paraText, {
+              italics: true,
+              color: '475569',
+              font: 'Times New Roman',
+            });
+            children.push(
+              new docx.Paragraph({
+                alignment: docx.AlignmentType.JUSTIFIED,
+                spacing: { line: 360, lineRule: docx.LineRuleType.AUTO, before: 60, after: 100 },
+                children: [...prefixRuns, ...bodyRuns],
+              })
+            );
+          }
+        }
       }
     } else if (block.type === 'gradingCurves' && block.gradingCurvesData) {
-      try {
-        const series = block.gradingCurvesData.analyses
-          .filter((a) => a.computedResults?.curvesPoints)
-          .map((a, idx) => ({
-            name: a.sampleId || `Échantillon ${idx + 1}`,
-            color: '#1e40af',
-            points: a.computedResults.curvesPoints,
-          }));
+      if (block.gradingCurvesData.analyses.length === 0) {
+        children.push(
+          new docx.Paragraph({
+            alignment: docx.AlignmentType.JUSTIFIED,
+            spacing: { before: 120, after: 180 },
+            children: [
+              new docx.TextRun({
+                text: lang === 'fr'
+                  ? "Aucun essai d'analyse granulométrique par tamisage (NF P94-056 / NF EN 933-1) n'a été inclus dans le programme d'investigation de la présente étude."
+                  : "No particle size distribution test by sieving (NF P94-056 / NF EN 933-1) was included in the testing scope for this study.",
+                font: 'Times New Roman',
+                italics: true,
+                color: '64748B',
+                size: 20,
+              }),
+            ],
+          })
+        );
+      } else {
+        try {
+          const series = block.gradingCurvesData.analyses
+            .filter((a) => a.computedResults?.curvesPoints)
+            .map((a, idx) => ({
+              name: a.sampleId || `Échantillon ${idx + 1}`,
+              color: '#1e40af',
+              points: a.computedResults.curvesPoints,
+            }));
 
-        if (series.length > 0) {
-          const chartBytes = await renderChartToPng({
-            type: 'multi_grain_size',
-            series,
-            primaryColor: model.primaryColor,
-            lang,
-          });
+          if (series.length > 0) {
+            const chartBytes = await renderChartToPng({
+              type: 'multi_grain_size',
+              series,
+              primaryColor: model.primaryColor,
+              lang,
+            });
 
-          children.push(
-            new docx.Paragraph({
-              spacing: { before: 180, after: 120 },
-              alignment: docx.AlignmentType.CENTER,
-              children: [
-                new docx.ImageRun({
-                  data: chartBytes,
-                  transformation: { width: 520, height: 280 },
-                  type: 'png',
-                }),
-              ],
-            })
-          );
-        }
-      } catch {}
+            children.push(
+              new docx.Paragraph({
+                spacing: { before: 180, after: 120 },
+                alignment: docx.AlignmentType.CENTER,
+                children: [
+                  new docx.ImageRun({
+                    data: chartBytes,
+                    transformation: { width: 520, height: 280 },
+                    type: 'png',
+                  }),
+                ],
+              })
+            );
+          }
+        } catch {}
+      }
     } else if (block.type === 'conformityTable' && block.conformityRows) {
       if (block.conformityRows.length === 0) {
         children.push(
           new docx.Paragraph({
-            text:
-              lang === 'fr'
-                ? 'Aucune spécification technique de conformité définie pour ce projet.'
-                : 'No technical conformity specifications defined for this project.',
-            spacing: { after: 200 },
-            run: { italics: true, color: '64748B', size: 18 },
+            alignment: docx.AlignmentType.JUSTIFIED,
+            spacing: { before: 120, after: 180 },
+            children: [
+              new docx.TextRun({
+                text: lang === 'fr'
+                  ? 'Aucune spécification technique de conformité définie pour ce projet.'
+                  : 'No technical conformity specifications defined for this project.',
+                font: 'Times New Roman',
+                italics: true,
+                color: '64748B',
+                size: 20,
+              }),
+            ],
           })
         );
       } else {
+        const confHeaderTextColor = getContrastColor(hexPrimary);
+        const makeConfHeaderCell = (label: string) =>
+          new docx.TableCell({
+            shading: { fill: hexPrimary },
+            children: [
+              new docx.Paragraph({
+                children: [
+                  new docx.TextRun({
+                    text: label,
+                    bold: true,
+                    color: confHeaderTextColor,
+                    size: 18,
+                    font: 'Times New Roman',
+                  }),
+                ],
+              }),
+            ],
+          });
+
         children.push(
           new docx.Table({
             width: { size: 100, type: docx.WidthType.PERCENTAGE },
             rows: [
               new docx.TableRow({
                 children: [
-                  new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Échantillon' : 'Sample', run: { bold: true, color: 'FFFFFF' } })] }),
-                  new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Paramètre' : 'Parameter', run: { bold: true, color: 'FFFFFF' } })] }),
-                  new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Valeur mesurée' : 'Measured', run: { bold: true, color: 'FFFFFF' } })] }),
-                  new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Spécification' : 'Specification', run: { bold: true, color: 'FFFFFF' } })] }),
-                  new docx.TableCell({ shading: { fill: hexPrimary }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Statut' : 'Status', run: { bold: true, color: 'FFFFFF' } })] }),
+                  makeConfHeaderCell(lang === 'fr' ? 'Échantillon' : 'Sample'),
+                  makeConfHeaderCell(lang === 'fr' ? 'Paramètre' : 'Parameter'),
+                  makeConfHeaderCell(lang === 'fr' ? 'Valeur mesurée' : 'Measured'),
+                  makeConfHeaderCell(lang === 'fr' ? 'Spécification' : 'Specification'),
+                  makeConfHeaderCell(lang === 'fr' ? 'Statut' : 'Status'),
                 ],
               }),
               ...block.conformityRows.map((r) =>
                 new docx.TableRow({
                   children: [
-                    new docx.TableCell({ children: [new docx.Paragraph({ text: r.sampleId })] }),
-                    new docx.TableCell({ children: [new docx.Paragraph({ text: r.parameter })] }),
-                    new docx.TableCell({ children: [new docx.Paragraph({ text: String(r.measured) })] }),
-                    new docx.TableCell({ children: [new docx.Paragraph({ text: r.specification })] }),
+                    new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: r.sampleId, font: 'Times New Roman' })] })] }),
+                    new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: r.parameter, font: 'Times New Roman' })] })] }),
+                    new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: String(r.measured), font: 'Times New Roman' })] })] }),
+                    new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: r.specification, font: 'Times New Roman' })] })] }),
                     new docx.TableCell({
                       shading: { fill: r.status === 'conform' ? 'DCFCE7' : 'FEE2E2' },
                       children: [
                         new docx.Paragraph({
-                          text: r.status === 'conform' ? (lang === 'fr' ? 'CONFORME' : 'CONFORMING') : (lang === 'fr' ? 'NON CONFORME' : 'NON-CONFORMING'),
-                          run: { bold: true, color: r.status === 'conform' ? '15803D' : 'B91C1C' },
+                          children: [
+                            new docx.TextRun({
+                              text: r.status === 'conform' ? (lang === 'fr' ? 'CONFORME' : 'CONFORMING') : (lang === 'fr' ? 'NON CONFORME' : 'NON-CONFORMING'),
+                              bold: true,
+                              color: r.status === 'conform' ? '15803D' : 'B91C1C',
+                              font: 'Times New Roman',
+                            }),
+                          ],
                         }),
                       ],
                     }),
@@ -548,10 +839,16 @@ export async function generateStudyDocxReport(
                   margins: { top: 180, bottom: 180, left: 180, right: 180 },
                   children: [
                     new docx.Paragraph({
-                      text: block.usageNoteText[lang] || block.usageNoteText.en,
                       alignment: docx.AlignmentType.JUSTIFIED,
                       spacing: { line: 360, lineRule: docx.LineRuleType.AUTO },
-                      run: { color: '713F12', size: 18 },
+                      children: [
+                        new docx.TextRun({
+                          text: block.usageNoteText[lang] || block.usageNoteText.en,
+                          color: '713F12',
+                          size: 18,
+                          font: 'Times New Roman',
+                        }),
+                      ],
                     }),
                   ],
                 }),
@@ -574,9 +871,9 @@ export async function generateStudyDocxReport(
                   shading: { fill: 'F8FAFC' },
                   margins: { top: 140, bottom: 280, left: 140, right: 140 },
                   children: [
-                    new docx.Paragraph({ text: sig.roleLabel?.[lang] || sig.title || `Visa ${idx + 1}`, run: { bold: true, color: hexPrimary, size: 16 } }),
-                    new docx.Paragraph({ text: sig.name || '', spacing: { before: 80 }, run: { bold: true, size: 16 } }),
-                    new docx.Paragraph({ text: lang === 'fr' ? '[Signature manuscrite]' : '[Handwritten Signature]', spacing: { before: 180 }, run: { color: '94A3B8', size: 14 } }),
+                    new docx.Paragraph({ children: [new docx.TextRun({ text: sig.roleLabel?.[lang] || sig.title || `Visa ${idx + 1}`, bold: true, color: hexPrimary, size: 16, font: 'Times New Roman' })] }),
+                    new docx.Paragraph({ children: [new docx.TextRun({ text: sig.name || '', bold: true, size: 16, font: 'Times New Roman' })], spacing: { before: 80 } }),
+                    new docx.Paragraph({ children: [new docx.TextRun({ text: lang === 'fr' ? '[Signature manuscrite]' : '[Handwritten Signature]', color: '94A3B8', size: 14, font: 'Times New Roman' })], spacing: { before: 180 } }),
                   ],
                 })
               ),
@@ -605,18 +902,24 @@ export async function generateStudyDocxReport(
                 })
               );
             } catch {
-              cellChildren.push(new docx.Paragraph({ text: '[Photo]' }));
+              cellChildren.push(new docx.Paragraph({ children: [new docx.TextRun({ text: '[Photo]', font: 'Times New Roman' })] }));
             }
           } else {
-            cellChildren.push(new docx.Paragraph({ text: '[Photo]' }));
+            cellChildren.push(new docx.Paragraph({ children: [new docx.TextRun({ text: '[Photo]', font: 'Times New Roman' })] }));
           }
 
           cellChildren.push(
             new docx.Paragraph({
-              text: p.caption || '',
               alignment: docx.AlignmentType.CENTER,
               spacing: { before: 60 },
-              run: { size: 16, color: '64748B' },
+              children: [
+                new docx.TextRun({
+                  text: p.caption || '',
+                  size: 16,
+                  color: '64748B',
+                  font: 'Times New Roman',
+                }),
+              ],
             })
           );
 
@@ -650,18 +953,18 @@ export async function generateStudyDocxReport(
             rows: [
               new docx.TableRow({
                 children: [
-                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Réf. Rapport' : 'Report Ref.', run: { bold: true } })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: a.reportNumber })] }),
-                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Norme' : 'Standard', run: { bold: true } })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: a.standard })] }),
+                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ children: [new docx.TextRun({ text: lang === 'fr' ? 'Réf. Rapport' : 'Report Ref.', bold: true, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: a.reportNumber, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ children: [new docx.TextRun({ text: lang === 'fr' ? 'Norme' : 'Standard', bold: true, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: a.standard, font: 'Times New Roman' })] })] }),
                 ],
               }),
               new docx.TableRow({
                 children: [
-                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Statut' : 'Status', run: { bold: true } })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: a.status.toUpperCase(), run: { bold: true } })] }),
-                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ text: lang === 'fr' ? 'Date essai' : 'Test Date', run: { bold: true } })] }),
-                  new docx.TableCell({ children: [new docx.Paragraph({ text: a.testedDate || a.createdAt })] }),
+                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ children: [new docx.TextRun({ text: lang === 'fr' ? 'Statut' : 'Status', bold: true, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: a.status.toUpperCase(), bold: true, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ shading: { fill: 'F8FAFC' }, children: [new docx.Paragraph({ children: [new docx.TextRun({ text: lang === 'fr' ? 'Date essai' : 'Test Date', bold: true, font: 'Times New Roman' })] })] }),
+                  new docx.TableCell({ children: [new docx.Paragraph({ children: [new docx.TextRun({ text: a.testedDate || a.createdAt, font: 'Times New Roman' })] })] }),
                 ],
               }),
             ],
@@ -671,10 +974,16 @@ export async function generateStudyDocxReport(
     } else if (block.type === 'dataQualityNotes' && block.dataQualityNotesText) {
       children.push(
         new docx.Paragraph({
-          text: block.dataQualityNotesText,
           alignment: docx.AlignmentType.JUSTIFIED,
           spacing: { line: 360, lineRule: docx.LineRuleType.AUTO, after: 120 },
-          run: { color: '334155', size: 18 },
+          children: [
+            new docx.TextRun({
+              text: block.dataQualityNotesText,
+              color: '334155',
+              size: 18,
+              font: 'Times New Roman',
+            }),
+          ],
         })
       );
     }
@@ -691,7 +1000,7 @@ export async function generateStudyDocxReport(
       default: {
         document: {
           run: {
-            font: 'Arial',
+            font: 'Times New Roman',
             size: 20, // 10pt
             color: '0F172A',
           },
@@ -709,7 +1018,7 @@ export async function generateStudyDocxReport(
           next: 'Normal',
           quickFormat: true,
           run: {
-            font: 'Arial',
+            font: 'Times New Roman',
             size: 26, // 13pt
             bold: true,
             color: hexPrimary,
@@ -725,7 +1034,7 @@ export async function generateStudyDocxReport(
           next: 'Normal',
           quickFormat: true,
           run: {
-            font: 'Arial',
+            font: 'Times New Roman',
             size: 22, // 11pt
             bold: true,
             color: '334155',
@@ -762,11 +1071,13 @@ export async function generateStudyDocxReport(
                     bold: true,
                     size: 16,
                     color: hexPrimary,
+                    font: 'Times New Roman',
                   }),
                   new docx.TextRun({
                     text: `\t${model.study.title}`,
                     size: 16,
                     color: '64748B',
+                    font: 'Times New Roman',
                   }),
                 ],
                 tabStops: [{ type: docx.TabStopType.RIGHT, position: docx.convertMillimetersToTwip(174) }],
@@ -791,26 +1102,31 @@ export async function generateStudyDocxReport(
                     text: `${model.project.projectName} • ${model.study.reportNumber || model.study.title}${model.isSampleDocument ? ' • SAMPLE - fictional data' : ''} • FraGeo Lab`,
                     size: 16,
                     color: '94A3B8',
+                    font: 'Times New Roman',
                   }),
                   new docx.TextRun({
                     text: '\tPage ',
                     size: 16,
                     color: '94A3B8',
+                    font: 'Times New Roman',
                   }),
                   new docx.TextRun({
                     children: [docx.PageNumber.CURRENT],
                     size: 16,
                     color: '94A3B8',
+                    font: 'Times New Roman',
                   }),
                   new docx.TextRun({
                     text: ' / ',
                     size: 16,
                     color: '94A3B8',
+                    font: 'Times New Roman',
                   }),
                   new docx.TextRun({
                     children: [docx.PageNumber.TOTAL_PAGES],
                     size: 16,
                     color: '94A3B8',
+                    font: 'Times New Roman',
                   }),
                 ],
                 tabStops: [{ type: docx.TabStopType.RIGHT, position: docx.convertMillimetersToTwip(174) }],

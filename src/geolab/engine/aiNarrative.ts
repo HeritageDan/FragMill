@@ -48,7 +48,8 @@ STRICT RULES:
 4. If this test is ${testDef.name[lang]}, do NOT confuse it with or discuss unrelated tests.
 5. If any anomaly, repeatability variance (e.g. repeatability threshold exceeded), or quality warning is triggered, address it with professional engineering objectivity.
 6. End with a practical geotechnical recommendation for earthworks or foundation placement.
-7. Prepend the response with: "${disclaimer}"`;
+7. Do NOT use markdown formatting symbols such as asterisks (**bold** or *italic*), hashes (#), or bullet dashes in the text body; write clean, professional continuous prose.
+8. Prepend the response with: "${disclaimer}"`;
 
   try {
     const res = await postAiGenerateContent(

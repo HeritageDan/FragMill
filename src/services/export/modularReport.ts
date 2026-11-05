@@ -114,23 +114,23 @@ export async function generateModularVaultPdfReport(
 
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.text(title, titleX, 10, { maxWidth: headerLogo ? 92 : 114 });
 
     doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setTextColor(226, 232, 240);
     doc.text(subTitle, titleX, 16.5, { maxWidth: headerLogo ? 92 : 114 });
 
     // Right-hand side: Organization Name and Credentials
     const orgName = orgProfile?.companyName?.trim() || 'FraGeo Suite';
     doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setTextColor(255, 255, 255);
     doc.text(orgName, 196, 9.5, { align: 'right', maxWidth: 66 });
 
     doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setTextColor(203, 213, 225);
     const orgContactParts = [
       orgProfile?.address ? orgProfile.address.split(',')[0].trim() : '',
@@ -174,7 +174,7 @@ export async function generateModularVaultPdfReport(
         drawHeader(pageHeaderTitle, pageHeaderSub);
         curY = 26;
       }
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setFontSize(9.5);
       doc.setTextColor(31, 56, 100);
       doc.text(title, 14, curY);
@@ -186,7 +186,7 @@ export async function generateModularVaultPdfReport(
     const cellPadding = 1.8;
 
     // Word-wrapped multi-line headers to prevent text collisions or truncation
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(8);
     const headerLines = headers.map((h, i) => {
       const maxW = Math.max(8, widths[i] - cellPadding * 2);
@@ -200,7 +200,7 @@ export async function generateModularVaultPdfReport(
       doc.setFillColor(31, 56, 100); // Deep Navy #1F3864
       doc.rect(tableX, yPos, totalTableWidth, headerHeight, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setFontSize(8);
 
       let curX = tableX;
@@ -248,8 +248,8 @@ export async function generateModularVaultPdfReport(
       let cX = tableX;
       row.forEach((_, cIdx) => {
         doc.setTextColor(cIdx === 0 ? 30 : 51, cIdx === 0 ? 41 : 65, cIdx === 0 ? 59 : 85);
-        if (cIdx === 0) doc.setFont('helvetica', 'bold');
-        else doc.setFont('helvetica', 'normal');
+        if (cIdx === 0) doc.setFont('times', 'bold');
+        else doc.setFont('times', 'normal');
 
         const lines = cellLines[cIdx];
         lines.forEach((lineText: string, lineIdx: number) => {
@@ -276,7 +276,7 @@ export async function generateModularVaultPdfReport(
     const innerW = 174;
     const paddingX = 18;
     const lineH = 4.0; // 1.5 line spacing at font size 7.5
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7.5);
     const split = doc.splitTextToSize(bodyText.trim(), innerW);
     const textHeight = split.length * lineH;
@@ -297,13 +297,13 @@ export async function generateModularVaultPdfReport(
     doc.roundedRect(14, curY, 182, 6.5, 2, 2, 'F');
     doc.rect(14, curY + 3.5, 182, 3, 'F');
 
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(8);
     const titleColor = getContrastTextColor(...headerColor);
     doc.setTextColor(...titleColor);
     doc.text(title, paddingX, curY + 4.8);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7.5);
     const bodyColor = getContrastTextColor(...bgColor);
     doc.setTextColor(...bodyColor);
@@ -323,7 +323,7 @@ export async function generateModularVaultPdfReport(
     const paddingX = 18;
     const lineH = 4.2; // 1.5 line spacing for 8pt text
 
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(8);
     const wrappedLines: string[] = [];
     lines.forEach((l) => {
@@ -502,12 +502,12 @@ export async function generateModularVaultPdfReport(
           } catch {}
         }
 
-        doc.setFont('helvetica', 'bold');
+        doc.setFont('times', 'bold');
         doc.setFontSize(9);
         doc.setTextColor(31, 56, 100);
         doc.text(orgProfile.companyName, orgTextX, y + 5.5, { maxWidth: 194 - orgTextX });
 
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('times', 'normal');
         doc.setFontSize(7);
         doc.setTextColor(71, 85, 105);
         const contactLine1 = [
@@ -529,7 +529,7 @@ export async function generateModularVaultPdfReport(
 
       // 1. GÉOMÉTRIE DU PLAN DE TIR & MÉTADONNÉES GÉOTECHNIQUES DU MASSIF
       doc.setFontSize(9.5);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setTextColor(31, 56, 100);
       doc.text(
         isFr ? '1. GÉOMÉTRIE DU PLAN DE TIR & MÉTADONNÉES GÉOTECHNIQUES DU MASSIF' : '1. BLAST DESIGN GEOMETRY & ROCK MASS GEOTECHNICAL METADATA',
@@ -538,7 +538,7 @@ export async function generateModularVaultPdfReport(
       );
       y += 5.5;
 
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setFontSize(8);
       const col1 = 14;
       const col2 = 106;
@@ -614,7 +614,7 @@ export async function generateModularVaultPdfReport(
       y += 7.0;
 
       // 2. PHOTOGRAPHIE DU TAS D'ABATTAGE ÉCHELONNÉE & MASQUE DE SEGMENTATION
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setFontSize(9.5);
       doc.setTextColor(31, 56, 100);
       doc.text(
@@ -645,7 +645,7 @@ export async function generateModularVaultPdfReport(
 
       // Scale calibration info
       doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setTextColor(71, 85, 105);
       if (blastState.optical.isMultiImageComposite) {
         doc.text(
@@ -674,7 +674,7 @@ export async function generateModularVaultPdfReport(
       doc.setFillColor(214, 228, 240); // Light blue #D6E4F0
       doc.roundedRect(14, y, 182, 34, 2, 2, 'F');
       doc.setTextColor(31, 56, 100);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setFontSize(9.5);
       doc.text(
         isFr ? '3. PERCENTILES CLÉS DE FRAGMENTATION & SYNTHÈSE DE COMMINUTION' : '3. KEY FRAGMENTATION PERCENTILES & COMMINUTION SIZING SUMMARY',
@@ -695,7 +695,7 @@ export async function generateModularVaultPdfReport(
 
       // Metric Headers
       doc.setFontSize(7.5);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setTextColor(71, 85, 105);
       doc.text(isFr ? 'P10 (Fraction Fine)' : 'P10 (Fine Cut)', colX[0], y + 11.5);
       doc.text(isFr ? 'P20 (Passant 20%)' : 'P20 (Passing 20%)', colX[1], y + 11.5);
@@ -704,7 +704,7 @@ export async function generateModularVaultPdfReport(
 
       // Metric Values
       doc.setFontSize(9.5);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setTextColor(31, 56, 100);
       doc.text(`${p10Val} mm`, colX[0], y + 16.5);
       doc.text(`${p20Val} mm`, colX[1], y + 16.5);
@@ -713,7 +713,7 @@ export async function generateModularVaultPdfReport(
 
       // Confidence intervals dynamically calculated from actual measured metrics
       doc.setFontSize(7);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setTextColor(100, 116, 139);
       const ciP10 = mMetrics?.bootstrapCI?.p10 ? `[${mMetrics.bootstrapCI.p10[0]} - ${mMetrics.bootstrapCI.p10[1]}]` : `[${Math.round(p10Val * 0.88)} - ${Math.round(p10Val * 1.12)}]`;
       const ciP20 = mMetrics?.bootstrapCI?.p20 ? `[${mMetrics.bootstrapCI.p20[0]} - ${mMetrics.bootstrapCI.p20[1]}]` : `[${Math.round(p20Val * 0.90)} - ${Math.round(p20Val * 1.10)}]`;
@@ -729,7 +729,7 @@ export async function generateModularVaultPdfReport(
 
       // Summary badges
       doc.setFontSize(7.5);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setTextColor(30, 41, 59);
       doc.text(isFr ? `Indice d'uniformité n : ${unifVal}` : `Uniformity Index n: ${unifVal}`, colX[0], y + 29, { maxWidth: 42 });
       doc.text(isFr ? `Taille max (Pmax) : ${pMaxVal} mm` : `Top Size (Pmax): ${pMaxVal} mm`, colX[1], y + 29, { maxWidth: 42 });
@@ -930,7 +930,7 @@ export async function generateModularVaultPdfReport(
 
       // 8. LOGARITHMIC PASSING CHART (All 3 curves)
       doc.setFontSize(9.5);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setTextColor(31, 56, 100);
       doc.text(
         isFr
@@ -955,7 +955,7 @@ export async function generateModularVaultPdfReport(
 
       // 9. CHARGING PROFILE DIAGRAM
       doc.setFontSize(9.5);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setTextColor(31, 56, 100);
       doc.text(
         isFr
@@ -976,7 +976,7 @@ export async function generateModularVaultPdfReport(
 
       // 10. COMPUTER VISION PROCESSING PIPELINE GALLERY (8 Stages)
       doc.setFontSize(9.5);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setTextColor(31, 56, 100);
       doc.text(
         isFr
@@ -1065,7 +1065,7 @@ export async function generateModularVaultPdfReport(
       if (notesToPrint && notesToPrint.length > 0) {
         const innerW = 174;
         const lineH = 4.0; // 1.5 line spacing at font size 7.5
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('times', 'normal');
         doc.setFontSize(7.5);
         const splitNotes = doc.splitTextToSize(notesToPrint, innerW);
         const boxH = Math.max(22, splitNotes.length * lineH + 14);
@@ -1085,7 +1085,7 @@ export async function generateModularVaultPdfReport(
         doc.roundedRect(14, y, 182, 7, 2, 2, 'F');
         doc.rect(14, y + 4, 182, 3, 'F');
 
-        doc.setFont('helvetica', 'bold');
+        doc.setFont('times', 'bold');
         doc.setFontSize(8);
         doc.setTextColor(255, 255, 255);
         doc.text(
@@ -1096,7 +1096,7 @@ export async function generateModularVaultPdfReport(
           y + 5
         );
 
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('times', 'normal');
         doc.setFontSize(7.5);
         doc.setTextColor(17, 24, 39); // Deep dark/black on light background
         doc.text(splitNotes, 18, y + 12, { align: 'justify', maxWidth: innerW });
@@ -1467,7 +1467,7 @@ export async function generateModularVaultPdfReport(
         doc.setFillColor(254, 242, 242);
         doc.roundedRect(14, y, 182, 24, 2, 2, 'F');
         doc.setTextColor(153, 27, 27);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont('times', 'bold');
         doc.setFontSize(9.5);
         doc.text(
           isFr
@@ -1476,7 +1476,7 @@ export async function generateModularVaultPdfReport(
           18,
           y + 7
         );
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('times', 'normal');
         doc.setFontSize(8);
         doc.setTextColor(185, 28, 28);
         doc.text(
@@ -1769,7 +1769,7 @@ export async function generateModularVaultPdfReport(
   drawHeader(qaTitle, qaSub);
   let qaY = 28;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(31, 56, 100);
   doc.text(
@@ -1787,7 +1787,7 @@ export async function generateModularVaultPdfReport(
     doc.setFillColor(254, 242, 242);
     doc.roundedRect(14, qaY, 182, 10 + warnings.length * 6.5, 2, 2, 'F');
     doc.setTextColor(185, 28, 28);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(8.5);
     doc.text(
       isFr ? 'ALERTES DE COHÉRENCE PHYSIQUE DÉTECTÉES SUR LES ENTRÉES :' : 'PHYSICAL CONSISTENCY ALERTS FLAGGED ON BLAST INPUTS:',
@@ -1795,7 +1795,7 @@ export async function generateModularVaultPdfReport(
       qaY + 5.5
     );
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7.5);
     warnings.forEach((warn, idx) => {
       doc.text(`• ${warn}`, 18, qaY + 11 + idx * 6.5, { maxWidth: 174 });
@@ -1805,7 +1805,7 @@ export async function generateModularVaultPdfReport(
     doc.setFillColor(240, 253, 244);
     doc.roundedRect(14, qaY, 182, 14, 2, 2, 'F');
     doc.setTextColor(22, 101, 52);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(8.5);
     doc.text(
       isFr
@@ -1880,12 +1880,12 @@ export async function generateModularVaultPdfReport(
   doc.setDrawColor(226, 232, 240);
   doc.rect(14, qaY + 5, 182, 32, 'S');
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(31, 56, 100);
   doc.text(isFr ? 'VISA DE VALIDATION D’INGÉNIERIE MINIÈRE :' : 'MINING ENGINEERING AUDIT SIGN-OFF:', 18, qaY + 11);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(51, 65, 85);
   doc.text(isFr ? 'Ingénieur Responsable des Tirs :' : 'Blasting Engineer:', 18, qaY + 18);
@@ -1901,7 +1901,7 @@ export async function generateModularVaultPdfReport(
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setTextColor(148, 163, 184);
     const orgPrefix = orgProfile?.companyName ? `${orgProfile.companyName} • ` : '';
     doc.text(

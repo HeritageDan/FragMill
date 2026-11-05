@@ -374,6 +374,7 @@ INSTRUCTIONS & QUALITY STANDARDS:
    - "discussion": 3-4 deep technical paragraphs providing a rigorous cross-analysis of the physical and mechanical results, phase relationships, compaction behavior, void ratios, durability, and practical interpretation of all tested parameters.
    - "recommendations": Clear, numbered, actionable site engineering recommendations for earthworks, compaction energy (OPM %), layer thickness (25-30 cm), moisture conditioning, surface drainage, and quality control frequency.
    - "conclusion": 2 comprehensive concluding paragraphs synthesizing the fitness-for-purpose of the tested materials for earthworks, road foundations, or structural fills.
+5. Do NOT use markdown formatting symbols such as asterisks (**bold** or *italic*) or hashtags (#) in the text; write clean, professional continuous paragraphs.
 
 Return ONLY a strict JSON object with these exact 5 keys:
 {

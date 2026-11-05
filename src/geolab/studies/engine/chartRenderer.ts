@@ -360,7 +360,7 @@ export function drawVectorMultiGrainSizeChart(
   });
 
   // Chart Title & Axes
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(15, 23, 42);
   doc.text(
@@ -369,7 +369,7 @@ export function drawVectorMultiGrainSizeChart(
     plotY - 2.5
   );
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(6);
   doc.setTextColor(100, 116, 139);
   doc.text('0.01', toX(0.01), plotY + plotH + 3, { align: 'center' });

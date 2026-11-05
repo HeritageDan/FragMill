@@ -95,7 +95,7 @@ export function renderAnalysisSheet(
     // Light pastel sky blue
     doc.setTextColor(186, 230, 253);
     doc.setFontSize(watermarkText === 'DEMO' ? 70 : 50);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.text(watermarkText, pageWidth / 2, pageHeight / 2, {
       align: 'center',
       angle: 45,
@@ -110,7 +110,7 @@ export function renderAnalysisSheet(
   const col1Text = bilingual?.col1Text || bilingual?.column1 || '';
   const col2Text = bilingual?.col2Text || bilingual?.column2 || '';
   if (col1Text || col2Text) {
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
     const col1Lines = col1Text.split('\n').filter(Boolean);
@@ -148,14 +148,14 @@ export function renderAnalysisSheet(
   const leftTextMaxW = Math.max(40, textRightLimit - textLeft);
 
   let leftY = cursorY + 4;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(prR, prG, prB);
   const companyLines = doc.splitTextToSize(orgProfile.companyName || '', leftTextMaxW);
   doc.text(companyLines, textLeft, leftY);
   leftY += companyLines.length * 4.2;
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(90, 100, 115);
   const contactParts = [
@@ -180,14 +180,14 @@ export function renderAnalysisSheet(
   const rightTextMaxW = centerLogo ? (textRight - (pageWidth / 2 + 14)) : 70;
 
   let rightY = cursorY + 4;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(30, 41, 59);
   const repNoLines = doc.splitTextToSize(`${lang === 'fr' ? 'N° Rapport' : 'Report No'}: ${analysis.reportNumber}`, rightTextMaxW);
   doc.text(repNoLines, textRight, rightY, { align: 'right' });
   rightY += repNoLines.length * 4;
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(7);
   const verDateLines = doc.splitTextToSize(`Version: v${analysis.version} | Date: ${analysis.testedDate}`, rightTextMaxW);
   doc.text(verDateLines, textRight, rightY, { align: 'right' });
@@ -197,7 +197,7 @@ export function renderAnalysisSheet(
     ? (lang === 'fr' ? 'APPROUVÉ / DÉFINITIF' : 'APPROVED / FINAL')
     : (lang === 'fr' ? 'BROUILLON (NON AUDITÉ)' : 'DRAFT (UNAUDITED)');
   doc.setTextColor(analysis.status === 'approved' ? 16 : 220, analysis.status === 'approved' ? 185 : 38, analysis.status === 'approved' ? 129 : 38);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   const statusLines = doc.splitTextToSize(statusLabel, rightTextMaxW);
   doc.text(statusLines, textRight, rightY, { align: 'right' });
   rightY += statusLines.length * 3.4;
@@ -207,7 +207,7 @@ export function renderAnalysisSheet(
 
   // Annex Title (when embedded as study report annex)
   if (ctx.annexTitle) {
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(prR, prG, prB);
     doc.text(ctx.annexTitle.toUpperCase(), margin, cursorY + 1.5);
@@ -220,7 +220,7 @@ export function renderAnalysisSheet(
 
   doc.setFillColor(241, 245, 249);
   doc.roundedRect(margin, cursorY, contentWidth, 9, 1.5, 1.5, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(prR, prG, prB);
   doc.text(
@@ -260,64 +260,64 @@ export function renderAnalysisSheet(
   const maxWCol4 = pageWidth - margin - col4X - 2; // 46mm max width to prevent spilling over right border
 
   // Row 1
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'Client :' : 'Client:', col1X, cursorY + 4.5);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setTextColor(15, 23, 42);
   doc.text(`${client.companyName}${client.contactPerson ? ` (${client.contactPerson})` : ''}`, col2X, cursorY + 4.5, { maxWidth: maxWCol2 });
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'Échantillon :' : 'Sample ID:', col3X, cursorY + 4.5);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setTextColor(15, 23, 42);
   doc.text(sample.sampleId, col4X, cursorY + 4.5, { maxWidth: maxWCol4 });
 
   // Row 2
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'Projet :' : 'Project:', col1X, cursorY + 10);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setTextColor(15, 23, 42);
   doc.text(project.projectName, col2X, cursorY + 10, { maxWidth: maxWCol2 });
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'Profondeur :' : 'Depth:', col3X, cursorY + 10);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setTextColor(15, 23, 42);
   doc.text(sample.depth || '-', col4X, cursorY + 10, { maxWidth: maxWCol4 });
 
   // Row 3
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'Site / Lieu :' : 'Site Location:', col1X, cursorY + 15.5);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setTextColor(15, 23, 42);
   doc.text(project.siteLocation, col2X, cursorY + 15.5, { maxWidth: maxWCol2 });
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'Date prélèvement :' : 'Sample Date:', col3X, cursorY + 15.5);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setTextColor(15, 23, 42);
   doc.text(sample.samplingDate, col4X, cursorY + 15.5, { maxWidth: maxWCol4 });
 
   if (hasExtendedProject) {
     // Row 4: Extended details
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setTextColor(71, 85, 105);
     doc.text(lang === 'fr' ? 'Marché / Lot :' : 'Contract / Lot:', col1X, cursorY + 21);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setTextColor(15, 23, 42);
     const contractLot = `${project.contractNumber || project.referenceNumber || '-'} ${project.lotSection ? `(${project.lotSection})` : ''}`;
     doc.text(contractLot, col2X, cursorY + 21, { maxWidth: maxWCol2 });
 
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setTextColor(71, 85, 105);
     doc.text(lang === 'fr' ? 'Financement :' : 'Financing:', col3X, cursorY + 21);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setTextColor(15, 23, 42);
     doc.text(project.financingText || (project.parties?.[0]?.name ? `${project.parties[0].role}: ${project.parties[0].name}` : '-'), col4X, cursorY + 21, { maxWidth: maxWCol4 });
   }
@@ -356,7 +356,7 @@ export function renderAnalysisSheet(
         },
       ];
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(prR, prG, prB);
   doc.text(lang === 'fr' ? 'HISTORIQUE DES RÉVISIONS' : 'REVISION HISTORY', margin, cursorY);
@@ -365,7 +365,7 @@ export function renderAnalysisSheet(
   const revTableY = cursorY;
   doc.setFillColor(241, 245, 249);
   doc.rect(margin, revTableY, contentWidth, 4.2, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(6.5);
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'Ind.' : 'Rev', margin + 2, revTableY + 3);
@@ -377,7 +377,7 @@ export function renderAnalysisSheet(
 
   cursorY += 4.2;
   revs.slice(0, 2).forEach((rev) => {
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(15, 23, 42);
     doc.text(String(rev.index ?? rev.revNumber ?? 0), margin + 2, cursorY + 3);
@@ -395,14 +395,14 @@ export function renderAnalysisSheet(
   // -------------------------------------------------------------
   // 5. Observations & Engineering Interpretation
   // -------------------------------------------------------------
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(prR, prG, prB);
   doc.text(lang === 'fr' ? 'OBSERVATIONS & INTERPRÉTATION GÉOTECHNIQUE' : 'OBSERVATIONS & GEOTECHNICAL INTERPRETATION', margin, cursorY);
   cursorY += 2.5;
 
   const narrativeText = analysis.observations || analysis.aiNarrative || (lang === 'fr' ? 'Essai réalisé conformément à la norme de référence. Résultats conformes aux spécifications du projet.' : 'Test performed in accordance with reference standard. Results satisfy project specifications.');
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(51, 65, 85);
   const splitNarrative = doc.splitTextToSize(narrativeText, contentWidth);
@@ -453,13 +453,13 @@ export function renderAnalysisSheet(
 
     const textMaxW = sig.stampOrSignatureBase64 ? sigBoxWidth - 23 : sigBoxWidth - 5;
     const roleTitle = sig.roleLabel?.[lang] || sig.title || `Signataire ${idx + 1}`;
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
     doc.text(roleTitle, boxX + 2.5, boxY + 4, { maxWidth: textMaxW });
 
     if (sig.name) {
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(15, 23, 42);
       doc.text(sig.name, boxX + 2.5, boxY + 8.5, { maxWidth: textMaxW });
@@ -488,7 +488,7 @@ export function renderAnalysisSheet(
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
   doc.text(orgProfile.reportFooterText || 'FraGeo Suite - FraGeo Lab', margin, pageHeight - 6.5);
@@ -557,7 +557,7 @@ function renderProctorPdfSection(
   doc.setDrawColor(prR, prG, prB);
   doc.roundedRect(startX, startY, leftWidth, 26, 1.5, 1.5, 'FD');
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(prR, prG, prB);
   doc.text(lang === 'fr' ? 'RÉSULTATS ESSAI PROCTOR' : 'PROCTOR OPTIMUM RESULTS', startX + 4, startY + 5);
@@ -581,7 +581,7 @@ function renderProctorPdfSection(
     ? fitMethodLabels[res.fitMethod][lang]
     : (res.fitMethod === 'manual' ? (lang === 'fr' ? 'Valeur saisie manuellement' : 'Manually entered value') : res.fitMethod);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(100, 116, 139);
   doc.text(`${lang === 'fr' ? 'Méthode :' : 'Method:'} ${fitLabel}`, startX + 4, startY + 22.5);
@@ -590,7 +590,7 @@ function renderProctorPdfSection(
   let tableY = startY + 29;
   doc.setFillColor(prR, prG, prB);
   doc.rect(startX, tableY, leftWidth, 6, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(255, 255, 255);
   doc.text(lang === 'fr' ? 'Pt' : 'Pt', startX + 2, tableY + 4);
@@ -606,7 +606,7 @@ function renderProctorPdfSection(
     doc.setDrawColor(226, 232, 240);
     doc.line(startX, tableY + 5.5, startX + leftWidth, tableY + 5.5);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(15, 23, 42);
     doc.text(String(p.pointIndex), startX + 3, tableY + 4);
@@ -737,7 +737,7 @@ function drawVectorProctorChart(
   doc.text(`${maxW.toFixed(0)}%`, plotX + plotW - 6, cy + h - 3);
 
   // Legend
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(6.5);
   doc.setTextColor(prR, prG, prB);
   doc.text(lang === 'fr' ? '— Courbe Proctor' : '— Compaction', plotX + 10, cy + 5);
@@ -771,7 +771,7 @@ function renderGrainSizePdfSection(
   doc.setDrawColor(prR, prG, prB);
   doc.roundedRect(startX, startY, leftWidth, 24, 1.5, 1.5, 'FD');
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(prR, prG, prB);
   doc.text(lang === 'fr' ? 'CARACTÉRISTIQUES GRANULAIRES' : 'GRAIN SIZE CHARACTERISTICS', startX + 4, startY + 5);
@@ -786,7 +786,7 @@ function renderGrainSizePdfSection(
   let tableY = startY + 28;
   doc.setFillColor(prR, prG, prB);
   doc.rect(startX, tableY, leftWidth, 6, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(255, 255, 255);
   doc.text(lang === 'fr' ? 'Tamis (mm)' : 'Sieve (mm)', startX + 2, tableY + 4);
@@ -801,7 +801,7 @@ function renderGrainSizePdfSection(
     doc.setDrawColor(226, 232, 240);
     doc.line(startX, tableY + 5, startX + leftWidth, tableY + 5);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(15, 23, 42);
     doc.text((r.sieveMm ?? 0).toFixed(2), startX + 3, tableY + 3.8);
@@ -886,7 +886,7 @@ function drawVectorGrainSizeChart(
   doc.text('0%', cx + 2, plotY + plotH);
   doc.text('100%', cx + 2, plotY + 2);
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(6.5);
   doc.setTextColor(prR, prG, _prB);
   doc.text(lang === 'fr' ? 'Courbe Granulométrique (log)' : 'Grading Curve (log)', plotX + 10, cy + 5);
@@ -914,7 +914,7 @@ function renderWaterContentPdfSection(
   doc.setDrawColor(prR, prG, prB);
   doc.roundedRect(startX, startY, totalWidth, 18, 1.5, 1.5, 'FD');
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(prR, prG, prB);
   doc.text(lang === 'fr' ? 'SYNTHÈSE DE TENEUR EN EAU NATURELLE' : 'WATER CONTENT SUMMARY', startX + 4, startY + 6);
@@ -930,7 +930,7 @@ function renderWaterContentPdfSection(
   const repLabel = res.repeatabilityAccepted
     ? (lang === 'fr' ? 'RÉPÉTABILITÉ CONFORME' : 'REPEATABILITY PASSED')
     : (lang === 'fr' ? 'RÉPÉTABILITÉ NON CONFORME' : 'REPEATABILITY FAILED');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setTextColor(res.repeatabilityAccepted ? 16 : 220, res.repeatabilityAccepted ? 185 : 38, res.repeatabilityAccepted ? 129 : 38);
   doc.text(repLabel, startX + totalWidth - 4, startY + 14, { align: 'right' });
 
@@ -938,7 +938,7 @@ function renderWaterContentPdfSection(
   let tableY = startY + 24;
   doc.setFillColor(prR, prG, prB);
   doc.rect(startX, tableY, totalWidth, 6, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(255, 255, 255);
   doc.text(lang === 'fr' ? 'Éprouvette' : 'Specimen', startX + 4, tableY + 4);
@@ -955,7 +955,7 @@ function renderWaterContentPdfSection(
     doc.setDrawColor(226, 232, 240);
     doc.line(startX, tableY + 6, startX + totalWidth, tableY + 6);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(15, 23, 42);
     doc.text(s.specimenId, startX + 5, tableY + 4.2);
@@ -991,7 +991,7 @@ function renderGenericTestPdfSection(
     doc.setDrawColor(prR, prG, prB);
     doc.roundedRect(startX, cursorY, totalWidth, kpiH, 1.5, 1.5, 'FD');
 
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(prR, prG, prB);
     doc.text(
@@ -1007,12 +1007,12 @@ function renderGenericTestPdfSection(
     let resY = cursorY + 11;
     keyResults.forEach((kr, idx) => {
       const colX = startX + 3 + (idx % 2) * (colW + 3);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(71, 85, 105);
       doc.text(`${kr.label} :`, colX, resY, { maxWidth: labelW });
 
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(15, 23, 42);
       doc.text(`${kr.value}${kr.unit ? ' ' + kr.unit : ''}`, colX + labelW + 2, resY, { maxWidth: valW });
@@ -1045,7 +1045,7 @@ function renderGenericTestPdfSection(
       doc.setDrawColor(226, 232, 240);
       doc.roundedRect(startX, cursorY, totalWidth, pH, 1, 1, 'FD');
 
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(prR, prG, prB);
       doc.text(lang === 'fr' ? 'PARAMÈTRES D’ESSAI' : 'TEST PARAMETERS', startX + 3, cursorY + 4);
@@ -1057,12 +1057,12 @@ function renderGenericTestPdfSection(
       let py = cursorY + 9;
       paramItems.forEach((pi, idx) => {
         const colX = startX + 3 + (idx % 2) * (colW + 3);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont('times', 'normal');
         doc.setFontSize(7);
         doc.setTextColor(71, 85, 105);
         doc.text(`${pi.label} :`, colX, py, { maxWidth: labelW });
 
-        doc.setFont('helvetica', 'bold');
+        doc.setFont('times', 'bold');
         doc.setFontSize(7);
         doc.setTextColor(15, 23, 42);
         doc.text(pi.value, colX + labelW + 2, py, { maxWidth: valW });
@@ -1086,7 +1086,7 @@ function renderGenericTestPdfSection(
     const innerColW = colW - cellPad * 2;
 
     // Header with word wrapping and dynamic height
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(6.5);
     const headerLinesList = cols.map((c) => {
       const lbl = c.label[lang] || c.key;
@@ -1108,7 +1108,7 @@ function renderGenericTestPdfSection(
 
     // Rows with word wrapping and dynamic row height
     tableData.forEach((row, rIdx) => {
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setFontSize(6.5);
       const rowLinesList = cols.map((c) => {
         const val = row[c.key];

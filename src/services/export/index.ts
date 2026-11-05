@@ -303,14 +303,14 @@ export function generatePrintableA4CalibrationSheet(lang: Language = 'en'): Blob
   doc.rect(0, 0, 210, 20, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.text(
     isFr ? 'FRAGEO : MIRE D\'ÉTALONNAGE OPTIQUE & PROTOCOLE TERRAIN' : 'FRAGEO : OPTICAL SCALE CALIBRATION TARGET & PROTOCOL',
     14,
     11
   );
   doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.text(
     isFr ? 'Échelle Imprimable 1:1 pour Étalonnage Haute Précision' : '1:1 Printable Field Scale Target for High-Precision Calibration',
     14,
@@ -319,7 +319,7 @@ export function generatePrintableA4CalibrationSheet(lang: Language = 'en'): Blob
 
   let y = 28;
   doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setTextColor(51, 65, 85);
   doc.text(
     isFr
@@ -374,11 +374,11 @@ export function generatePrintableA4CalibrationSheet(lang: Language = 'en'): Blob
   doc.setFillColor(241, 245, 249);
   doc.roundedRect(14, 168, 182, 80, 2, 2, 'F');
   doc.setTextColor(31, 56, 100);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(10);
   doc.text(isFr ? 'PROTOCOLE DE POSITIONNEMENT SUR LE TAS D\'ABATTAGE' : 'MUCK PILE SCALE PLACEMENT PROTOCOL', 18, 178);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(30, 41, 59);
   const steps = isFr ? [

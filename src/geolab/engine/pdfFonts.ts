@@ -49,6 +49,19 @@ export async function setupUnicodeFont(doc: jsPDF): Promise<boolean> {
       return originalSetFont(fontName, fontStyle);
     } as any;
 
+    const originalText = doc.text.bind(doc);
+    doc.text = function (text: any, x: any, y: any, options: any) {
+      const currentFont = doc.getFont()?.fontName;
+      if (currentFont === 'times') {
+        if (typeof text === 'string') {
+          text = transliterateGreekAndSpecialChars(text);
+        } else if (Array.isArray(text)) {
+          text = text.map((t) => (typeof t === 'string' ? transliterateGreekAndSpecialChars(t) : t));
+        }
+      }
+      return originalText(text, x, y, options);
+    } as any;
+
     doc.setFont('Roboto', 'normal');
     (doc as any).__isUnicodeFontActive = true;
     return true;

@@ -43,6 +43,14 @@ function hexToRgb(hex: string): [number, number, number] {
   return [r, g, b];
 }
 
+function cleanMarkdown(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/\*/g, '');
+}
+
 const yieldToMain = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 function drawDraftWatermark(doc: jsPDF, pageWidth = 210, pageHeight = 297) {
@@ -55,7 +63,7 @@ function drawDraftWatermark(doc: jsPDF, pageWidth = 210, pageHeight = 297) {
   // Soft, light pastel sky blue (#BAE6FD / rgb(186, 230, 253)) with high transparency
   doc.setTextColor(186, 230, 253);
   doc.setFontSize(55);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.text('DRAFT / PROVISOIRE', pageWidth / 2, pageHeight / 2, {
     align: 'center',
     angle: 45,
@@ -152,7 +160,7 @@ function renderStudyDocumentBlocks(
       recordBlockPage(block.id, doc.getCurrentPageInfo().pageNumber);
       currentY = renderAnalysisDetailSection(doc, block.detailData, prR, prG, prB, lang, currentY);
     } else if (block.type === 'gradingCurves' && block.gradingCurvesData) {
-      const neededH = 154; // Heading + 120mm chart + caption
+      const neededH = block.gradingCurvesData.analyses.length > 0 ? 154 : 45;
       if (currentY + neededH > maxY) {
         addPage();
         currentY = 28;
@@ -176,7 +184,7 @@ function renderStudyDocumentBlocks(
     } else if (block.type === 'signatureBlock' && block.signatureChain) {
       const sigCount = Math.min(6, block.signatureChain.length || 1);
       const rows = Math.ceil(sigCount / 3);
-      if (currentY + 16 + rows * 32 > maxY) {
+      if (currentY + 12 + rows * 28 > maxY) {
         addPage();
         currentY = 28;
       }
@@ -344,12 +352,12 @@ export async function generateStudyPdfReport(
     const runningHeaderRightX = pageWidth - (rightLogo ? margin + 19 : margin);
     const halfHeaderWidth = Math.max(30, (runningHeaderRightX - runningHeaderLeftX - 6) / 2);
 
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(prR, prG, prB);
     doc.text(model.organisation.companyName || '', runningHeaderLeftX, 12, { maxWidth: halfHeaderWidth });
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(100, 116, 139);
     doc.text(model.study.title, runningHeaderRightX, 12, { align: 'right', maxWidth: halfHeaderWidth });
@@ -362,7 +370,7 @@ export async function generateStudyPdfReport(
     doc.setLineWidth(0.6);
     doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(148, 163, 184);
     const sampleSuffix = model.isSampleDocument ? ' • SAMPLE - fictional data' : '';
@@ -403,7 +411,7 @@ function renderCoverPage(
 
   // 1. Bilingual Authority Header Block (if present)
   if (coverData.bilingualHeader?.col1Text || coverData.bilingualHeader?.col2Text) {
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(6.5);
     doc.setTextColor(71, 85, 105);
     const col1Lines = coverData.bilingualHeader.col1Text.split('\n').filter(Boolean);
@@ -421,7 +429,7 @@ function renderCoverPage(
   cursorY += 6;
 
   // Header Logos (Left, Center, Right)
-  const leftLogo = coverData.headerLogos?.leftBase64 || coverData.headerLogos?.left;
+  const leftLogo = coverData.headerLogos?.leftBase64 || coverData.headerLogos?.left || coverData.logoBase64 || model.organisation.logoBase64;
   const centerLogo = coverData.headerLogos?.centerBase64 || coverData.headerLogos?.center;
   const rightLogo = coverData.headerLogos?.rightBase64 || coverData.headerLogos?.right;
   if (leftLogo) {
@@ -438,13 +446,13 @@ function renderCoverPage(
   cursorY += hasLogos ? 25 : 6;
 
   // Laboratory / Company Info
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(14);
   doc.setTextColor(prR, prG, prB);
   doc.text(coverData.companyName, pageWidth / 2, cursorY, { align: 'center' });
   cursorY += 5.5;
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
   const labDetails = [coverData.address, coverData.phone ? `Tél: ${coverData.phone}` : '', coverData.email].filter(Boolean).join(' • ');
@@ -466,7 +474,7 @@ function renderCoverPage(
 
   // Shrink font size down to minimum (10pt) if needed to fit comfortably
   while (titleFontSize >= 10) {
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(titleFontSize);
     titleLines = doc.splitTextToSize(coverData.studyTitle.toUpperCase(), bannerInnerWidth);
     if (titleLines.length <= 2) break;
@@ -496,7 +504,7 @@ function renderCoverPage(
   doc.roundedRect(margin, cursorY, contentWidth, bannerHeight, 2, 2, 'F');
 
   let bannerCursorY = cursorY + bannerTopPadding + titleFontSize * 0.35;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(titleFontSize);
   doc.setTextColor(255, 255, 255);
 
@@ -506,7 +514,7 @@ function renderCoverPage(
   });
 
   bannerCursorY += bannerSpacing;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(241, 245, 249);
   doc.text(
@@ -517,7 +525,7 @@ function renderCoverPage(
   );
 
   bannerCursorY += reportNoHeight;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(255, 255, 255);
   doc.text(
@@ -534,21 +542,21 @@ function renderCoverPage(
   doc.setDrawColor(203, 213, 225);
   doc.roundedRect(margin, cursorY, contentWidth, 48, 1.5, 1.5, 'FD');
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(prR, prG, prB);
   doc.text(lang === 'fr' ? 'DONNÉES DU PROJET ET MARCHÉ' : 'PROJECT & CONTRACT METADATA', margin + 4, cursorY + 6);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(15, 23, 42);
 
   let pY = cursorY + 12;
   const renderRow = (label: string, val?: string) => {
     if (!val?.trim()) return;
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.text(label, margin + 4, pY);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.text(val, margin + 50, pY, { maxWidth: contentWidth - 54 });
     pY += 5;
   };
@@ -567,7 +575,7 @@ function renderCoverPage(
   // 4. Revision Table
   doc.setFillColor(prR, prG, prB);
   doc.rect(margin, cursorY, contentWidth, 5.5, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(255, 255, 255);
   doc.text(lang === 'fr' ? 'Ind.' : 'Rev', margin + 2, cursorY + 3.8);
@@ -588,7 +596,7 @@ function renderCoverPage(
     doc.setDrawColor(226, 232, 240);
     doc.line(margin, cursorY + 5, margin + contentWidth, cursorY + 5);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(15, 23, 42);
     doc.text(String(rev.index), margin + 3, cursorY + 3.5);
@@ -607,7 +615,7 @@ function renderCoverPage(
   doc.setFillColor(241, 245, 249);
   doc.setDrawColor(203, 213, 225);
   doc.rect(margin, cursorY, contentWidth, 5, 'FD');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(71, 85, 105);
   doc.text(lang === 'fr' ? 'CHAÎNE D\'APPROBATION ET VISAS' : 'APPROVAL CHAIN & SIGNATURES', margin + 3, cursorY + 3.5);
@@ -629,13 +637,13 @@ function renderCoverPage(
     doc.setDrawColor(203, 213, 225);
     doc.rect(bX, cursorY, colW, boxH, 'D');
 
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(6.5);
     doc.setTextColor(71, 85, 105);
     doc.text(sig.roleLabel?.[lang] || sig.role || `Visa ${idx + 1}`, bX + 2, cursorY + 4);
 
     if (sig.name) {
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(15, 23, 42);
       doc.text(sig.name, bX + 2, cursorY + 8);
@@ -647,7 +655,7 @@ function renderCoverPage(
   doc.setLineWidth(0.8);
   doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(148, 163, 184);
   doc.text(`${coverData.companyName || 'FraGeo Suite'} • FraGeo Lab`, margin, pageHeight - 7);
@@ -669,7 +677,7 @@ function renderTocPage(
   let cursorY = 28;
 
   // Title
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(14);
   doc.setTextColor(prR, prG, prB);
   doc.text(lang === 'fr' ? 'SOMMAIRE' : 'TABLE OF CONTENTS', margin, cursorY);
@@ -694,13 +702,13 @@ function renderTocPage(
     const pageNum = sectionPageMap[item.id] || 2;
     const titleText = item.title;
 
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(15, 23, 42);
     doc.text(titleText, margin, cursorY);
 
     // Dotted leader line
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setTextColor(148, 163, 184);
     const titleWidth = doc.getTextWidth(titleText);
     const numWidth = doc.getTextWidth(String(pageNum));
@@ -716,7 +724,7 @@ function renderTocPage(
     }
 
     // Page number
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setTextColor(prR, prG, prB);
     doc.text(String(pageNum), margin + contentWidth, cursorY, { align: 'right' });
 
@@ -740,7 +748,7 @@ function renderNarrativeSection(
   let cursorY = startY;
 
   // Section Heading
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(prR, prG, prB);
   doc.text(narrative.title.toUpperCase(), margin, cursorY);
@@ -752,7 +760,7 @@ function renderNarrativeSection(
 
   // Parse lines: headings, paragraphs, bullet points
   const lines = narrative.markdown.split('\n');
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
 
@@ -775,16 +783,16 @@ function renderNarrativeSection(
         cursorY = 28;
       }
       cursorY += 3;
-      doc.setFont('helvetica', 'bold');
+      doc.setFont('times', 'bold');
       doc.setFontSize(9.5);
       doc.setTextColor(prR, prG, prB);
       doc.text(line.replace('## ', ''), margin, cursorY);
       cursorY += 6;
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
     } else if (line.startsWith('- ') || line.startsWith('• ') || line.startsWith('* ') || /^[\uE000-\uF8FF]\s*/.test(line)) {
-      const bulletText = line.replace(/^(-|\u2022|\*|[\uE000-\uF8FF])\s*/, '');
+      const bulletText = cleanMarkdown(line.replace(/^(-|\u2022|\*|[\uE000-\uF8FF])\s*/, ''));
       const split = doc.splitTextToSize(bulletText, contentWidth - 8);
       const neededH = split.length * 4.8;
       if (cursorY + neededH > maxY) {
@@ -799,7 +807,7 @@ function renderNarrativeSection(
       doc.text(split, margin + 6, cursorY, { align: 'justify', maxWidth: contentWidth - 8 });
       cursorY += neededH;
     } else {
-      const split = doc.splitTextToSize(line, contentWidth);
+      const split = doc.splitTextToSize(cleanMarkdown(line), contentWidth);
       const neededH = split.length * 4.8;
       if (cursorY + neededH > maxY) {
         doc.addPage();
@@ -828,7 +836,7 @@ function drawSummaryTableHeader(
 ) {
   doc.setFillColor(prR, prG, prB);
   doc.rect(margin, cursorY, contentWidth, 6, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(255, 255, 255);
   doc.text(lang === 'fr' ? 'Échantillon' : 'Sample ID', margin + 3, cursorY + 4);
@@ -855,7 +863,7 @@ function renderSummaryTableSection(
   const maxY = pageHeight - 20;
   let cursorY = startY;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(prR, prG, prB);
   doc.text(title.toUpperCase(), margin, cursorY);
@@ -870,7 +878,7 @@ function renderSummaryTableSection(
   cursorY += 6;
 
   rows.forEach((r, idx) => {
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7);
     const colSample = doc.splitTextToSize(r.sampleId || '-', 25);
     const colTest = doc.splitTextToSize(r.testLabel || '-', 44);
@@ -903,7 +911,7 @@ function renderSummaryTableSection(
     doc.setDrawColor(226, 232, 240);
     doc.line(margin, cursorY + rowH, margin + contentWidth, cursorY + rowH);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(15, 23, 42);
     doc.text(colSample, margin + 3, cursorY + 3.8);
@@ -941,7 +949,7 @@ function renderAnalysisDetailSection(
   let cursorY = startY;
 
   if (detail.sectionTitle) {
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(prR, prG, prB);
     doc.text(detail.sectionTitle.toUpperCase(), margin, cursorY);
@@ -953,7 +961,7 @@ function renderAnalysisDetailSection(
   }
 
   // Title
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(prR, prG, prB);
   doc.text(
@@ -972,7 +980,7 @@ function renderAnalysisDetailSection(
   doc.setDrawColor(203, 213, 225);
   doc.roundedRect(margin, cursorY, contentWidth, 24, 1.5, 1.5, 'FD');
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(prR, prG, prB);
   doc.text(lang === 'fr' ? 'RÉSULTATS DE CALCUL DE L\'ESSAI' : 'COMPUTED TEST RESULTS', margin + 3, cursorY + 4.5);
@@ -980,12 +988,12 @@ function renderAnalysisDetailSection(
   let resY = cursorY + 10;
   detail.results.forEach((res, i) => {
     const colX = margin + 4 + (i % 2) * (contentWidth / 2);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
     doc.text(`${res.label} :`, colX, resY);
 
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(15, 23, 42);
     doc.text(`${res.value} ${res.unit || ''}`, colX + 55, resY);
@@ -1008,21 +1016,21 @@ function renderAnalysisDetailSection(
 
   // Observations
   if (detail.observations) {
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7);
-    const splitObs = doc.splitTextToSize(detail.observations, contentWidth - 8);
+    const splitObs = doc.splitTextToSize(cleanMarkdown(detail.observations), contentWidth - 8);
     const boxHeight = Math.max(16, 8 + splitObs.length * 4.2 + 2);
 
     doc.setFillColor(255, 255, 255);
     doc.setDrawColor(226, 232, 240);
     doc.roundedRect(margin, cursorY, contentWidth, boxHeight, 1, 1, 'FD');
 
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(prR, prG, prB);
     doc.text(lang === 'fr' ? 'OBSERVATIONS PARTICULIÈRES' : 'SPECIFIC OBSERVATIONS', margin + 3, cursorY + 4.5);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
     doc.text(splitObs, margin + 3, cursorY + 9, { align: 'justify', maxWidth: contentWidth - 8 });
@@ -1046,7 +1054,7 @@ function renderGradingCurvesSection(
   const contentWidth = 210 - margin * 2;
   let cursorY = startY;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(prR, prG, prB);
   doc.text(title.toUpperCase(), margin, cursorY);
@@ -1066,19 +1074,33 @@ function renderGradingCurvesSection(
   if (series.length > 0) {
     drawVectorMultiGrainSizeChart(doc, margin, cursorY, contentWidth, 120, series, lang);
     cursorY += 126;
-  }
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text(
-    lang === 'fr'
-      ? 'La superposition des courbes montre la dispersion granulométrique des différents échantillons analysés.'
-      : 'Grading overlay displays the particle size distribution spread across tested samples.',
-    margin,
-    cursorY
-  );
-  cursorY += 8;
+    doc.setFont('times', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      lang === 'fr'
+        ? 'La superposition des courbes montre la dispersion granulométrique des différents échantillons analysés.'
+        : 'Grading overlay displays the particle size distribution spread across tested samples.',
+      margin,
+      cursorY
+    );
+    cursorY += 8;
+  } else {
+    const noteText = lang === 'fr'
+      ? "Aucun essai d'analyse granulométrique par tamisage (NF P94-056 / NF EN 933-1) n'a été inclus dans le programme d'investigation de la présente étude."
+      : "No particle size distribution test by sieving (NF P94-056 / NF EN 933-1) was included in the testing scope for this study.";
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.roundedRect(margin, cursorY, contentWidth, 18, 1.5, 1.5, 'FD');
+
+    doc.setFont('times', 'italic');
+    doc.setFontSize(8.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(noteText, margin + 4, cursorY + 11);
+    cursorY += 26;
+  }
 
   return cursorY + 8;
 }
@@ -1095,7 +1117,7 @@ function drawConformityTableHeader(
 ) {
   doc.setFillColor(prR, prG, prB);
   doc.rect(margin, cursorY, contentWidth, 6, 'F');
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(255, 255, 255);
   doc.text(lang === 'fr' ? 'Échantillon' : 'Sample', margin + 3, cursorY + 4);
@@ -1122,7 +1144,7 @@ function renderConformitySection(
   const maxY = pageHeight - 20;
   let cursorY = startY;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(prR, prG, prB);
   doc.text(title.toUpperCase(), margin, cursorY);
@@ -1133,7 +1155,7 @@ function renderConformitySection(
   cursorY += 10;
 
   if (rows.length === 0) {
-    doc.setFont('helvetica', 'italic');
+    doc.setFont('times', 'italic');
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
     doc.text(
@@ -1150,7 +1172,7 @@ function renderConformitySection(
   cursorY += 6;
 
   rows.forEach((r, idx) => {
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7);
     const colSample = doc.splitTextToSize(r.sampleId || '-', 35);
     const colParam = doc.splitTextToSize(r.parameter || '-', 38);
@@ -1175,7 +1197,7 @@ function renderConformitySection(
     doc.setDrawColor(226, 232, 240);
     doc.line(margin, cursorY + rowH, margin + contentWidth, cursorY + rowH);
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(15, 23, 42);
     doc.text(colSample, margin + 3, cursorY + 3.8);
@@ -1187,7 +1209,7 @@ function renderConformitySection(
     doc.setFillColor(isConform ? 16 : 220, isConform ? 185 : 38, isConform ? 129 : 38);
     doc.roundedRect(margin + 158, cursorY + 1.2, 20, 3.8, 0.8, 0.8, 'F');
     doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(6);
     doc.text(
       isConform ? (lang === 'fr' ? 'CONFORME' : 'CONFORMING') : (lang === 'fr' ? 'NON CONFORME' : 'NON-CONFORMING'),
@@ -1216,7 +1238,7 @@ function renderUsageNoteSection(
   const contentWidth = 210 - margin * 2;
   let cursorY = startY;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(prR, prG, prB);
   doc.text(title.toUpperCase(), margin, cursorY);
@@ -1227,10 +1249,10 @@ function renderUsageNoteSection(
   cursorY += 10;
 
   const text = usageNote[lang] || usageNote.en;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(8);
   const split = doc.splitTextToSize(text, contentWidth - 8);
-  const boxH = Math.max(30, 10 + split.length * 4.8);
+  const boxH = Math.max(22, 6 + split.length * 4.2);
 
   doc.setFillColor(254, 252, 232);
   doc.setDrawColor(254, 240, 138);
@@ -1256,7 +1278,7 @@ function renderSignatureBlockSection(
   const contentWidth = 210 - margin * 2;
   let cursorY = startY;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(prR, prG, prB);
   doc.text(title.toUpperCase(), margin, cursorY);
@@ -1281,19 +1303,19 @@ function renderSignatureBlockSection(
     doc.roundedRect(boxX, boxY, sigBoxWidth, sigHeight, 1.5, 1.5, 'FD');
 
     const roleTitle = sig.roleLabel?.[lang] || sig.title || (lang === 'fr' ? `Signataire ${idx + 1}` : `Signatory ${idx + 1}`);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('times', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(prR, prG, prB);
     doc.text(roleTitle, boxX + 3, boxY + 5);
 
     if (sig.name) {
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('times', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(15, 23, 42);
       doc.text(sig.name, boxX + 3, boxY + 10);
     }
 
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(148, 163, 184);
     doc.text(lang === 'fr' ? '[Signature manuscrite / Cachet]' : '[Signature / Stamp]', boxX + 3, boxY + 24);
@@ -1316,7 +1338,7 @@ function renderPhotoPageSection(
   const contentWidth = 210 - margin * 2;
   let cursorY = 28;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(prR, prG, prB);
   doc.text(title.toUpperCase(), margin, cursorY);
@@ -1356,7 +1378,7 @@ function renderPhotoPageSection(
     }
 
     // Caption
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('times', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(71, 85, 105);
     doc.text(photo.caption || `Photo ${idx + 1}`, pX + 3, pY + 60, { maxWidth: colW - 6 });
@@ -1377,7 +1399,7 @@ function renderDataQualityNotesSection(
   const contentWidth = 210 - margin * 2;
   let cursorY = startY;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(prR, prG, prB);
   doc.text(title.toUpperCase(), margin, cursorY);
@@ -1387,7 +1409,7 @@ function renderDataQualityNotesSection(
   doc.rect(margin, cursorY, 20, 1, 'F');
   cursorY += 10;
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
   const split = doc.splitTextToSize(notes, contentWidth - 8);
@@ -1490,7 +1512,7 @@ function drawVectorProctorChartDirect(
     doc.circle(toX(p.waterContentPercent), toY(p.dryDensityGcm3), 1.2, 'F');
   });
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(15, 23, 42);
   doc.text(lang === 'fr' ? 'Courbe Proctor' : 'Proctor Curve', plotX + 2, plotY - 2.5);
@@ -1553,7 +1575,7 @@ function drawVectorGrainSizeChartDirect(
     });
   }
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(15, 23, 42);
   doc.text(lang === 'fr' ? 'Courbe Granulométrique' : 'Particle Size Distribution', plotX + 2, plotY - 2.5);

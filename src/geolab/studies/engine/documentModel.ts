@@ -22,6 +22,7 @@ import { getDeterministicNarrative } from '../../engine/aiNarrative';
 export interface CoverBlockData {
   bilingualHeader?: { col1Text: string; col2Text: string };
   headerLogos?: HeaderLogos;
+  logoBase64?: string;
   primaryColor: string;
   companyName: string;
   address?: string;
@@ -274,6 +275,7 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
           coverData: {
             bilingualHeader: col1 || col2 ? { col1Text: col1 || '', col2Text: col2 || '' } : undefined,
             headerLogos: organisation.headerLogos || (organisation as any).logos,
+            logoBase64: organisation.logoBase64,
             primaryColor,
             companyName: organisation.companyName || '',
             address: organisation.address || undefined,
@@ -433,17 +435,15 @@ export function buildDocumentModel(params: BuildDocumentModelParams): DocumentMo
 
       case 'gradingCurves': {
         const grainAnalyses = includedAnalyses.filter((a) => a.testType === 'grain_size');
-        if (grainAnalyses.length > 0) {
-          tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
-          blocks.push({
-            id: sec.id,
-            type: 'gradingCurves',
-            title: blockTitle,
-            gradingCurvesData: {
-              analyses: grainAnalyses,
-            },
-          });
-        }
+        tocItems.push({ id: sec.id, title: blockTitle, level: 1 });
+        blocks.push({
+          id: sec.id,
+          type: 'gradingCurves',
+          title: blockTitle,
+          gradingCurvesData: {
+            analyses: grainAnalyses,
+          },
+        });
         break;
       }
 
