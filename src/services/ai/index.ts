@@ -69,27 +69,26 @@ export function detectAiProvider(apiKey?: string, explicitProvider?: AiProvider)
 export async function postClaudeMessages(
   apiKey: string,
   messages: Array<{ role: 'user' | 'assistant'; content: string | any[] }>,
-  options?: { model?: string; maxTokens?: number; temperature?: number }
+  options?: { model?: string; maxTokens?: number; temperature?: number; autoFallback?: boolean }
 ): Promise<AiResponseResult> {
   const cleanKey = apiKey ? apiKey.trim() : '';
   if (!cleanKey) {
     return { ok: false, error: 'Clé API Anthropic absente', providerUsed: 'anthropic' };
   }
 
-  const preferred = options?.model || CLAUDE_CONFIG.defaultModel;
-  const candidateModels = Array.from(
-    new Set([
-      preferred,
-      CLAUDE_CONFIG.defaultModel,
-      CLAUDE_CONFIG.sonnetModel,
-      CLAUDE_CONFIG.legacyHaikuModel,
-    ])
-  ).filter(Boolean);
+  const chosenModel = options?.model || CLAUDE_CONFIG.defaultModel;
+
+  // Only fallback if explicitly requested (e.g. background workflows), never during explicit testing!
+  const candidateModels = options?.autoFallback
+    ? Array.from(new Set([chosenModel, 'claude-3-5-haiku-latest', 'claude-3-5-sonnet-latest'])).filter(Boolean)
+    : [chosenModel];
 
   let lastStatus = 0;
   let lastError = '';
+  let lastModelTried = chosenModel;
 
   for (const model of candidateModels) {
+    lastModelTried = model;
     try {
       const response = await fetch(CLAUDE_CONFIG.baseUrl, {
         method: 'POST',
@@ -151,13 +150,17 @@ export async function postClaudeMessages(
       if (response.status === 402 || response.status === 429) {
         break;
       }
+      // If credit balance too low (400), break immediately
+      if (lastError.toLowerCase().includes('credit balance') || lastError.toLowerCase().includes('plans & billing')) {
+        break;
+      }
     } catch (networkErr: any) {
       lastError = networkErr.message || 'Erreur réseau';
       break;
     }
   }
 
-  return { ok: false, error: lastError, status: lastStatus, providerUsed: 'anthropic' };
+  return { ok: false, error: lastError, status: lastStatus, modelUsed: lastModelTried, providerUsed: 'anthropic' };
 }
 
 /**
@@ -315,12 +318,16 @@ export async function testClaudeApiKey(
     };
   }
 
+  const modelToTest = preferredModel || CLAUDE_CONFIG.defaultModel;
+
+  // Exact single test on the user's chosen model: autoFallback is strictly false
   const result = await postClaudeMessages(
     cleanKey,
     [{ role: 'user', content: 'Respond with OK.' }],
     {
-      model: preferredModel,
+      model: modelToTest,
       maxTokens: 10,
+      autoFallback: false,
     }
   );
 
@@ -337,11 +344,12 @@ export async function testClaudeApiKey(
   const rawErr = result.error || (status ? `Erreur HTTP ${status}` : 'Erreur inconnue');
   const suggestions: string[] = [];
   let diagnosticMessage = rawErr;
+  const errLower = rawErr.toLowerCase();
 
   if (
     status === 401 ||
-    rawErr.toLowerCase().includes('invalid x-api-key') ||
-    rawErr.toLowerCase().includes('authentication_error')
+    errLower.includes('invalid x-api-key') ||
+    errLower.includes('authentication_error')
   ) {
     diagnosticMessage =
       'Clé API Anthropic invalide (Erreur 401) : La clé x-api-key n\'est pas reconnue par Anthropic.';
@@ -349,21 +357,51 @@ export async function testClaudeApiKey(
       'Vérifiez que votre clé commence par "sk-ant-api03-..." et a été copiée sans espaces au début ou à la fin.'
     );
     suggestions.push(
-      'Générez une clé sur Anthropic Console : https://console.anthropic.com/settings/keys'
+      'Générez une nouvelle clé sur Anthropic Console : https://console.anthropic.com/settings/keys'
     );
-  } else if (status === 403 || rawErr.toLowerCase().includes('permission_error')) {
+  } else if (
+    status === 404 ||
+    errLower.includes('not_found_error') ||
+    errLower.includes('model:')
+  ) {
+    diagnosticMessage = `Modèle non accessible ou compte sans crédits prépayés (Erreur 404 : ${rawErr}).`;
+    suggestions.push(
+      '1. Solde de crédits Anthropic requis ($0.00) : L\'API Anthropic ne propose PAS de quota gratuit sans carte bancaire. Si votre organisation a un solde nul ($0.00), Anthropic bloque tous les modèles avec l\'erreur "model: ...". Rendez-vous sur https://console.anthropic.com/settings/billing pour ajouter des crédits prépayés (minimum $5).'
+    );
+    suggestions.push(
+      `2. Vérifiez le nom exact du modèle "${modelToTest}". Vous pouvez essayer les alias officiels : "claude-3-5-haiku-latest", "claude-3-5-sonnet-latest", ou "claude-3-7-sonnet-latest".`
+    );
+    suggestions.push(
+      '3. Alternative 100% GRATUITE sans carte bancaire : Basculez sur l\'onglet Google Gemini ci-dessus (modèle Gemini 1.5 Flash gratuit jusqu\'à 15 requêtes/min sans aucune carte bancaire sur aistudio.google.com).'
+    );
+    suggestions.push(
+      '4. Mode local hors-ligne : FragMill et Geolab restent 100% opérationnels en local même sans connexion IA avec les calculs géotechniques réels.'
+    );
+  } else if (
+    status === 400 &&
+    (errLower.includes('credit balance') || errLower.includes('plans & billing'))
+  ) {
+    diagnosticMessage =
+      'Solde de crédits épuisé (Erreur 400) : Votre compte Anthropic ne dispose d\'aucun crédit prépayé actif.';
+    suggestions.push(
+      'Rechargez votre compte sur Anthropic Console : https://console.anthropic.com/settings/billing'
+    );
+    suggestions.push(
+      'Ou utilisez Google Gemini 1.5 Flash (totalement gratuit sans carte bancaire).'
+    );
+  } else if (status === 403 || errLower.includes('permission_error')) {
     diagnosticMessage = `Accès refusé par Anthropic (Erreur 403) : ${rawErr}.`;
     suggestions.push(
       'Vérifiez que votre compte ou organisation Anthropic est actif sur https://console.anthropic.com/settings/billing'
     );
     suggestions.push(
-      'Si vous êtes dans une région soumise à restriction, vérifiez votre connexion ou VPN.'
+      'Si vous êtes dans une région soumise à restriction ou sur VPN, vérifiez votre connexion.'
     );
-  } else if (status === 429 || rawErr.toLowerCase().includes('rate_limit_error')) {
+  } else if (status === 429 || errLower.includes('rate_limit_error')) {
     diagnosticMessage =
       'Limite de requêtes atteinte (Erreur 429) : Trop de requêtes envoyées à l\'API Claude.';
     suggestions.push('Patientez quelques secondes avant de réessayer.');
-  } else if (status === 0 || rawErr.toLowerCase().includes('failed to fetch')) {
+  } else if (status === 0 || errLower.includes('failed to fetch')) {
     diagnosticMessage =
       'Impossible de contacter les serveurs Anthropic (Vérifiez votre connexion Internet).';
     suggestions.push('L\'application bascule automatiquement sur le mode local hors-ligne.');
@@ -374,6 +412,7 @@ export async function testClaudeApiKey(
     message: diagnosticMessage,
     statusCode: status,
     provider: 'anthropic',
+    model: modelToTest,
     fixSuggestions: suggestions,
   };
 }

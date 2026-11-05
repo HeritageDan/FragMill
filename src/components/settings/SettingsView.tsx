@@ -624,15 +624,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-slate-800 text-xs bg-white"
                   >
                     <option value="claude-3-5-haiku-20241022">
-                      Claude 3.5 Haiku (Recommandé - Ultra rapide & Économique)
+                      Claude 3.5 Haiku (claude-3-5-haiku-20241022 - Recommandé)
+                    </option>
+                    <option value="claude-3-5-haiku-latest">
+                      Claude 3.5 Haiku (claude-3-5-haiku-latest)
                     </option>
                     <option value="claude-3-5-sonnet-20241022">
-                      Claude 3.5 Sonnet (Haute précision d'ingénierie & Vision)
+                      Claude 3.5 Sonnet (claude-3-5-sonnet-20241022 - Vision & Précision)
+                    </option>
+                    <option value="claude-3-5-sonnet-latest">
+                      Claude 3.5 Sonnet (claude-3-5-sonnet-latest)
                     </option>
                     <option value="claude-3-7-sonnet-latest">
-                      Claude 3.7 Sonnet (Raisonnement étendu)
+                      Claude 3.7 Sonnet (claude-3-7-sonnet-latest)
                     </option>
-                    <option value="claude-3-haiku-20240307">Claude 3 Haiku (Standard)</option>
+                    <option value="claude-3-haiku-20240307">
+                      Claude 3 Haiku (claude-3-haiku-20240307)
+                    </option>
                   </select>
                 ) : (
                   <select
