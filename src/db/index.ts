@@ -80,6 +80,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   oversizeThresholdMm: 300,
   finesThresholdMm: 25,
   maxImageDimension: 4000,
+  aiProvider: 'anthropic',
+  enableAi: false,
+  anthropicApiKey: '',
+  claudeModel: 'claude-3-5-haiku-20241022',
   enableGemini: false,
   geminiModelFlash: 'gemini-1.5-flash',
   geminiModelPro: 'gemini-1.5-pro',
@@ -112,6 +116,15 @@ export async function getSettings(): Promise<AppSettings> {
     row = await db.settings.get('fragmill_settings');
   }
   const s = row ? { ...DEFAULT_SETTINGS, ...row.value } : DEFAULT_SETTINGS;
+  if (!s.aiProvider) {
+    s.aiProvider = 'anthropic';
+  }
+  if (!s.claudeModel) {
+    s.claudeModel = 'claude-3-5-haiku-20241022';
+  }
+  if (s.enableGemini && s.enableAi === undefined) {
+    s.enableAi = true;
+  }
   // Migrate legacy/experimental models that trigger 403 on standard AI Studio keys
   if (s.geminiModelFlash === 'gemini-2.5-flash') {
     s.geminiModelFlash = 'gemini-1.5-flash';

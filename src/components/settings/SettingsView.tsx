@@ -24,7 +24,7 @@ import {
   XCircle,
   Info,
 } from 'lucide-react';
-import { testGeminiApiKey, type GeminiTestResult } from '../../services/gemini';
+import { testAiApiKey, type AiTestResult } from '../../services/gemini';
 
 interface SettingsViewProps {
   settings: AppSettings;
@@ -44,23 +44,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [storageEstimateMb, setStorageEstimateMb] = useState<string>('0');
   const [backupStatus, setBackupStatus] = useState<string>('');
   const [isTestingApiKey, setIsTestingApiKey] = useState(false);
-  const [apiKeyTestResult, setApiKeyTestResult] = useState<GeminiTestResult | null>(null);
+  const [apiKeyTestResult, setApiKeyTestResult] = useState<AiTestResult | null>(null);
+
+  const isClaudeProvider = (settings.aiProvider || 'anthropic') === 'anthropic';
+  const currentApiKey = isClaudeProvider
+    ? (settings.anthropicApiKey || settings.geminiApiKey || '')
+    : (settings.geminiApiKey || settings.anthropicApiKey || '');
 
   const handleTestApiKey = async () => {
-    if (!settings.geminiApiKey?.trim()) {
+    if (!currentApiKey.trim()) {
       setApiKeyTestResult({
         success: false,
-        message: lang === 'fr' ? 'Veuillez d\'abord saisir une clé API Gemini (AIzaSy...).' : 'Please enter a Gemini API key first (AIzaSy...).',
+        message:
+          lang === 'fr'
+            ? isClaudeProvider
+              ? 'Veuillez d\'abord saisir votre clé API Anthropic Claude (commençant par sk-ant-...).'
+              : 'Veuillez d\'abord saisir une clé API Gemini (commençant par AIzaSy...).'
+            : isClaudeProvider
+              ? 'Please enter an Anthropic Claude API key first (starting with sk-ant-...).'
+              : 'Please enter a Gemini API key first (starting with AIzaSy...).',
+        provider: settings.aiProvider || 'anthropic',
       });
       return;
     }
     setIsTestingApiKey(true);
     setApiKeyTestResult(null);
     try {
-      const res = await testGeminiApiKey(settings.geminiApiKey.trim(), settings.geminiModelFlash);
+      const activeModel = isClaudeProvider
+        ? (settings.claudeModel || 'claude-3-5-haiku-20241022')
+        : (settings.geminiModelFlash || 'gemini-1.5-flash');
+
+      const res = await testAiApiKey(currentApiKey.trim(), activeModel, settings.aiProvider || 'anthropic');
       setApiKeyTestResult(res);
-      if (res.success && res.model && res.model !== settings.geminiModelFlash) {
-        onUpdateSettings({ ...settings, geminiModelFlash: res.model });
+
+      if (res.success && res.model) {
+        if (isClaudeProvider && res.model !== settings.claudeModel) {
+          onUpdateSettings({ ...settings, claudeModel: res.model });
+        } else if (!isClaudeProvider && res.model !== settings.geminiModelFlash) {
+          onUpdateSettings({ ...settings, geminiModelFlash: res.model });
+        }
       }
     } catch (err: any) {
       setApiKeyTestResult({
@@ -426,12 +448,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* Optional Gemini Cloud AI Configuration */}
+      {/* Cloud AI Configuration (Anthropic Claude & Google Gemini) */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-blue-600" /> {t('geminiTitle', lang)}
+              <Sparkles className="w-4 h-4 text-purple-600" /> {t('geminiTitle', lang)}
             </h3>
             <p className="text-xs text-slate-500">
               {t('geminiSubtitle', lang)}
@@ -441,47 +463,119 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
-              checked={settings.enableGemini}
-              onChange={(e) => onUpdateSettings({ ...settings, enableGemini: e.target.checked })}
+              checked={Boolean(settings.enableAi ?? settings.enableGemini)}
+              onChange={(e) =>
+                onUpdateSettings({
+                  ...settings,
+                  enableAi: e.target.checked,
+                  enableGemini: e.target.checked,
+                })
+              }
               className="sr-only peer"
             />
-            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
           </label>
         </div>
 
-        {settings.enableGemini && (
+        {Boolean(settings.enableAi ?? settings.enableGemini) && (
           <div className="space-y-3 pt-2 text-xs border-t border-slate-100">
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 space-y-1">
-              <p className="font-semibold">{t('geminiPrivacy', lang)}</p>
-              <p className="text-[11px] text-blue-800">
-                {lang === 'fr'
-                  ? 'Active l\'intelligence artificielle Gemini Flash pour la rédaction automatique d\'avis géotechniques personnalisés dans Geolab et l\'évaluation d\'ingénierie des tirs dans FragMill.'
-                  : 'Enables Gemini Flash AI to draft personalized geotechnical interpretations in Geolab and blast engineering evaluations in FragMill.'}
-              </p>
+            {/* Provider Switcher Tabs */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdateSettings({ ...settings, aiProvider: 'anthropic' });
+                  setApiKeyTestResult(null);
+                }}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  isClaudeProvider
+                    ? 'bg-white text-purple-700 shadow-xs border border-purple-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                Anthropic Claude ({lang === 'fr' ? 'Recommandé' : 'Recommended'})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdateSettings({ ...settings, aiProvider: 'gemini' });
+                  setApiKeyTestResult(null);
+                }}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  !isClaudeProvider
+                    ? 'bg-white text-blue-700 shadow-xs border border-blue-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                Google Gemini
+              </button>
             </div>
+
+            {isClaudeProvider ? (
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-purple-900 space-y-1">
+                <p className="font-semibold">{t('claudePrivacy', lang)}</p>
+                <p className="text-[11px] text-purple-800">
+                  {lang === 'fr'
+                    ? 'Active l\'intelligence artificielle Anthropic Claude pour la rédaction de synthèses géotechniques précises dans Geolab et l\'évaluation d\'ingénierie des tirs dans FragMill.'
+                    : 'Enables Anthropic Claude AI to draft high-precision geotechnical narratives in Geolab and blast engineering evaluations in FragMill.'}
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 space-y-1">
+                <p className="font-semibold">{t('geminiPrivacy', lang)}</p>
+                <p className="text-[11px] text-blue-800">
+                  {lang === 'fr'
+                    ? 'Active Google Gemini Flash pour l\'évaluation géotechnique et le contrôle des photos de tir.'
+                    : 'Enables Google Gemini Flash for geotechnical evaluations and blast image checking.'}
+                </p>
+              </div>
+            )}
 
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-slate-700 font-semibold">
-                  {t('apiKeyLabel', lang)}
+                  {isClaudeProvider ? t('claudeApiKeyLabel', lang) : t('apiKeyLabel', lang)}
                 </label>
-                <a
-                  href="https://aistudio.google.com/app/apikey"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 text-[11px]"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  {lang === 'fr' ? 'Obtenir une clé sur Google AI Studio (Gratuit)' : 'Get a key from Google AI Studio (Free)'}
-                </a>
+                {isClaudeProvider ? (
+                  <a
+                    href="https://console.anthropic.com/settings/keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1 text-[11px]"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    {lang === 'fr'
+                      ? 'Obtenir une clé sur Anthropic Console'
+                      : 'Get a key from Anthropic Console'}
+                  </a>
+                ) : (
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 text-[11px]"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    {lang === 'fr'
+                      ? 'Obtenir une clé sur Google AI Studio (Gratuit)'
+                      : 'Get a key from Google AI Studio (Free)'}
+                  </a>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <input
                   type="password"
-                  placeholder="AIzaSy..."
-                  value={settings.geminiApiKey || ''}
+                  placeholder={isClaudeProvider ? 'sk-ant-api03-...' : 'AIzaSy...'}
+                  value={currentApiKey}
                   onChange={(e) => {
-                    onUpdateSettings({ ...settings, geminiApiKey: e.target.value });
+                    const val = e.target.value;
+                    if (isClaudeProvider) {
+                      onUpdateSettings({ ...settings, anthropicApiKey: val, geminiApiKey: val });
+                    } else {
+                      onUpdateSettings({ ...settings, geminiApiKey: val });
+                    }
                     setApiKeyTestResult(null);
                   }}
                   className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-slate-800 font-mono"
@@ -490,7 +584,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="button"
                   onClick={handleTestApiKey}
                   disabled={isTestingApiKey}
-                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold rounded-lg flex items-center gap-1.5 transition text-xs flex-shrink-0 cursor-pointer"
+                  className={`px-3 py-2 text-white font-semibold rounded-lg flex items-center gap-1.5 transition text-xs flex-shrink-0 cursor-pointer ${
+                    isClaudeProvider
+                      ? 'bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300'
+                      : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300'
+                  }`}
                 >
                   {isTestingApiKey ? (
                     <>
@@ -508,24 +606,56 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
               <div className="pt-2">
                 <label className="text-slate-700 font-semibold block mb-1 text-[11px]">
-                  {lang === 'fr' ? 'Modèle Gemini Flash (Recommandé)' : 'Gemini Flash Model (Recommended)'}
+                  {isClaudeProvider
+                    ? lang === 'fr'
+                      ? 'Modèle Anthropic Claude'
+                      : 'Anthropic Claude Model'
+                    : lang === 'fr'
+                      ? 'Modèle Google Gemini Flash'
+                      : 'Google Gemini Flash Model'}
                 </label>
-                <select
-                  value={settings.geminiModelFlash || 'gemini-1.5-flash'}
-                  onChange={(e) => {
-                    onUpdateSettings({ ...settings, geminiModelFlash: e.target.value });
-                    setApiKeyTestResult(null);
-                  }}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-slate-800 text-xs bg-white"
-                >
-                  <option value="gemini-1.5-flash">Gemini 1.5 Flash (Standard - Gratuit universel)</option>
-                  <option value="gemini-2.0-flash">Gemini 2.0 Flash (Haute vitesse)</option>
-                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                </select>
+                {isClaudeProvider ? (
+                  <select
+                    value={settings.claudeModel || 'claude-3-5-haiku-20241022'}
+                    onChange={(e) => {
+                      onUpdateSettings({ ...settings, claudeModel: e.target.value });
+                      setApiKeyTestResult(null);
+                    }}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-slate-800 text-xs bg-white"
+                  >
+                    <option value="claude-3-5-haiku-20241022">
+                      Claude 3.5 Haiku (Recommandé - Ultra rapide & Économique)
+                    </option>
+                    <option value="claude-3-5-sonnet-20241022">
+                      Claude 3.5 Sonnet (Haute précision d'ingénierie & Vision)
+                    </option>
+                    <option value="claude-3-7-sonnet-latest">
+                      Claude 3.7 Sonnet (Raisonnement étendu)
+                    </option>
+                    <option value="claude-3-haiku-20240307">Claude 3 Haiku (Standard)</option>
+                  </select>
+                ) : (
+                  <select
+                    value={settings.geminiModelFlash || 'gemini-1.5-flash'}
+                    onChange={(e) => {
+                      onUpdateSettings({ ...settings, geminiModelFlash: e.target.value });
+                      setApiKeyTestResult(null);
+                    }}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-slate-800 text-xs bg-white"
+                  >
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (Standard - Gratuit universel)</option>
+                    <option value="gemini-2.0-flash">Gemini 2.0 Flash (Haute vitesse)</option>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                  </select>
+                )}
                 <p className="text-[11px] text-slate-500 mt-1">
-                  {lang === 'fr'
-                    ? 'Le modèle Gemini 1.5 Flash est actif par défaut et supporté par tous les comptes gratuits Google AI Studio.'
-                    : 'Gemini 1.5 Flash is the default stable model supported by all free Google AI Studio accounts.'}
+                  {isClaudeProvider
+                    ? lang === 'fr'
+                      ? 'Claude 3.5 Haiku est le modèle recommandé par défaut pour sa rapidité et son coût très faible.'
+                      : 'Claude 3.5 Haiku is the recommended default for fast latency and cost efficiency.'
+                    : lang === 'fr'
+                      ? 'Gemini 1.5 Flash est actif par défaut et supporté par tous les comptes gratuits Google AI Studio.'
+                      : 'Gemini 1.5 Flash is the default stable model supported by all free Google AI Studio accounts.'}
                 </p>
               </div>
             </div>
@@ -577,7 +707,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-slate-700">
               <span className="font-bold text-slate-900 block">
-                {lang === 'fr' ? 'Fonctionnalités activées par Gemini :' : 'Features powered by Gemini:'}
+                {lang === 'fr' ? 'Fonctionnalités activées par l\'IA Cloud :' : 'Features powered by Cloud AI:'}
               </span>
               <ul className="list-disc list-inside space-y-1 text-[11px]">
                 <li>

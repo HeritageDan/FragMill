@@ -358,7 +358,13 @@ export const StudyReportEditorView: React.FC<Props> = ({
     const includedAnalyses = projectAnalyses.filter((a) => includedSet.has(a.id));
 
     const appSettings = await getSettings();
-    const apiKey = appSettings.enableGemini ? appSettings.geminiApiKey : undefined;
+    const isEnabled = Boolean(appSettings.enableAi ?? appSettings.enableGemini);
+    const isClaude = (appSettings.aiProvider || 'anthropic') === 'anthropic';
+    const apiKey = isEnabled
+      ? (isClaude
+          ? (appSettings.anthropicApiKey || appSettings.geminiApiKey)
+          : (appSettings.geminiApiKey || appSettings.anthropicApiKey))
+      : undefined;
 
     try {
       const draft = await generateStudyAiNarrative({
@@ -1378,8 +1384,8 @@ export const StudyReportEditorView: React.FC<Props> = ({
                     <p className="font-semibold">
                       {narrativeDraft.isAiGenerated
                         ? lang === 'fr'
-                          ? 'Texte rédigé par Gemini Flash à partir des données structurées de l’étude.'
-                          : 'Drafted by Gemini Flash using structured study metrics.'
+                          ? 'Texte rédigé par l\'IA Cloud (Claude / Gemini) à partir des données structurées de l’étude.'
+                          : 'Drafted by Cloud AI (Claude / Gemini) using structured study metrics.'
                         : lang === 'fr'
                           ? 'Texte généré via le moteur déterministe hors-ligne (valeurs exactes de laboratoire).'
                           : 'Drafted via offline deterministic template engine citing exact lab values.'}

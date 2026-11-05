@@ -587,6 +587,8 @@ export interface Blast {
   updatedAt: number;
 }
 
+export type AiProvider = 'anthropic' | 'gemini';
+
 export interface AppSettings {
   language: 'en' | 'fr';
   theme: 'default' | 'dark' | 'outdoor';
@@ -598,6 +600,10 @@ export interface AppSettings {
   oversizeThresholdMm: number;
   finesThresholdMm: number;
   maxImageDimension: number; // default 4000
+  aiProvider?: 'anthropic' | 'gemini'; // default 'anthropic'
+  enableAi?: boolean;
+  anthropicApiKey?: string;
+  claudeModel?: string;
   enableGemini: boolean;
   geminiApiKey?: string;
   geminiModelFlash: string;

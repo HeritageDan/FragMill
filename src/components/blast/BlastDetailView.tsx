@@ -110,9 +110,18 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
     setAiCommentary(blast.notes || '');
   }, [blast.id, blast.notes]);
 
+  const [isAiActive, setIsAiActive] = useState(false);
+  const [aiProviderName, setAiProviderName] = useState<'Claude' | 'Gemini'>('Claude');
+
   useEffect(() => {
     getSettings().then((s) => {
-      setIsGeminiActive(Boolean(s.enableGemini && s.geminiApiKey?.trim()));
+      const isEnabled = Boolean(s.enableAi ?? s.enableGemini);
+      const isClaude = (s.aiProvider || 'anthropic') === 'anthropic';
+      const key = isClaude
+        ? (s.anthropicApiKey || s.geminiApiKey || '')
+        : (s.geminiApiKey || s.anthropicApiKey || '');
+      setIsAiActive(Boolean(isEnabled && key.trim()));
+      setAiProviderName(isClaude ? 'Claude' : 'Gemini');
     }).catch(() => {});
   }, [settings]);
 
@@ -120,7 +129,14 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
     setIsGeneratingAiCommentary(true);
     try {
       const appSettings = await getSettings();
-      const apiKey = appSettings.enableGemini ? appSettings.geminiApiKey : undefined;
+      const isEnabled = Boolean(appSettings.enableAi ?? appSettings.enableGemini);
+      const isClaude = (appSettings.aiProvider || 'anthropic') === 'anthropic';
+      const apiKey = isEnabled
+        ? (isClaude
+            ? (appSettings.anthropicApiKey || appSettings.geminiApiKey)
+            : (appSettings.geminiApiKey || appSettings.anthropicApiKey))
+        : undefined;
+      const model = isClaude ? appSettings.claudeModel : appSettings.geminiModelFlash;
       const metrics = activeRun?.metrics || {
         p10: 45,
         p20: 75,
@@ -140,7 +156,9 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
         blast.rockMass,
         blast.millBatch,
         isFrench ? 'fr' : 'en',
-        apiKey
+        apiKey,
+        model,
+        appSettings.aiProvider || 'anthropic'
       );
 
       setAiCommentary(commentary);
@@ -148,8 +166,8 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
       if (!apiKey || apiKey.trim() === '') {
         alert(
           isFrench
-            ? 'Évaluation locale déterministe générée (mode hors-ligne). Pour activer l\'analyse personnalisée par Gemini IA, activez Gemini et renseignez votre clé API dans l\'onglet Paramètres.'
-            : 'Deterministic summary generated (offline mode). To activate personalized Gemini AI reasoning, enable Gemini and enter your API key in Settings.'
+            ? 'Évaluation locale déterministe générée (mode hors-ligne). Pour activer l\'analyse personnalisée par Claude IA, activez l\'IA et renseignez votre clé API dans l\'onglet Paramètres.'
+            : 'Deterministic summary generated (offline mode). To activate personalized Claude AI reasoning, enable AI and enter your API key in Settings.'
         );
       }
     } catch (err: any) {
@@ -175,16 +193,24 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
     setAiImageAdvice(null);
     try {
       const appSettings = await getSettings();
-      const apiKey = appSettings.enableGemini ? appSettings.geminiApiKey : undefined;
+      const isEnabled = Boolean(appSettings.enableAi ?? appSettings.enableGemini);
+      const isClaude = (appSettings.aiProvider || 'anthropic') === 'anthropic';
+      const apiKey = isEnabled
+        ? (isClaude
+            ? (appSettings.anthropicApiKey || appSettings.geminiApiKey)
+            : (appSettings.geminiApiKey || appSettings.anthropicApiKey))
+        : undefined;
+      const model = isClaude ? appSettings.claudeModel : appSettings.geminiModelFlash;
+
       if (!apiKey || apiKey.trim() === '') {
         alert(
           isFrench
-            ? 'L\'audit IA d\'image requiert l\'activation de Gemini dans Paramètres avec votre clé API Google AI Studio.'
-            : 'AI Image audit requires Gemini to be enabled in Settings with your Google AI Studio API key.'
+            ? 'L\'audit IA d\'image requiert l\'activation de l\'IA dans Paramètres avec votre clé API Anthropic Claude ou Google.'
+            : 'AI Image audit requires AI to be enabled in Settings with your Anthropic Claude or Google API key.'
         );
         return;
       }
-      const res = await checkImageWithGemini(selectedImage.dataUrl, apiKey);
+      const res = await checkImageWithGemini(selectedImage.dataUrl, apiKey, model, appSettings.aiProvider || 'anthropic');
       setAiImageAdvice(res.operatorAdvice);
     } catch (err: any) {
       alert(`AI Image Check Error: ${err.message}`);
@@ -1739,10 +1765,14 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
               </div>
               <div>
                 <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
-                  <span>{isFrench ? 'Avis Technique & Synthèse d\'Ingénierie Géotechnique (Gemini IA)' : 'Geotechnical Blast Engineering Review & AI Commentary'}</span>
-                  {isGeminiActive ? (
+                  <span>
+                    {isFrench
+                      ? `Avis Technique & Synthèse d'Ingénierie Géotechnique (${isAiActive ? `${aiProviderName} IA` : 'IA Cloud'})`
+                      : `Geotechnical Blast Engineering Review & AI Commentary (${isAiActive ? `${aiProviderName} AI` : 'Cloud AI'})`}
+                  </span>
+                  {isAiActive ? (
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 font-semibold">
-                      ● Gemini IA Connecté
+                      ● {aiProviderName} IA Connecté
                     </span>
                   ) : (
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-slate-100 text-slate-600 border border-slate-200">

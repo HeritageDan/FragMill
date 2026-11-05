@@ -44,7 +44,8 @@ export const AnalysisDetailView: React.FC<Props> = ({
 
   const [narrativeText, setNarrativeText] = useState('');
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
-  const [isGeminiActive, setIsGeminiActive] = useState(false);
+  const [isAiActive, setIsAiActive] = useState(false);
+  const [aiProviderName, setAiProviderName] = useState<'Claude' | 'Gemini'>('Claude');
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
 
@@ -70,7 +71,13 @@ export const AnalysisDetailView: React.FC<Props> = ({
 
     try {
       const appSettings = await getSettings();
-      setIsGeminiActive(Boolean(appSettings.enableGemini && appSettings.geminiApiKey?.trim()));
+      const isEnabled = Boolean(appSettings.enableAi ?? appSettings.enableGemini);
+      const isClaude = (appSettings.aiProvider || 'anthropic') === 'anthropic';
+      const key = isClaude
+        ? (appSettings.anthropicApiKey || appSettings.geminiApiKey || '')
+        : (appSettings.geminiApiKey || appSettings.anthropicApiKey || '');
+      setIsAiActive(Boolean(isEnabled && key.trim()));
+      setAiProviderName(isClaude ? 'Claude' : 'Gemini');
     } catch {
       // ignore
     }
@@ -128,7 +135,14 @@ export const AnalysisDetailView: React.FC<Props> = ({
     setIsGeneratingAi(true);
     try {
       const appSettings = await getSettings();
-      const apiKey = appSettings.enableGemini ? appSettings.geminiApiKey : undefined;
+      const isEnabled = Boolean(appSettings.enableAi ?? appSettings.enableGemini);
+      const isClaude = (appSettings.aiProvider || 'anthropic') === 'anthropic';
+      const apiKey = isEnabled
+        ? (isClaude
+            ? (appSettings.anthropicApiKey || appSettings.geminiApiKey)
+            : (appSettings.geminiApiKey || appSettings.anthropicApiKey))
+        : undefined;
+
       const text = await generateGeoLabNarrative({
         analysis,
         language,
@@ -138,8 +152,8 @@ export const AnalysisDetailView: React.FC<Props> = ({
       if (!apiKey || apiKey.trim() === '') {
         alert(
           language === 'fr'
-            ? 'Interprétation déterministe générée (mode local hors-ligne). Pour activer l\'analyse personnalisée par Gemini IA, activez Gemini et saisissez votre clé API Google AI Studio dans l\'onglet Paramètres.'
-            : 'Deterministic interpretation generated (offline mode). To activate personalized Gemini AI reasoning, enable Gemini and enter your Google AI Studio API key in the Settings tab.'
+            ? 'Interprétation déterministe générée (mode local hors-ligne). Pour activer l\'analyse personnalisée par Claude IA, activez l\'IA et saisissez votre clé API dans l\'onglet Paramètres.'
+            : 'Deterministic interpretation generated (offline mode). To activate personalized Claude AI reasoning, enable AI and enter your API key in Settings.'
         );
       }
     } catch (err: any) {
@@ -385,9 +399,9 @@ export const AnalysisDetailView: React.FC<Props> = ({
             <h3 className="text-sm font-bold text-white">
               {language === 'fr' ? 'Interprétation & Avis Technique Géotechnique' : 'Observations & Engineering Interpretation'}
             </h3>
-            {isGeminiActive ? (
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1">
-                ● Gemini IA Actif
+            {isAiActive ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1 font-semibold">
+                ● {aiProviderName} IA Actif
               </span>
             ) : (
               <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-400 border border-slate-700">
@@ -399,12 +413,12 @@ export const AnalysisDetailView: React.FC<Props> = ({
           <button
             onClick={handleGenerateAiNarrative}
             disabled={isGeneratingAi}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded text-xs font-semibold shadow transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded text-xs font-semibold shadow transition cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5" />
             {isGeneratingAi
               ? language === 'fr' ? 'Rédaction en cours...' : 'Drafting...'
-              : language === 'fr' ? 'Générer Synthèse IA (Gemini)' : 'Draft with Gemini AI'}
+              : language === 'fr' ? `Générer Synthèse IA (${aiProviderName})` : `Draft with ${aiProviderName} AI`}
           </button>
         </div>
 
