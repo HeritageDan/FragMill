@@ -341,14 +341,16 @@ export async function generateStudyDocxReport(
             new docx.Paragraph({
               text: line.replace('- ', ''),
               bullet: { level: 0 },
-              spacing: { after: 60 },
+              alignment: docx.AlignmentType.JUSTIFIED,
+              spacing: { line: 360, lineRule: docx.LineRuleType.AUTO, after: 60 },
             })
           );
         } else {
           children.push(
             new docx.Paragraph({
               text: line,
-              spacing: { after: 100 },
+              alignment: docx.AlignmentType.JUSTIFIED,
+              spacing: { line: 360, lineRule: docx.LineRuleType.AUTO, after: 120 },
             })
           );
         }
@@ -381,6 +383,8 @@ export async function generateStudyDocxReport(
           ],
         })
       );
+      // Skip a blank line after the table
+      children.push(new docx.Paragraph({ spacing: { before: 240, after: 120 } }));
     } else if (block.type === 'analysisDetail' && block.detailData) {
       const d = block.detailData;
 
@@ -408,6 +412,8 @@ export async function generateStudyDocxReport(
           ],
         })
       );
+      // Skip a blank line after the table
+      children.push(new docx.Paragraph({ spacing: { before: 240, after: 120 } }));
 
       // Embedded Chart PNG
       if (d.chartType && d.analysis.computedResults) {
@@ -527,6 +533,8 @@ export async function generateStudyDocxReport(
             ],
           })
         );
+        // Skip a blank line after the table
+        children.push(new docx.Paragraph({ spacing: { before: 240, after: 120 } }));
       }
     } else if (block.type === 'usageNote' && block.usageNoteText) {
       children.push(
@@ -541,6 +549,8 @@ export async function generateStudyDocxReport(
                   children: [
                     new docx.Paragraph({
                       text: block.usageNoteText[lang] || block.usageNoteText.en,
+                      alignment: docx.AlignmentType.JUSTIFIED,
+                      spacing: { line: 360, lineRule: docx.LineRuleType.AUTO },
                       run: { color: '713F12', size: 18 },
                     }),
                   ],
@@ -550,6 +560,8 @@ export async function generateStudyDocxReport(
           ],
         })
       );
+      // Skip a blank line after the note
+      children.push(new docx.Paragraph({ spacing: { before: 240, after: 120 } }));
     } else if (block.type === 'signatureBlock' && block.signatureChain) {
       const chain = block.signatureChain.slice(0, 4);
       children.push(
@@ -660,7 +672,8 @@ export async function generateStudyDocxReport(
       children.push(
         new docx.Paragraph({
           text: block.dataQualityNotesText,
-          spacing: { after: 120 },
+          alignment: docx.AlignmentType.JUSTIFIED,
+          spacing: { line: 360, lineRule: docx.LineRuleType.AUTO, after: 120 },
           run: { color: '334155', size: 18 },
         })
       );
@@ -681,6 +694,10 @@ export async function generateStudyDocxReport(
             font: 'Arial',
             size: 20, // 10pt
             color: '0F172A',
+          },
+          paragraph: {
+            alignment: docx.AlignmentType.JUSTIFIED,
+            spacing: { line: 360, lineRule: docx.LineRuleType.AUTO },
           },
         },
       },

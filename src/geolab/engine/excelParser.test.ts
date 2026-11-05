@@ -24,11 +24,42 @@ describe('GeoLab Excel Template & Upload Parser', () => {
     const templateBlob = generateInputTemplateXlsx('grain_size', 'fr');
     const buffer = await templateBlob.arrayBuffer();
     const result = await parseAndValidateUploadedExcel(buffer, 'grain_size');
-
+    if (!result.success) {
+      console.log('Grain Size EN Errors:', JSON.stringify(result.errors, null, 2));
+    }
     expect(result.success).toBe(true);
     expect(result.errors.length).toBe(0);
     expect(result.computedResults?.passing2mmPercent).toBeDefined();
   });
+
+  const allTestTypes: import('../../types/geolab').GeoLabTestType[] = [
+    'proctor',
+    'grain_size',
+    'water_content',
+    'specific_gravity',
+    'bulk_density',
+    'sand_equivalent',
+    'los_angeles',
+    'micro_deval',
+    'flakiness',
+    'surface_cleanliness',
+    'methylene_blue',
+  ];
+
+  for (const t of allTestTypes) {
+    for (const l of ['fr', 'en'] as const) {
+      it(`round-trips template export and parse for ${t} (${l})`, async () => {
+        const templateBlob = generateInputTemplateXlsx(t, l);
+        const buffer = await templateBlob.arrayBuffer();
+        const result = await parseAndValidateUploadedExcel(buffer, t);
+        if (!result.success) {
+          console.log(`Failed for ${t} (${l}):`, JSON.stringify(result.errors, null, 2));
+        }
+        expect(result.success).toBe(true);
+        expect(result.errors.length).toBe(0);
+      });
+    }
+  }
 
   it('generates a clean input template and successfully parses it back for Water Content', async () => {
     const templateBlob = generateInputTemplateXlsx('water_content', 'fr');
@@ -56,7 +87,9 @@ describe('GeoLab Excel Template & Upload Parser', () => {
   it('directly parses and validates real lab file Classeur1.xlsx for Grain Size', async () => {
     const buffer = fs.readFileSync(fixturePath).buffer;
     const result = await parseAndValidateUploadedExcel(buffer, 'grain_size');
-
+    if (!result.success) {
+      console.log('Grain Size EN Errors:', JSON.stringify(result.errors, null, 2));
+    }
     expect(result.success).toBe(true);
     expect(result.errors.length).toBe(0);
     expect(result.computedResults?.passing2mmPercent).toBeCloseTo(97.2, 1);

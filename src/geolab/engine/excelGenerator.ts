@@ -331,11 +331,17 @@ function buildProctorSheet(
   const accreditationLabel = org.accreditationNumber?.trim()
     ? `${lang === 'fr' ? "N° d'agrément / d'accréditation : " : 'Agrément / Accreditation no.: '}${escapeXml(org.accreditationNumber)}`
     : '';
+  const orgContact = [
+    org.address,
+    org.phone ? `${lang === 'fr' ? 'Tél: ' : 'Tel: '}${org.phone}` : '',
+    org.email,
+  ].filter(Boolean).join(' | ');
 
   let rowsXml = '';
-  // Row 1: Org Name & Accreditation
+  // Row 1: Org Name, Contact & Accreditation
   rowsXml += `<row r="1" ht="28">
     <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
+    ${orgContact ? `<c r="D1" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
     ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
   </row>`;
 
@@ -633,11 +639,17 @@ function buildGrainSizeSheet(
   const accreditationLabel = org.accreditationNumber?.trim()
     ? `${lang === 'fr' ? "N° d'agrément / d'accréditation : " : 'Agrément / Accreditation no.: '}${escapeXml(org.accreditationNumber)}`
     : '';
+  const orgContact = [
+    org.address,
+    org.phone ? `${lang === 'fr' ? 'Tél: ' : 'Tel: '}${org.phone}` : '',
+    org.email,
+  ].filter(Boolean).join(' | ');
 
   let rowsXml = '';
-  // Row 1: Org Header
+  // Row 1: Org Header, Contact & Accreditation
   rowsXml += `<row r="1" ht="28">
     <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
+    ${orgContact ? `<c r="D1" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
     ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
   </row>`;
 
@@ -845,11 +857,17 @@ function buildWaterContentSheet(
   const accreditationLabel = org.accreditationNumber?.trim()
     ? `${lang === 'fr' ? "N° d'agrément / d'accréditation : " : 'Agrément / Accreditation no.: '}${escapeXml(org.accreditationNumber)}`
     : '';
+  const orgContact = [
+    org.address,
+    org.phone ? `${lang === 'fr' ? 'Tél: ' : 'Tel: '}${org.phone}` : '',
+    org.email,
+  ].filter(Boolean).join(' | ');
 
   let rowsXml = '';
-  // Row 1: Org Header
+  // Row 1: Org Header, Contact & Accreditation
   rowsXml += `<row r="1" ht="28">
     <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
+    ${orgContact ? `<c r="D1" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
     ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
   </row>`;
 
@@ -989,11 +1007,17 @@ function buildGenericSheet(
   const accreditationLabel = org.accreditationNumber?.trim()
     ? `${lang === 'fr' ? "N° d'agrément / d'accréditation : " : 'Agrément / Accreditation no.: '}${escapeXml(org.accreditationNumber)}`
     : '';
+  const orgContact = [
+    org.address,
+    org.phone ? `${lang === 'fr' ? 'Tél: ' : 'Tel: '}${org.phone}` : '',
+    org.email,
+  ].filter(Boolean).join(' | ');
 
   let rowsXml = '';
-  // Row 1: Org Header
+  // Row 1: Org Header, Contact & Accreditation
   rowsXml += `<row r="1" ht="28">
     <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
+    ${orgContact ? `<c r="D1" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
     ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
   </row>`;
 

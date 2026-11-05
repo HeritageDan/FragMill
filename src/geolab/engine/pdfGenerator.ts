@@ -406,8 +406,8 @@ export function renderAnalysisSheet(
   doc.setFontSize(7.5);
   doc.setTextColor(51, 65, 85);
   const splitNarrative = doc.splitTextToSize(narrativeText, contentWidth);
-  doc.text(splitNarrative, margin, cursorY + 2.5);
-  cursorY += splitNarrative.length * 3.5 + 4;
+  doc.text(splitNarrative, margin, cursorY + 2.5, { align: 'justify', maxWidth: contentWidth });
+  cursorY += splitNarrative.length * 4.2 + 7.5;
 
   // -------------------------------------------------------------
   // 6. Configurable Approval Chain (Up to 6 entries)
@@ -1133,7 +1133,7 @@ function renderGenericTestPdfSection(
       cursorY += rowH;
     });
 
-    cursorY += 4;
+    cursorY += 8.5; // Always skip a blank line after a table before starting a new paragraph
   }
 
   return cursorY;

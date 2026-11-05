@@ -15,6 +15,7 @@ import { generateModularVaultPdfReport } from './modularReport';
 import { db, getSettings } from '../../db';
 
 import { getBlastState } from '../blastState';
+import { generateFullDynamicBlastEvaluationText } from './blastScenarioDiagnostics';
 
 // Generate Comprehensive Multi-Page Engineering Blast PDF Report (Bilingual: EN / FR)
 export async function generateBlastPdfReport(
@@ -53,6 +54,16 @@ export async function generateBlastPdfReport(
   const metrics = activeRun?.metrics;
   const blastState = getBlastState(targetBlast);
 
+  // Auto-generate dynamic scenario evaluation text if notes are not yet generated
+  if (!targetBlast.notes || targetBlast.notes.trim().length === 0) {
+    targetBlast.notes = generateFullDynamicBlastEvaluationText(
+      targetBlast,
+      blastState,
+      activeLang === 'fr' ? 'fr' : 'en',
+      metrics
+    );
+  }
+
   const blastPayload: any = {
     blastId: targetBlast.blastId,
     dateTime: targetBlast.dateTime,
@@ -82,12 +93,18 @@ export async function generateBlastPdfReport(
   };
 
   const sectionsToRender: ReportSectionKey[] = selectedSections || (() => {
-    const defaultSections: ReportSectionKey[] = ['blast', 'kuzram'];
+    // Deliver a complete combined engineering report covering all core blast components
+    const defaultSections: ReportSectionKey[] = [
+      'blast',
+      'kuzram',
+      'timing',
+      'benchmap',
+      'comminution',
+      'minetomill',
+      'beltvision',
+    ];
     if (targetBlast.groundTruth?.sieveData?.length && targetBlast.groundTruth.sieveData.length >= 3) {
       defaultSections.push('validation');
-    }
-    if (targetBlast.millBatch) {
-      defaultSections.push('minetomill', 'comminution');
     }
     if (targetBlast.droneSurvey) {
       defaultSections.push('drone3d');

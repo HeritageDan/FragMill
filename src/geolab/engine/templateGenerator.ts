@@ -25,7 +25,13 @@ export function generateInputTemplateXlsx(testType: GeoLabTestType, lang: 'en' |
   });
 
   const tableHeader = testDef.inputSchema.table
-    ? testDef.inputSchema.table.columns.map((c) => `${c.label[lang]}${c.unit ? ` (${c.unit})` : ''}`)
+    ? testDef.inputSchema.table.columns.map((c) => {
+        const rawLabel = c.label[lang] || c.label.fr || c.label.en;
+        if (c.unit && !/\(.*\)|\[.*\]/.test(rawLabel)) {
+          return `${rawLabel} (${c.unit})`;
+        }
+        return rawLabel;
+      })
     : [];
 
   const exampleRows: any[][] = [];

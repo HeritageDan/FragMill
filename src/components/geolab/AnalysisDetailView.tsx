@@ -11,6 +11,7 @@ import { getTestDefinition } from '../../geolab/tests';
 import { generateGeoLabExcelReport } from '../../geolab/engine/excelGenerator';
 import { generateGeoLabPdfReport } from '../../geolab/engine/pdfGenerator';
 import { generateGeoLabNarrative } from '../../geolab/engine/aiNarrative';
+import { GeoLabTestChart } from './GeoLabTestChart';
 import {
   FileSpreadsheet,
   FileText,
@@ -390,8 +391,138 @@ export const AnalysisDetailView: React.FC<Props> = ({
               </div>
             </>
           )}
+
+          {analysis.testType === 'specific_gravity' && (
+            <>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Densité Absolue (Gs)' : 'Specific Gravity (Gs)'}</span>
+                <span className="text-xl font-bold text-white">{(analysis.computedResults.meanGs ?? analysis.computedResults.specificGravity)?.toFixed(3)}</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Masse Volumique (ρs)' : 'Solid Density (ρs)'}</span>
+                <span className="text-xl font-bold text-white">{(analysis.computedResults.solidDensityGcm3 ?? analysis.computedResults.densityTm3 ?? analysis.computedResults.meanGs)?.toFixed(3)} t/m³</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Écart d\'essais (ΔGs)' : 'Portion Delta (ΔGs)'}</span>
+                <span className="text-xl font-bold text-white">{analysis.computedResults.differenceGs ?? 0}</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Répétabilité' : 'Repeatability'}</span>
+                <span className={`text-sm font-bold ${analysis.computedResults.repeatabilityAccepted ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {analysis.computedResults.repeatabilityAccepted ? (language === 'fr' ? 'CONFORME ≤ 0.03' : 'ACCEPTED ≤ 0.03') : (language === 'fr' ? 'ALERTE > 0.03' : 'DEVIATION > 0.03')}
+                </span>
+              </div>
+            </>
+          )}
+
+          {analysis.testType === 'bulk_density' && (
+            <>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Masse Volumique Apparente' : 'Mean Bulk Density'}</span>
+                <span className="text-xl font-bold text-white">{(analysis.computedResults.meanBulkDensityGcm3 ?? analysis.computedResults.meanBulkDensityTm3)?.toFixed(3)} t/m³</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'État de Compactage' : 'Compaction State'}</span>
+                <span className="text-sm font-bold text-emerald-400 uppercase">{analysis.computedResults.compactionState || '-'}</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Écart Min/Max' : 'Delta Range'}</span>
+                <span className="text-xl font-bold text-white">{(analysis.computedResults.rangeTm3 ?? 0)?.toFixed(3)} t/m³</span>
+              </div>
+            </>
+          )}
+
+          {analysis.testType === 'sand_equivalent' && (
+            <>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">ES Visuel (ESv)</span>
+                <span className="text-xl font-bold text-amber-400">{(analysis.computedResults.meanEsVisual ?? analysis.computedResults.esVisual)?.toFixed(1)} %</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">ES Piston (ESp)</span>
+                <span className="text-xl font-bold text-blue-400">{(analysis.computedResults.meanEsPiston ?? analysis.computedResults.esPiston)?.toFixed(1)} %</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Qualification' : 'Sand Classification'}</span>
+                <span className="text-sm font-bold text-emerald-400">{analysis.computedResults.sandClassification || '-'}</span>
+              </div>
+            </>
+          )}
+
+          {analysis.testType === 'los_angeles' && (
+            <>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Coefficient Los Angeles' : 'Los Angeles Coeff.'}</span>
+                <span className="text-xl font-bold text-rose-400">{(analysis.computedResults.laCoefficient ?? analysis.computedResults.meanLa)?.toFixed(1)} %</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Catégorie Normative' : 'EN Category'}</span>
+                <span className="text-sm font-bold text-white uppercase">{analysis.computedResults.laCategory || '-'}</span>
+              </div>
+            </>
+          )}
+
+          {analysis.testType === 'micro_deval' && (
+            <>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Coefficient Micro-Deval' : 'Micro-Deval Coeff.'}</span>
+                <span className="text-xl font-bold text-purple-400">{(analysis.computedResults.mdeCoefficient ?? analysis.computedResults.meanMde)?.toFixed(1)} %</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Catégorie Normative' : 'EN Category'}</span>
+                <span className="text-sm font-bold text-white uppercase">{analysis.computedResults.mdeCategory || '-'}</span>
+              </div>
+            </>
+          )}
+
+          {analysis.testType === 'flakiness' && (
+            <>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Indice d\'Aplatissement (FI)' : 'Flakiness Index (FI)'}</span>
+                <span className="text-xl font-bold text-teal-400">{(analysis.computedResults.flakinessIndexA ?? analysis.computedResults.globalFlakinessIndex)?.toFixed(1)} %</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Catégorie Normative' : 'EN Category'}</span>
+                <span className="text-sm font-bold text-white uppercase">{analysis.computedResults.flakinessCategory || '-'}</span>
+              </div>
+            </>
+          )}
+
+          {analysis.testType === 'surface_cleanliness' && (
+            <>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Propreté Superficielle (P)' : 'Surface Cleanliness (P)'}</span>
+                <span className="text-xl font-bold text-amber-400">{(analysis.computedResults.meanCleanlinessPercentageP ?? analysis.computedResults.cleanlinessPercentageP)?.toFixed(2)} %</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Catégorie Normative' : 'EN Category'}</span>
+                <span className="text-sm font-bold text-white uppercase">{analysis.computedResults.cleanlinessCategory || '-'}</span>
+              </div>
+            </>
+          )}
+
+          {analysis.testType === 'methylene_blue' && (
+            <>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Valeur de Bleu (VBS)' : 'Methylene Blue (VBS)'}</span>
+                <span className="text-xl font-bold text-blue-400">{(analysis.computedResults.primaryValue ?? analysis.computedResults.vbsValue ?? analysis.computedResults.mbValue)?.toFixed(2)} g/100g</span>
+              </div>
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                <span className="text-slate-400 block">{language === 'fr' ? 'Sensibilité GTR' : 'Soil Sensitivity'}</span>
+                <span className="text-sm font-bold text-white">{analysis.computedResults.soilSensitivityClass || '-'}</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Visual Graphical Chart for real-life lab representation */}
+      <GeoLabTestChart
+        testType={analysis.testType}
+        input={analysis.rawInput}
+        results={analysis.computedResults}
+        language={language}
+      />
 
       {/* Engineering Observations & AI Narrative */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">

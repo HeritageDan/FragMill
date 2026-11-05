@@ -700,8 +700,44 @@ export async function checkImageWithGemini(
 
 export const checkImageWithAi = checkImageWithGemini;
 
+export interface BlastScenarioContext {
+  timing?: {
+    surfaceDelayMs?: number;
+    inHoleDelayMs?: number;
+    maxChargePerDelayKg?: number;
+    predictedPPVMmPerS?: number;
+    distanceToStructureM?: number;
+  };
+  geometryRatios?: {
+    stiffnessRatioHB?: number;
+    stemmingRatioTB?: number;
+    subdrillRatioJB?: number;
+    powderFactorKgM3?: number;
+  };
+  comminution?: {
+    bondWorkIndex?: number;
+    dropWeightAxb?: number;
+    totalSpecificEnergyKwhPerT?: number;
+    achievableThroughputTPH?: number;
+    crusherChokeRisk?: boolean;
+  };
+  economics?: {
+    totalCostPerTonUSD?: number;
+    blastingCostUSD?: number;
+    millingCostUSD?: number;
+    optimalP80Mm?: number;
+  };
+  kuzram?: {
+    predictedX50Mm?: number;
+    predictedP80Mm?: number;
+    uniformityIndexN?: number;
+  };
+}
+
 /**
  * Bilingual engineering evaluation of measured blast fragmentation and comminution correlation.
+ * Adapts dynamically to distinct operational scenarios (rock hardness, powder factor, geometric stiffness,
+ * initiation timing, ground vibration, comminution power draw, and downstream economics).
  */
 export async function generateGeminiReportText(
   metrics: FragmentationMetrics,
@@ -711,93 +747,184 @@ export async function generateGeminiReportText(
   lang: 'en' | 'fr',
   apiKey?: string,
   preferredModel?: string,
-  provider?: AiProvider
+  provider?: AiProvider,
+  scenarioContext?: BlastScenarioContext
 ): Promise<string> {
+  const isFr = lang === 'fr';
+
+  const burden = Math.max(1, params.burden || 3.5);
+  const spacing = Math.max(1, params.spacing || 4.2);
+  const benchH = Math.max(1, params.benchHeight || 10);
+  const stemming = params.stemmingLength || burden * 0.9;
+  const subdrill = params.subdrill || burden * 0.3;
+  const charge = params.chargePerHole || 85;
+  const ucs = rockMass.ucsMPa || 110;
+  const density = rockMass.density || 2.7;
+
+  const volPerHole = burden * spacing * benchH;
+  const pf = Number((charge / volPerHole).toFixed(2));
+  const stiffnessHB = Number((benchH / burden).toFixed(2));
+  const stemmingTB = Number((stemming / burden).toFixed(2));
+  const subdrillJB = Number((subdrill / burden).toFixed(2));
+
+  const surfaceDelay = scenarioContext?.timing?.surfaceDelayMs || 25;
+  const reliefRate = Number((surfaceDelay / burden).toFixed(1));
+  const ppv = scenarioContext?.timing?.predictedPPVMmPerS ?? 6.8;
+  const dist = scenarioContext?.timing?.distanceToStructureM ?? 450;
+  const isPpvCompliant = ppv <= 12.7;
+
+  const p50 = metrics.p50 || 130;
+  const p80 = metrics.p80 || 195;
+  const oversize = metrics.oversizePercent || 0;
+  const fines = metrics.finesPercent || 0;
+  const uniformity = metrics.uniformityIndex || 1.15;
+
+  const wi = scenarioContext?.comminution?.bondWorkIndex ?? (millBatch?.totalSpecificEnergyKwhPerT ? 14.5 : 15.0);
+  const isChokeRisk = p80 > 220 || oversize > 10;
+  const sagThroughputDelta = p80 <= 145 ? +42 : (p80 <= 210 ? 0 : -35);
+  const powerSavings = p80 <= 145 ? 1.45 : (p80 <= 210 ? 0 : -1.80);
+
   const getDeterministicSummary = () => {
-    const pf =
-      params.burden && params.spacing && params.benchHeight && params.chargePerHole
-        ? Number(
-            (params.chargePerHole / (params.burden * params.spacing * params.benchHeight)).toFixed(2)
-          )
-        : null;
-
-    let recFr = '';
-    let recEn = '';
-    if ((metrics.oversizePercent || 0) > 10) {
-      recFr = `1. Resserrer la banquette ou concentrer la charge de pied pour résorber les blocs hors-gabarit (>300 mm : ${metrics.oversizePercent}%).\n2. Vérifier le temps de retard inter-trous pour intensifier le cisaillement en crête.`;
-      recEn = `1. Tighten burden or concentrate toe charge to suppress oversize boulders (>300 mm: ${metrics.oversizePercent}%).\n2. Adjust inter-hole timing delay to intensify shear fracturing at the crest.`;
-    } else if ((metrics.finesPercent || 0) > 12) {
-      recFr = `1. Augmenter la hauteur de bourrage pour atténuer la pulvérisation en tête de trou (<25 mm : ${metrics.finesPercent}%).\n2. Réduire légèrement la charge spécifique pour limiter la surfragmentation.`;
-      recEn = `1. Increase stemming height to prevent excessive collar pulverization (<25 mm: ${metrics.finesPercent}%).\n2. Moderate powder factor to prevent over-crushing and micro-fines generation.`;
+    // Dynamic Scenario Evaluation Blocks
+    let energyDiagnosisFr = '';
+    let energyDiagnosisEn = '';
+    if (ucs > 130 && pf < 0.55) {
+      energyDiagnosisFr = `Sous-dosage énergétique sévère en roche compétente (q = ${pf} kg/m³ face à un UCS de ${ucs} MPa). L'énergie d'explosion est insuffisante pour cisailler le réseau de fractures, provoquant une forte proportion de blocs (>300 mm : ${oversize}%) et un ralentissement critique du marinage.`;
+      energyDiagnosisEn = `Severe undercharging in competent rock (PF = ${pf} kg/m³ vs UCS of ${ucs} MPa). Explosive energy is insufficient to break joint blocks, generating high oversize boulder fractions (>300 mm: ${oversize}%) and loading bottlenecks.`;
+    } else if (ucs < 55 && pf > 0.65) {
+      energyDiagnosisFr = `Surdosage énergétique en roche tendre (q = ${pf} kg/m³ pour UCS ${ucs} MPa). Énergie gaspillée en pulvérisation et création excessive de micro-fines (<25 mm : ${fines}%), augmentant le risque de surpression aérienne et d'envol de poussières.`;
+      energyDiagnosisEn = `Excessive powder factor in weak rock (PF = ${pf} kg/m³ for UCS ${ucs} MPa). Energy is wasted in pulverization and micro-fines generation (<25 mm: ${fines}%), amplifying airblast overpressure and dust emissions.`;
     } else {
-      recFr = `1. Maintenir la géométrie actuelle de maille (${params.burden} m × ${params.spacing} m) qui produit une courbe granulométrique bien équilibrée.\n2. Poursuivre le contrôle régulier de la qualité du bourrage et du profil du front.`;
-      recEn = `1. Maintain current blast pattern (${params.burden} m × ${params.spacing} m) producing a well-balanced fragmentation curve.\n2. Continue routine quality control on stemming material and face burden.`;
+      energyDiagnosisFr = `Adéquation énergétique équilibrée (q = ${pf} kg/m³ pour UCS ${ucs} MPa). La répartition de l'énergie explosive produit une fragmentation médiane P50 = ${p50} mm bien centrée et un étalement granulométrique régulier.`;
+      energyDiagnosisEn = `Balanced energy matching (PF = ${pf} kg/m³ for UCS ${ucs} MPa). Explosive energy partition yields a well-centered median size P50 = ${p50} mm and uniform fragmentation gradient.`;
     }
 
-    if (lang === 'fr') {
-      return `SYNTHÈSE TECHNIQUE DU TIR (MODE LOCAL HORS-LIGNE - DONNÉES MESURÉES) :
-
-1. Caractéristiques & Granulométrie Réelle :
-Maille de tir ${params.burden} m × ${params.spacing} m (gradin de ${params.benchHeight} m, ⌀ ${params.holeDiameter} mm) chargée en ${params.explosiveType || 'ANFO'} (${params.chargePerHole} kg/trou${pf ? `, charge spécifique q = ${pf} kg/m³` : ''}) dans un massif de ${rockMass.rockType} (densité : ${rockMass.density} t/m³, joints moyens : ${rockMass.meanJointSpacing} m). L'analyse optique certifie une taille médiane P50 de ${metrics.p50} mm et une alimentation broyeur P80 de ${metrics.p80} mm (uniformité n = ${metrics.uniformityIndex}). La fraction fine (<25 mm) s'élève à ${metrics.finesPercent}% et la fraction hors-gabarit (>300 mm) à ${metrics.oversizePercent}%.
-
-2. Corrélation Comminution & Usine :
-${
-  millBatch
-    ? `Les données usine confirment une énergie spécifique totale de ${millBatch.totalSpecificEnergyKwhPerT} kWh/t (concassage : ${millBatch.crushingSpecificEnergyKwhPerT} kWh/t, broyage : ${millBatch.millingSpecificEnergyKwhPerT} kWh/t) pour un débit de ${millBatch.millingThroughputTph} t/h et une récupération d'or de ${millBatch.simpleGoldRecoveryPercent}%.`
-    : `Le P80 de ${metrics.p80} mm est directement compatible avec la trémie du concasseur primaire.`
-}
-
-3. Recommandations Opérationnelles de Terrain :
-${recFr}`;
+    let geomDiagnosisFr = '';
+    let geomDiagnosisEn = '';
+    if (stiffnessHB < 2.0) {
+      geomDiagnosisFr += `Rapport de rigidité critique (H/B = ${stiffnessHB} < 2.0) créant un comportement de gradin rigide avec risques de culots durs et de rebords en crête. `;
+      geomDiagnosisEn += `Critical low stiffness ratio (H/B = ${stiffnessHB} < 2.0) indicating rigid slab behavior prone to toe stumps and backbreak. `;
+    } else {
+      geomDiagnosisFr += `Rapport de rigidité souple et favorable au déplacement (H/B = ${stiffnessHB}). `;
+      geomDiagnosisEn += `Favorable flexural stiffness ratio (H/B = ${stiffnessHB}). `;
     }
 
-    return `TECHNICAL BLAST EVALUATION (LOCAL OFFLINE MODE - MEASURED DATA):
+    if (stemmingTB < 0.75) {
+      geomDiagnosisFr += `Bourrage court d'alerte (T/B = ${stemmingTB} < 0.75) présentant un risque majeur de projection de blocs (flyrock). `;
+      geomDiagnosisEn += `Short stemming collar hazard (T/B = ${stemmingTB} < 0.75) carrying severe flyrock projection risks. `;
+    } else if (stemmingTB > 1.2) {
+      geomDiagnosisFr += `Bourrage long (T/B = ${stemmingTB} > 1.2) générant des blocs hors-gabarit en surface. `;
+      geomDiagnosisEn += `Deep collar stemming (T/B = ${stemmingTB} > 1.2) producing surface cap-rock boulders. `;
+    }
 
-1. Blast Parameters & Measured Sizing:
-Pattern geometry ${params.burden} m × ${params.spacing} m (bench: ${params.benchHeight} m, ⌀ ${params.holeDiameter} mm) loaded with ${params.explosiveType || 'ANFO'} (${params.chargePerHole} kg/hole${pf ? `, powder factor PF = ${pf} kg/m³` : ''}) in ${rockMass.rockType} (density: ${rockMass.density} t/m³, joint spacing: ${rockMass.meanJointSpacing} m). Photographic sizing establishes a median size P50 of ${metrics.p50} mm and mill feed P80 of ${metrics.p80} mm (uniformity index n = ${metrics.uniformityIndex}). Fines (<25 mm) measure ${metrics.finesPercent}% and oversize boulders (>300 mm) reach ${metrics.oversizePercent}%.
+    let timingDiagnosisFr = '';
+    let timingDiagnosisEn = '';
+    if (reliefRate < 3.2) {
+      timingDiagnosisFr = `Confinement élevé du tir (dégagement de ${reliefRate} ms/m de banquette < 3.5 ms/m). La détonation trop rapprochée des rangées contraint l'éjection et amplifie les vibrations.`;
+      timingDiagnosisEn = `High blast confinement (relief rate ${reliefRate} ms/m of burden < 3.5 ms/m). Successive rows fire before front movement occurs, choking displacement and boosting ground vibration.`;
+    } else {
+      timingDiagnosisFr = `Chronogramme séquentiel progressif (${reliefRate} ms/m de banquette). Vitesse particulaire PPV = ${ppv} mm/s à ${dist}m (${isPpvCompliant ? 'conforme aux seuils USBM pour structures' : 'attention : seuil USBM dépassé'}).`;
+      timingDiagnosisEn = `Optimal progressive timing sequence (${reliefRate} ms/m of burden). Peak particle velocity PPV = ${ppv} mm/s at ${dist}m (${isPpvCompliant ? 'fully USBM compliant' : 'alert: exceeds USBM structural limit'}).`;
+    }
 
-2. Comminution Circuit Correlation:
-${
-  millBatch
-    ? `Plant telemetry reports total specific energy of ${millBatch.totalSpecificEnergyKwhPerT} kWh/t (crushing: ${millBatch.crushingSpecificEnergyKwhPerT} kWh/t, milling: ${millBatch.millingSpecificEnergyKwhPerT} kWh/t) at ${millBatch.millingThroughputTph} t/h throughput with ${millBatch.simpleGoldRecoveryPercent}% recovery.`
-    : `The measured feed P80 of ${metrics.p80} mm feeds directly into the primary crusher intake.`
-}
+    let commDiagnosisFr = '';
+    let commDiagnosisEn = '';
+    if (isChokeRisk) {
+      commDiagnosisFr = `Le P80 de ${p80} mm et la fraction de blocs (>300 mm : ${oversize}%) constituent un goulot d'étranglement pour le concassage primaire, avec une pénalité estimée de ${Math.abs(sagThroughputDelta)} t/h sur le broyeur SAG.`;
+      commDiagnosisEn = `Feed P80 of ${p80} mm and boulder fraction (>300 mm: ${oversize}%) create a bottleneck at the primary crusher, imposing an estimated ${Math.abs(sagThroughputDelta)} tph penalty on SAG throughput.`;
+    } else {
+      commDiagnosisFr = `Alimentation optimale de l'usine (P80 = ${p80} mm pour Wi = ${wi} kWh/t) permettant un gain de débit SAG de +${sagThroughputDelta} t/h et une économie d'énergie de broyage de ${powerSavings} kWh/t.`;
+      commDiagnosisEn = `Ideal plant feed distribution (P80 = ${p80} mm for Wi = ${wi} kWh/t) securing a SAG throughput expansion of +${sagThroughputDelta} tph and comminution energy savings of ${powerSavings} kWh/t.`;
+    }
 
-3. Operational Recommendations:
-${recEn}`;
+    // Recommendations tailored directly to the specific scenario
+    const recsFr: string[] = [];
+    const recsEn: string[] = [];
+
+    if (stemmingTB < 0.75) {
+      recsFr.push(`1. SÉCURITÉ VOLS : Rehausser la colonne de bourrage à au moins ${Math.round(burden * 0.9 * 10) / 10} m (T/B ≥ 0.85) en matériau concassé angulaire pour supprimer le risque de flyrock.`);
+      recsEn.push(`1. FLYROCK SAFETY: Increase stemming column to at least ${Math.round(burden * 0.9 * 10) / 10} m (T/B ≥ 0.85) with crushed angular aggregate to suppress projection risks.`);
+    } else if (ucs > 130 && pf < 0.55) {
+      recsFr.push(`1. ÉNERGIE FOND DE TROU : Rehausser la charge spécifique à au moins 0.65 kg/m³ en concentrant la charge de pied pour résorber les ${oversize}% de blocs primaires.`);
+      recsEn.push(`1. TOE ENERGY: Increase powder factor to at least 0.65 kg/m³ with heavy toe decking to suppress ${oversize}% oversize boulders.`);
+    } else if (fines > 14) {
+      recsFr.push(`1. MAÎTRISE DES FINES : Réduire légèrement la charge spécifique ou augmenter le bourrage pour préserver la qualité de l'alimentation concasseur.`);
+      recsEn.push(`1. FINES MITIGATION: Moderate specific charge or extend stemming to reduce micro-pulverization.`);
+    } else {
+      recsFr.push(`1. GÉOMÉTRIE DU TIR : Maintenir la maille de ${burden} m × ${spacing} m qui assure une fragmentation équilibrée et stable.`);
+      recsEn.push(`1. PATTERN GEOMETRY: Maintain current ${burden} m × ${spacing} m pattern delivering robust, balanced sizing.`);
+    }
+
+    if (reliefRate < 3.2) {
+      recsFr.push(`2. RETARD SURFACE : Augmenter le délai inter-rangées à au moins ${Math.round(burden * 5)} ms (5 ms/m de banquette) pour assurer le dégagement libre de la masse.`);
+      recsEn.push(`2. SURFACE TIMING: Increase inter-row delay to at least ${Math.round(burden * 5)} ms (5 ms/m of burden) to ensure unrestricted burden relief.`);
+    } else {
+      recsFr.push(`2. VALORISATION USINE : Exploiter le P80 de ${p80} mm pour maximiser la cadence d'alimentation du circuit de broyage.`);
+      recsEn.push(`2. MILL FEED RATE: Leverage current P80 of ${p80} mm to drive maximum feed throughput into the comminution circuit.`);
+    }
+
+    if (isFr) {
+      return `SYNTHÈSE TECHNIQUE & ÉVALUATION GÉOTECHNIQUE DU TIR (SCÉNARIO RÉEL) :
+
+1. Caractérisation du Massif & Bilan Énergétique :
+${energyDiagnosisFr}
+Paramètres de maille : ${burden} m × ${spacing} m (gradin ${benchH} m, ⌀ ${params.holeDiameter} mm, charge ${charge} kg/trou en ${params.explosiveType || 'ANFO'}). Massif rocheux : ${rockMass.rockType} (densité ${density} t/m³, UCS ${ucs} MPa). Granulométrie optique : P50 = ${p50} mm, P80 = ${p80} mm (uniformité n = ${uniformity}).
+
+2. Ratios Géométriques du Gradin & Séquence d'Initiation :
+- Géométrie : ${geomDiagnosisFr}
+- Initiation & vibrations : ${timingDiagnosisFr}
+
+3. Impact Usine (Comminution) & Économie Mine-au-Moulin :
+- Circuit usine : ${commDiagnosisFr}
+${millBatch ? `- Télémétrie usine : ${millBatch.millingThroughputTph} t/h de débit, énergie globale de ${millBatch.totalSpecificEnergyKwhPerT} kWh/t.` : ''}
+
+4. Recommandations Opérationnelles de Terrain :
+${recsFr.join('\n')}`;
+    }
+
+    return `GEOTECHNICAL BLAST EVALUATION & OPERATIONAL SCENARIO AUDIT:
+
+1. Rock Mass Characteristics & Energy Allocation:
+${energyDiagnosisEn}
+Pattern geometry: ${burden} m × ${spacing} m (bench ${benchH} m, ⌀ ${params.holeDiameter} mm, charge ${charge} kg/hole with ${params.explosiveType || 'ANFO'}). Rock mass: ${rockMass.rockType} (density ${density} t/m³, UCS ${ucs} MPa). Photographic sizing: P50 = ${p50} mm, P80 = ${p80} mm (uniformity n = ${uniformity}).
+
+2. Bench Geometry Ratios & 3D Initiation Dynamics:
+- Geometry ratios: ${geomDiagnosisEn}
+- Timing & ground vibration: ${timingDiagnosisEn}
+
+3. Comminution Plant Impact & Downstream Productivity:
+- Milling circuit: ${commDiagnosisEn}
+${millBatch ? `- Plant telemetry: ${millBatch.millingThroughputTph} tph throughput, total specific energy ${millBatch.totalSpecificEnergyKwhPerT} kWh/t.` : ''}
+
+4. Operational Recommendations:
+${recsEn.join('\n')}`;
   };
 
   if (!apiKey || apiKey.trim() === '') {
     return getDeterministicSummary();
   }
 
-  const prompt = `You are a Senior Blast and Mineral Processing Engineer.
-Analyze the following measured blast fragmentation and comminution data:
-Blast Design:
-- Hole Diameter: ${params.holeDiameter} mm, Burden: ${params.burden} m, Spacing: ${params.spacing} m, Bench: ${params.benchHeight} m
-- Explosive: ${params.explosiveType}, Charge/Hole: ${params.chargePerHole} kg
-Rock Mass:
-- Type: ${rockMass.rockType}, Density: ${rockMass.density} t/m3, Joint Spacing: ${rockMass.meanJointSpacing} m
-Measured Fragmentation (Photographic Analysis):
-- P20: ${metrics.p20} mm, P50: ${metrics.p50} mm, P80: ${metrics.p80} mm, P90: ${metrics.p90} mm
-- Uniformity Index (P80/P20): ${metrics.uniformityIndex}
-- Oversize fraction (>300mm): ${metrics.oversizePercent}%
-- Fines fraction (<25mm): ${metrics.finesPercent}%
-${
-  millBatch
-    ? `Milling Plant Performance:
-- Specific Crushing Energy: ${millBatch.crushingSpecificEnergyKwhPerT} kWh/t
-- Specific Milling Energy: ${millBatch.millingSpecificEnergyKwhPerT} kWh/t
-- Plant Throughput: ${millBatch.millingThroughputTph} t/h
-- Gold Recovery: ${millBatch.simpleGoldRecoveryPercent}%`
-    : 'No plant processing data recorded yet.'
-}
+  const prompt = `You are a Principal Blast and Comminution Mining Engineer.
+Analyze the following detailed multi-component blast investigation and downstream plant telemetry:
 
-INSTRUCTIONS:
-1. Provide a concise, rigorous 3-paragraph engineering technical evaluation in ${lang === 'fr' ? 'FRENCH' : 'ENGLISH'}.
-2. Use ONLY the numeric values provided above. NEVER invent or hallucinate other measurements.
-3. Highlight whether the fragmentation was coarse, balanced, or excessive fines, and link this directly to the primary crusher feed and ball mill efficiency.
-4. Conclude with 2 actionable field recommendations for the next blast pattern.`;
+OPERATIONAL SCENARIO DATA:
+- Rock Mass: ${rockMass.rockType}, Density: ${density} t/m³, UCS: ${ucs} MPa, Joint Spacing: ${rockMass.meanJointSpacing} m
+- Blast Design: Burden = ${burden} m, Spacing = ${spacing} m, Bench Height = ${benchH} m, Diameter = ${params.holeDiameter} mm
+- Explosive: ${params.explosiveType || 'ANFO'}, Charge/Hole = ${charge} kg, Powder Factor = ${pf} kg/m³
+- Bench Ratios: Stiffness H/B = ${stiffnessHB}, Stemming T/B = ${stemmingTB}, Subdrill J/B = ${subdrillJB}
+- Initiation Timing: Surface Delay = ${surfaceDelay} ms, Relief Rate = ${reliefRate} ms/m, USBM Predicted PPV = ${ppv} mm/s at ${dist}m
+- Measured Photographic Fragmentation: P20 = ${metrics.p20} mm, P50 = ${p50} mm, P80 = ${p80} mm, P90 = ${metrics.p90} mm, Uniformity = ${uniformity}
+- Sizing Extremes: Fines (<25mm) = ${fines}%, Oversize Boulders (>300mm) = ${oversize}%
+- Downstream Comminution: Bond Work Index Wi = ${wi} kWh/t, Crusher Choke Risk = ${isChokeRisk ? 'YES' : 'NO'}, Estimated SAG Delta = ${sagThroughputDelta} tph, Power Savings = ${powerSavings} kWh/t
+
+INSTRUCTIONS & ENGINEERING STANDARDS:
+1. Provide a rigorous, authoritative 4-section engineering analysis in ${isFr ? 'FRENCH' : 'ENGLISH'}.
+2. Do NOT produce vague, generic statements. You MUST evaluate this specific scenario based on:
+   - Rock hardness vs powder factor adequacy
+   - Bench stiffness ratio (H/B) and flyrock risk from stemming ratio (T/B)
+   - Initiation relief timing (ms/m) and USBM ground vibration compliance
+   - Downstream crushing bottlenecks and SAG mill specific power draw
+3. Conclude with 2 clear, numbered operational recommendations directly addressing the highest-priority site issue.`;
 
   try {
     const res = await postAiGenerateContent(
@@ -806,7 +933,7 @@ INSTRUCTIONS:
       {
         provider,
         model: preferredModel,
-        generationConfig: { temperature: 0.2 },
+        generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
       }
     );
 

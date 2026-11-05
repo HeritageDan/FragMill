@@ -786,7 +786,7 @@ function renderNarrativeSection(
     } else if (line.startsWith('- ') || line.startsWith('• ') || line.startsWith('* ') || /^[\uE000-\uF8FF]\s*/.test(line)) {
       const bulletText = line.replace(/^(-|\u2022|\*|[\uE000-\uF8FF])\s*/, '');
       const split = doc.splitTextToSize(bulletText, contentWidth - 8);
-      const neededH = split.length * 4.5;
+      const neededH = split.length * 4.8;
       if (cursorY + neededH > maxY) {
         doc.addPage();
         if (isDraft) {
@@ -796,11 +796,11 @@ function renderNarrativeSection(
       }
       doc.setFillColor(prR, prG, prB);
       doc.circle(margin + 2, cursorY - 1, 0.8, 'F');
-      doc.text(split, margin + 6, cursorY);
+      doc.text(split, margin + 6, cursorY, { align: 'justify', maxWidth: contentWidth - 8 });
       cursorY += neededH;
     } else {
       const split = doc.splitTextToSize(line, contentWidth);
-      const neededH = split.length * 4.5;
+      const neededH = split.length * 4.8;
       if (cursorY + neededH > maxY) {
         doc.addPage();
         if (isDraft) {
@@ -808,12 +808,12 @@ function renderNarrativeSection(
         }
         cursorY = 28;
       }
-      doc.text(split, margin, cursorY);
+      doc.text(split, margin, cursorY, { align: 'justify', maxWidth: contentWidth });
       cursorY += neededH;
     }
   }
 
-  return cursorY + 8;
+  return cursorY + 8.5;
 }
 
 function drawSummaryTableHeader(
@@ -915,7 +915,7 @@ function renderSummaryTableSection(
     cursorY += rowH;
   });
 
-  return cursorY + 8;
+  return cursorY + 8.5; // Skip a blank line after the table before starting a new paragraph
 }
 
 function renderAnalysisDetailSection(
@@ -1011,7 +1011,7 @@ function renderAnalysisDetailSection(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     const splitObs = doc.splitTextToSize(detail.observations, contentWidth - 8);
-    const boxHeight = Math.max(16, 7 + splitObs.length * 3.6 + 2);
+    const boxHeight = Math.max(16, 8 + splitObs.length * 4.2 + 2);
 
     doc.setFillColor(255, 255, 255);
     doc.setDrawColor(226, 232, 240);
@@ -1025,11 +1025,11 @@ function renderAnalysisDetailSection(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
-    doc.text(splitObs, margin + 3, cursorY + 9);
+    doc.text(splitObs, margin + 3, cursorY + 9, { align: 'justify', maxWidth: contentWidth - 8 });
     cursorY += boxHeight + 4;
   }
 
-  return cursorY + 8;
+  return cursorY + 8.5;
 }
 
 function renderGradingCurvesSection(
@@ -1199,7 +1199,7 @@ function renderConformitySection(
     cursorY += rowH;
   });
 
-  return cursorY + 8;
+  return cursorY + 8.5; // Skip a blank line after the table before starting a new paragraph
 }
 
 function renderUsageNoteSection(
@@ -1230,16 +1230,16 @@ function renderUsageNoteSection(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   const split = doc.splitTextToSize(text, contentWidth - 8);
-  const boxH = Math.max(30, 8 + split.length * 4);
+  const boxH = Math.max(30, 10 + split.length * 4.8);
 
   doc.setFillColor(254, 252, 232);
   doc.setDrawColor(254, 240, 138);
   doc.roundedRect(margin, cursorY, contentWidth, boxH, 1.5, 1.5, 'FD');
 
   doc.setTextColor(113, 63, 18);
-  doc.text(split, margin + 4, cursorY + 6.5);
+  doc.text(split, margin + 4, cursorY + 6.5, { align: 'justify', maxWidth: contentWidth - 8 });
 
-  return cursorY + boxH + 8;
+  return cursorY + boxH + 8.5;
 }
 
 function renderSignatureBlockSection(
@@ -1391,15 +1391,15 @@ function renderDataQualityNotesSection(
   doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
   const split = doc.splitTextToSize(notes, contentWidth - 8);
-  const boxH = Math.max(24, 8 + split.length * 4);
+  const boxH = Math.max(24, 10 + split.length * 4.8);
 
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(203, 213, 225);
   doc.roundedRect(margin, cursorY, contentWidth, boxH, 1.5, 1.5, 'FD');
 
-  doc.text(split, margin + 4, cursorY + 6.5);
+  doc.text(split, margin + 4, cursorY + 6.5, { align: 'justify', maxWidth: contentWidth - 8 });
 
-  return cursorY + boxH + 8;
+  return cursorY + boxH + 8.5;
 }
 
 // -------------------------------------------------------------------------

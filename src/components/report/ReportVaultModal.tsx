@@ -46,28 +46,9 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
     isGeneratingPdf,
   } = useReportVault();
 
-  // Selected sections for download (defaults to staged for this blast, or default sections if none staged)
+  // Selected sections for download: default to all available sections for a complete combined dossier
   const [selectedKeys, setSelectedKeys] = useState<ReportSectionKey[]>(() => {
-    const staged = availableKeys.filter(
-      (k) =>
-        !!vaultState[k] &&
-        (vaultState[k]?.blastId === blast.id || vaultState[k]?.blastId === blast.blastId)
-    );
-    if (staged.length > 0) return staged;
-    const defaults: ReportSectionKey[] = (['blast', 'kuzram'] as ReportSectionKey[]).filter(
-      (k): k is ReportSectionKey => availableKeys.includes(k)
-    );
-    if (blast?.groundTruth?.sieveData?.length && blast.groundTruth.sieveData.length >= 3) {
-      if (availableKeys.includes('validation')) defaults.push('validation');
-    }
-    if (blast?.millBatch) {
-      if (availableKeys.includes('minetomill')) defaults.push('minetomill');
-      if (availableKeys.includes('comminution')) defaults.push('comminution');
-    }
-    if (blast?.droneSurvey) {
-      if (availableKeys.includes('drone3d')) defaults.push('drone3d');
-    }
-    return defaults;
+    return availableKeys;
   });
 
   if (!isOpen) return null;
@@ -79,6 +60,7 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
   };
 
   const handleSelectAll = () => {
+    stageAllAvailable(project, site, blast);
     setSelectedKeys(availableKeys);
   };
 
@@ -93,6 +75,7 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
 
   const handleDownload = async () => {
     if (selectedKeys.length === 0) return;
+    stageAllAvailable(project, site, blast);
     await downloadCombinedReport(project, site, blast, lang, selectedKeys);
     onClose();
   };

@@ -122,7 +122,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
         : (s.geminiApiKey || s.anthropicApiKey || '');
       setIsAiActive(Boolean(isEnabled && key.trim()));
       setAiProviderName(isClaude ? 'Claude' : 'Gemini');
-    }).catch(() => {});
+    }).catch(() => { });
   }, [settings]);
 
   const handleGenerateAiCommentary = async () => {
@@ -133,8 +133,8 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
       const isClaude = (appSettings.aiProvider || 'anthropic') === 'anthropic';
       const apiKey = isEnabled
         ? (isClaude
-            ? (appSettings.anthropicApiKey || appSettings.geminiApiKey)
-            : (appSettings.geminiApiKey || appSettings.anthropicApiKey))
+          ? (appSettings.anthropicApiKey || appSettings.geminiApiKey)
+          : (appSettings.geminiApiKey || appSettings.anthropicApiKey))
         : undefined;
       const model = isClaude ? appSettings.claudeModel : appSettings.geminiModelFlash;
       const metrics = activeRun?.metrics || {
@@ -150,6 +150,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
         oversizePercent: 7.2,
       } as any;
 
+      const bState = getBlastState(blast);
       const commentary = await generateGeminiReportText(
         metrics,
         blast.parameters,
@@ -158,7 +159,40 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
         isFrench ? 'fr' : 'en',
         apiKey,
         model,
-        appSettings.aiProvider || 'anthropic'
+        appSettings.aiProvider || 'anthropic',
+        {
+          timing: {
+            surfaceDelayMs: bState.timing.surfaceDelayMs,
+            inHoleDelayMs: bState.timing.inHoleDelayMs,
+            maxChargePerDelayKg: bState.timing.maxChargePerDelayKg,
+            predictedPPVMmPerS: bState.timing.predictedPPVMmPerS,
+            distanceToStructureM: bState.timing.distanceToStructureM,
+          },
+          geometryRatios: {
+            stiffnessRatioHB: Number((blast.parameters.benchHeight / (blast.parameters.burden || 1)).toFixed(2)),
+            stemmingRatioTB: Number(((blast.parameters.stemmingLength || blast.parameters.burden * 0.9) / (blast.parameters.burden || 1)).toFixed(2)),
+            subdrillRatioJB: Number(((blast.parameters.subdrill || blast.parameters.burden * 0.3) / (blast.parameters.burden || 1)).toFixed(2)),
+            powderFactorKgM3: Number((blast.parameters.chargePerHole / ((blast.parameters.burden || 1) * (blast.parameters.spacing || 1) * (blast.parameters.benchHeight || 1))).toFixed(2)),
+          },
+          comminution: {
+            bondWorkIndex: (blast as any).comminution?.bondWorkIndexKWhPerT || (bState.comminution as any).bondWorkIndexKWhPerT || 14.5,
+            dropWeightAxb: (blast as any).comminution?.rockAxb || (bState.comminution as any).rockAxb || 45,
+            totalSpecificEnergyKwhPerT: bState.comminution.totalSpecificEnergyKwhPerT,
+            achievableThroughputTPH: bState.comminution.achievableThroughputTPH,
+            crusherChokeRisk: (metrics.oversizePercent || 0) > 8,
+          },
+          economics: {
+            totalCostPerTonUSD: bState.economics.totalCostPerTonUSD,
+            blastingCostUSD: bState.economics.costs.find(c => c.nameEn?.toLowerCase().includes('explosives') || c.nameEn?.toLowerCase().includes('blast'))?.costPerTonUSD ?? 0.85,
+            millingCostUSD: bState.economics.costs.find(c => c.nameEn?.toLowerCase().includes('milling') || c.nameEn?.toLowerCase().includes('broyage'))?.costPerTonUSD ?? 3.40,
+            optimalP80Mm: bState.economics.optimalP80Mm,
+          },
+          kuzram: {
+            predictedX50Mm: bState.kuzRam.meanSizeX50Mm,
+            predictedP80Mm: bState.kuzRam.p80Mm,
+            uniformityIndexN: bState.kuzRam.uniformityIndexN,
+          },
+        }
       );
 
       setAiCommentary(commentary);
@@ -197,8 +231,8 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
       const isClaude = (appSettings.aiProvider || 'anthropic') === 'anthropic';
       const apiKey = isEnabled
         ? (isClaude
-            ? (appSettings.anthropicApiKey || appSettings.geminiApiKey)
-            : (appSettings.geminiApiKey || appSettings.anthropicApiKey))
+          ? (appSettings.anthropicApiKey || appSettings.geminiApiKey)
+          : (appSettings.geminiApiKey || appSettings.anthropicApiKey))
         : undefined;
       const model = isClaude ? appSettings.claudeModel : appSettings.geminiModelFlash;
 
@@ -322,42 +356,42 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
 
   const compositeRun: SegmentationRun | null = isMultiImageComposite && blastState.optical.fragments
     ? {
-        id: 'composite-run',
-        imageId: 'composite',
-        engine: 'classical',
-        timestamp: Date.now(),
-        parameters: DEFAULT_CLASSICAL_PARAMS as any,
-        fragments: blastState.optical.fragments,
-        metrics: {
-          sizeDefinition: 'min_feret',
-          fragmentCount: blastState.optical.fragmentCount,
-          unresolvedFinesPercent: 3.1,
-          rawCurve: blastState.optical.curve,
-          correctedCurve: blastState.optical.curve,
-          standardSievePassing: [],
-          p10: blastState.optical.p10Mm,
-          p20: blastState.optical.p20Mm,
-          p50: blastState.optical.p50Mm,
-          p80: blastState.optical.p80Mm,
-          p90: blastState.optical.p90Mm,
-          pMax: blastState.optical.topSizeMm,
-          meanSize: blastState.optical.p50Mm,
-          uniformityIndex: blastState.optical.uniformityIndex,
-          oversizePercent: blastState.optical.oversizePercent,
-          finesPercent: blastState.optical.finesPercent,
-          rosinRammlerFit: blastState.optical.rosinRammlerFit as any,
-          swebrecFit: blastState.optical.swebrecFit as any,
-          ggsFit: { k: blastState.optical.topSizeMm, m: 0.8, r2: 0.9, rmse: 5 },
-          bestFitModel: 'swebrec',
-          bootstrapCI: {
-            p10: [Math.round(blastState.optical.p10Mm * 0.88), Math.round(blastState.optical.p10Mm * 1.12)],
-            p20: [Math.round(blastState.optical.p20Mm * 0.90), Math.round(blastState.optical.p20Mm * 1.10)],
-            p50: [Math.round(blastState.optical.p50Mm * 0.92), Math.round(blastState.optical.p50Mm * 1.08)],
-            p80: [Math.round(blastState.optical.p80Mm * 0.92), Math.round(blastState.optical.p80Mm * 1.08)],
-            p90: [Math.round(blastState.optical.p90Mm * 0.90), Math.round(blastState.optical.p90Mm * 1.10)],
-          },
+      id: 'composite-run',
+      imageId: 'composite',
+      engine: 'classical',
+      timestamp: Date.now(),
+      parameters: DEFAULT_CLASSICAL_PARAMS as any,
+      fragments: blastState.optical.fragments,
+      metrics: {
+        sizeDefinition: 'min_feret',
+        fragmentCount: blastState.optical.fragmentCount,
+        unresolvedFinesPercent: 3.1,
+        rawCurve: blastState.optical.curve,
+        correctedCurve: blastState.optical.curve,
+        standardSievePassing: [],
+        p10: blastState.optical.p10Mm,
+        p20: blastState.optical.p20Mm,
+        p50: blastState.optical.p50Mm,
+        p80: blastState.optical.p80Mm,
+        p90: blastState.optical.p90Mm,
+        pMax: blastState.optical.topSizeMm,
+        meanSize: blastState.optical.p50Mm,
+        uniformityIndex: blastState.optical.uniformityIndex,
+        oversizePercent: blastState.optical.oversizePercent,
+        finesPercent: blastState.optical.finesPercent,
+        rosinRammlerFit: blastState.optical.rosinRammlerFit as any,
+        swebrecFit: blastState.optical.swebrecFit as any,
+        ggsFit: { k: blastState.optical.topSizeMm, m: 0.8, r2: 0.9, rmse: 5 },
+        bestFitModel: 'swebrec',
+        bootstrapCI: {
+          p10: [Math.round(blastState.optical.p10Mm * 0.88), Math.round(blastState.optical.p10Mm * 1.12)],
+          p20: [Math.round(blastState.optical.p20Mm * 0.90), Math.round(blastState.optical.p20Mm * 1.10)],
+          p50: [Math.round(blastState.optical.p50Mm * 0.92), Math.round(blastState.optical.p50Mm * 1.08)],
+          p80: [Math.round(blastState.optical.p80Mm * 0.92), Math.round(blastState.optical.p80Mm * 1.08)],
+          p90: [Math.round(blastState.optical.p90Mm * 0.90), Math.round(blastState.optical.p90Mm * 1.10)],
         },
-      }
+      },
+    }
     : null;
 
   const activeRun = isCompositeSelected ? compositeRun : singleImageRun;
@@ -881,11 +915,10 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
 
               <button
                 onClick={handleLinkMillBatch}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow transition cursor-pointer ${
-                  blast.millBatch
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow transition cursor-pointer ${blast.millBatch
                     ? 'bg-purple-100 text-purple-900 border border-purple-300'
                     : 'bg-purple-600 hover:bg-purple-700 text-white'
-                }`}
+                  }`}
                 title={lang === 'fr' ? 'Lier ce tir au broyeur/usine pour le suivi Mine-to-Mill' : 'Link this blast to the processing plant for Mine-to-Mill tracking'}
               >
                 <Factory className="w-3.5 h-3.5" />
@@ -1130,11 +1163,10 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
               {/* Composite Multi-Image Card (Active when 2+ photos analyzed) */}
               {isMultiImageComposite && (
                 <div
-                  className={`relative group shrink-0 rounded-xl p-2 flex flex-col justify-between w-36 h-18 transition cursor-pointer border-2 ${
-                    isCompositeSelected
+                  className={`relative group shrink-0 rounded-xl p-2 flex flex-col justify-between w-36 h-18 transition cursor-pointer border-2 ${isCompositeSelected
                       ? 'border-indigo-600 bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 text-white shadow-md ring-2 ring-indigo-400/40'
                       : 'border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-950 opacity-90 hover:opacity-100'
-                  }`}
+                    }`}
                   onClick={() => setSelectedImageId('composite')}
                   title={isFrench ? 'Voir la synthèse granulométrique combinée de toutes les photos du tir' : 'View combined composite blast sizing from all analyzed photos'}
                 >
@@ -1156,11 +1188,10 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
                 return (
                   <div
                     key={img.id}
-                    className={`relative group shrink-0 rounded-xl overflow-hidden border-2 transition cursor-pointer ${
-                      isSelected
+                    className={`relative group shrink-0 rounded-xl overflow-hidden border-2 transition cursor-pointer ${isSelected
                         ? 'border-blue-600 ring-2 ring-blue-400/30 shadow-md'
                         : 'border-slate-200 hover:border-slate-300 opacity-80 hover:opacity-100'
-                    }`}
+                      }`}
                     onClick={() => setSelectedImageId(img.id)}
                   >
                     <img
@@ -1256,714 +1287,706 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
 
           {/* Main Grid: Left Image & Segmentation, Right Parameters & Curves */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column (7 cols): Images, Engines, and Step Previews */}
-          <div className="lg:col-span-7 space-y-4">
-            {/* Warning if Artificial Graphic / Logo Detected */}
-            {selectedImage?.qualityCheck?.isArtificialGraphic && (
-              <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5 shadow-xs">
-                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <div className="font-bold text-amber-900 text-sm">
-                    {t('nonGeologicalWarningTitle', lang)}
-                  </div>
-                  <p className="text-amber-800 leading-relaxed">
-                    {t('nonGeologicalWarningDesc', lang)}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Main Visual Viewport / Multi-Image Composite Synthesis Panel */}
-            {isCompositeSelected ? (
-              <div className="space-y-4">
-                {/* Composite Multi-Image Header Banner */}
-                <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 border-2 border-indigo-500/60 rounded-2xl p-5 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-start gap-3.5">
-                    <div className="p-3 bg-indigo-500/20 text-indigo-300 rounded-2xl border border-indigo-500/30 shrink-0 shadow-inner">
-                      <Layers className="w-6 h-6 text-indigo-400" />
+            {/* Left Column (7 cols): Images, Engines, and Step Previews */}
+            <div className="lg:col-span-7 space-y-4">
+              {/* Warning if Artificial Graphic / Logo Detected */}
+              {selectedImage?.qualityCheck?.isArtificialGraphic && (
+                <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5 shadow-xs">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <div className="font-bold text-amber-900 text-sm">
+                      {t('nonGeologicalWarningTitle', lang)}
                     </div>
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-black text-white">
-                          {isFrench ? 'Synthèse Spatiale Multi-Photos de la Volée' : 'Multi-Photo Spatial Blast Synthesis'}
-                        </h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          {blastState.optical.analyzedImagesCount} {isFrench ? 'Photos Réconciliées' : 'Photos Pooled'}
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                          {blastState.optical.fragmentCount} {isFrench ? 'Roches Totales' : 'Total Rocks'}
-                        </span>
+                    <p className="text-amber-800 leading-relaxed">
+                      {t('nonGeologicalWarningDesc', lang)}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Main Visual Viewport / Multi-Image Composite Synthesis Panel */}
+              {isCompositeSelected ? (
+                <div className="space-y-4">
+                  {/* Composite Multi-Image Header Banner */}
+                  <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 border-2 border-indigo-500/60 rounded-2xl p-5 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3.5">
+                      <div className="p-3 bg-indigo-500/20 text-indigo-300 rounded-2xl border border-indigo-500/30 shrink-0 shadow-inner">
+                        <Layers className="w-6 h-6 text-indigo-400" />
                       </div>
-                      <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-                        {isFrench
-                          ? 'Cette analyse fusionne les fragments mesurés sur les différents clichés du tir (pied de tir, corps central, crête). Elle élimine le biais de ségrégation locale et produit la courbe granulométrique représentative de la totalité de la volée pour l’usine.'
-                          : 'This analysis pools all measured rock fragments across all muckpile photos (toe, central swell, crest), eliminating local segregation bias and delivering an unbiased representative feed curve for the plant.'}
-                      </p>
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-base font-black text-white">
+                            {isFrench ? 'Synthèse Spatiale Multi-Photos de la Volée' : 'Multi-Photo Spatial Blast Synthesis'}
+                          </h3>
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            {blastState.optical.analyzedImagesCount} {isFrench ? 'Photos Réconciliées' : 'Photos Pooled'}
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                            {blastState.optical.fragmentCount} {isFrench ? 'Roches Totales' : 'Total Rocks'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                          {isFrench
+                            ? 'Cette analyse fusionne les fragments mesurés sur les différents clichés du tir (pied de tir, corps central, crête). Elle élimine le biais de ségrégation locale et produit la courbe granulométrique représentative de la totalité de la volée pour l’usine.'
+                            : 'This analysis pools all measured rock fragments across all muckpile photos (toe, central swell, crest), eliminating local segregation bias and delivering an unbiased representative feed curve for the plant.'}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Spatial Multi-Photo Photo Grid */}
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                      <Grid className="w-4 h-4 text-indigo-600" />
-                      <span>{isFrench ? 'Répartition Spatiale par Photo & Zones du Gradin' : 'Spatial Distribution by Photo & Muckpile Zone'}</span>
-                    </h4>
-                    <span className="text-[11px] text-slate-500">
-                      {isFrench ? 'Cliquez sur une photo pour calibrer son échelle ou modifier sa segmentation' : 'Click any photo to calibrate scale or edit segmentation'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {blastState.optical.perImageBreakdown?.map((pb, pIdx) => {
-                      const imgMatch = blast.images.find((i) => i.id === pb.imageId);
-                      return (
-                        <div
-                          key={pb.imageId}
-                          onClick={() => setSelectedImageId(pb.imageId)}
-                          className="p-3 rounded-xl border border-slate-200 hover:border-indigo-500 hover:shadow-md transition cursor-pointer bg-slate-50 hover:bg-white flex flex-col justify-between group"
-                        >
-                          <div className="flex items-center gap-3">
-                            {imgMatch && (
-                              <img
-                                src={imgMatch.dataUrl}
-                                alt={pb.filename}
-                                className="w-20 h-14 object-cover rounded-lg bg-slate-900 border border-slate-300 shrink-0 shadow-xs"
-                              />
-                            )}
-                            <div className="min-w-0">
-                              <div className="font-extrabold text-xs text-slate-900 truncate group-hover:text-indigo-600 transition">
-                                #{pIdx + 1} {pb.filename}
-                              </div>
-                              <div className="text-[11px] font-semibold text-blue-700 mt-0.5">
-                                Zone: {pb.zone}
-                              </div>
-                              <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                                {pb.fragmentCount} {isFrench ? 'roches mesurées' : 'measured rocks'}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="mt-3 pt-2 border-t border-slate-200/80 flex items-center justify-between text-[11px] font-mono">
-                            <span className="text-slate-600">P50: <strong>{pb.p50Mm}mm</strong></span>
-                            <span className="text-blue-900 font-bold">P80: <strong>{pb.p80Mm}mm</strong></span>
-                            <span className={pb.oversizePercent > 10 ? 'text-amber-700 font-bold' : 'text-slate-500'}>
-                              &gt;300mm: {pb.oversizePercent}%
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Spatial Muckpile Comparison Table */}
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    {isFrench ? 'Tableau Comparatif des Zones du Tas d’Abattage' : 'Muckpile Spatial Zones Comparison Table'}
-                  </h4>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                        <tr>
-                          <th className="py-2 px-3">{isFrench ? 'Photo / Cliché' : 'Photo / File'}</th>
-                          <th className="py-2 px-3">{isFrench ? 'Zone du Gradin' : 'Bench Zone'}</th>
-                          <th className="py-2 px-3">{isFrench ? 'Échelle Optique' : 'Resolution'}</th>
-                          <th className="py-2 px-3">{isFrench ? 'Roches' : 'Rocks'}</th>
-                          <th className="py-2 px-3">P50 (mm)</th>
-                          <th className="py-2 px-3">P80 (mm)</th>
-                          <th className="py-2 px-3">{isFrench ? 'Gros Blocs (>300mm)' : 'Oversize (>300mm)'}</th>
-                          <th className="py-2 px-3">{isFrench ? 'Fines (<25mm)' : 'Fines (<25mm)'}</th>
-                          <th className="py-2 px-3 text-right">{isFrench ? 'Action' : 'Action'}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                        {blastState.optical.perImageBreakdown?.map((pb, pIdx) => {
-                          const imgMatch = blast.images.find((i) => i.id === pb.imageId);
-                          return (
-                            <tr key={pb.imageId} className="hover:bg-slate-50/80 transition">
-                              <td className="py-2 px-3 font-bold text-slate-900 font-sans">
-                                #{pIdx + 1} {pb.filename}
-                              </td>
-                              <td className="py-2 px-3 text-blue-700 font-sans font-semibold">
-                                {pb.zone}
-                              </td>
-                              <td className="py-2 px-3 text-slate-600">
-                                {imgMatch?.calibration?.pxPerMm ? `${imgMatch.calibration.pxPerMm.toFixed(3)} px/mm` : '0.400 px/mm'}
-                              </td>
-                              <td className="py-2 px-3 font-bold text-slate-800">
-                                {pb.fragmentCount}
-                              </td>
-                              <td className="py-2 px-3 text-slate-700">
-                                {pb.p50Mm} mm
-                              </td>
-                              <td className="py-2 px-3 font-extrabold text-blue-900">
-                                {pb.p80Mm} mm
-                              </td>
-                              <td className="py-2 px-3">
-                                <span className={pb.oversizePercent > 10 ? 'text-amber-700 font-bold' : 'text-slate-600'}>
-                                  {pb.oversizePercent}%
-                                </span>
-                              </td>
-                              <td className="py-2 px-3 text-slate-600">
-                                {pb.finesPercent}%
-                              </td>
-                              <td className="py-2 px-3 text-right font-sans">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedImageId(pb.imageId)}
-                                  className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-xs transition cursor-pointer"
-                                >
-                                  {isFrench ? 'Inspecter' : 'Inspect'}
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Switch back to composite banner if 2+ images analyzed */}
-                {isMultiImageComposite && (
-                  <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between text-xs text-indigo-950 shadow-2xs">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
-                      <span>
-                        {isFrench
-                          ? `Inspection de la photo #${blast.images.findIndex((i) => i.id === selectedImage?.id) + 1} (${selectedImage?.filename || ''})`
-                          : `Inspecting individual photo #${blast.images.findIndex((i) => i.id === selectedImage?.id) + 1} (${selectedImage?.filename || ''})`}
+                  {/* Spatial Multi-Photo Photo Grid */}
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                        <Grid className="w-4 h-4 text-indigo-600" />
+                        <span>{isFrench ? 'Répartition Spatiale par Photo & Zones du Gradin' : 'Spatial Distribution by Photo & Muckpile Zone'}</span>
+                      </h4>
+                      <span className="text-[11px] text-slate-500">
+                        {isFrench ? 'Cliquez sur une photo pour calibrer son échelle ou modifier sa segmentation' : 'Click any photo to calibrate scale or edit segmentation'}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedImageId('composite')}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-                    >
-                      <Layers className="w-3.5 h-3.5" />
-                      <span>{isFrench ? 'Afficher la Synthèse Globale du Tir' : 'Switch to Combined Blast Composite'}</span>
-                    </button>
-                  </div>
-                )}
 
-                {/* Interactive Scale Calibration & ROI Crop Tool Bar */}
-                {selectedImage && (
-                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {/* 1. Scale Calibration Button */}
-                      <button
-                        type="button"
-                        onClick={() => setShowScaleModal(true)}
-                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-                        title={isFrench ? 'Définir l’échelle avec un objet témoin (stylo, pièce, mire)' : 'Calibrate reference scale with known object (pen, coin, ruler)'}
-                      >
-                        <Ruler className="w-3.5 h-3.5 text-blue-600" />
-                        <span>{isFrench ? 'Échelle :' : 'Scale:'}</span>
-                        <span className="font-extrabold text-blue-900">
-                          {selectedImage.calibration?.pxPerMm
-                            ? `${selectedImage.calibration.pxPerMm.toFixed(3)} px/mm`
-                            : isFrench ? 'Non calibrée' : 'Uncalibrated'}
-                        </span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-600 text-white ml-0.5">
-                          {isFrench ? 'Ajuster' : 'Set'}
-                        </span>
-                      </button>
-
-                      {/* 2. ROI & Non-Rock Crop Button */}
-                      <button
-                        type="button"
-                        onClick={() => setShowRoiModal(true)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs border ${
-                          selectedImage.roiPolygon && selectedImage.roiPolygon.length >= 3
-                            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
-                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                        }`}
-                        title={isFrench ? 'Découper les zones sans roches (ciel, godet de pelle, pistes)' : 'Cut out non-rock areas (sky, excavator, trucks)'}
-                      >
-                        <Crop className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>{isFrench ? 'Zone de roches :' : 'Rock Area:'}</span>
-                        <span className="font-extrabold text-emerald-900">
-                          {selectedImage.roiPolygon && selectedImage.roiPolygon.length >= 3
-                            ? (isFrench ? 'Délimitée' : 'Active ROI')
-                            : (isFrench ? 'Pleine image' : 'Full image')}
-                        </span>
-                        {selectedImage.exclusionPolygons && selectedImage.exclusionPolygons.length > 0 && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">
-                            {selectedImage.exclusionPolygons.length} {isFrench ? 'exclus' : 'masked'}
-                          </span>
-                        )}
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white ml-0.5">
-                          {isFrench ? 'Recadrer' : 'Crop'}
-                        </span>
-                      </button>
-                    </div>
-
-                    {/* Manual Editor shortcut */}
-                    {activeRun && (
-                      <button
-                        type="button"
-                        onClick={() => setShowManualEditor(true)}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition border border-slate-200 cursor-pointer"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-slate-600" />
-                        <span>{isFrench ? 'Retouche Manuelle' : 'Manual Editor'}</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Engine Selector */}
-                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1 text-xs">
-                    <span className="font-bold text-slate-700 mr-1">{t('colEngine', lang)}:</span>
-                    <button
-                      onClick={() => handleExecuteEngine('classical')}
-                      disabled={isProcessing}
-                      className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${
-                        activeEngine === 'classical' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      <Sliders className="w-3.5 h-3.5" /> {t('engineA', lang)}
-                    </button>
-                    <button
-                      onClick={() => handleExecuteEngine('ai_sam')}
-                      disabled={isProcessing}
-                      className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${
-                        activeEngine === 'ai_sam' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      <Sparkles className="w-3.5 h-3.5" /> {t('engineB', lang)}
-                    </button>
-                    <button
-                      onClick={() => handleExecuteEngine('hybrid')}
-                      disabled={isProcessing}
-                      className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${
-                        activeEngine === 'hybrid' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      <Layers className="w-3.5 h-3.5" /> {t('engineC', lang)}
-                    </button>
-                  </div>
-
-                  {isProcessing && (
-                    <span className="text-xs font-bold text-blue-600 flex items-center gap-1 animate-pulse">
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> {progressMsg || t('processingMsg', lang)}
-                    </span>
-                  )}
-                </div>
-
-                {/* Main Visual Viewport with Intermediate Steps Tabs */}
-                <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-md">
-                  {/* Step Previews Tab Bar */}
-                  {activeRun?.stepPreviews && (
-                    <div className="flex flex-wrap items-center bg-slate-900 border-b border-slate-800 px-2 py-1.5 overflow-x-auto text-[11px] gap-1">
-                      {(['overlay', 'grayscale', 'clahe', 'threshold', 'distance', 'markers', 'depthMap'] as const).map((tab) => {
-                        const labelMap: Record<string, string> = {
-                          overlay: t('tabOverlay', lang),
-                          grayscale: t('tabGrayscale', lang),
-                          clahe: t('tabClahe', lang),
-                          threshold: t('tabThreshold', lang),
-                          distance: t('tabDistance', lang),
-                          markers: t('tabMarkers', lang),
-                          depthMap: t('tabDepthMap', lang),
-                        };
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {blastState.optical.perImageBreakdown?.map((pb, pIdx) => {
+                        const imgMatch = blast.images.find((i) => i.id === pb.imageId);
                         return (
-                          <button
-                            key={tab}
-                            onClick={() => setActiveStepTab(tab)}
-                            className={`px-2.5 py-1 rounded font-semibold capitalize whitespace-nowrap transition ${
-                              activeStepTab === tab ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'
-                            }`}
+                          <div
+                            key={pb.imageId}
+                            onClick={() => setSelectedImageId(pb.imageId)}
+                            className="p-3 rounded-xl border border-slate-200 hover:border-indigo-500 hover:shadow-md transition cursor-pointer bg-slate-50 hover:bg-white flex flex-col justify-between group"
                           >
-                            {labelMap[tab]}
-                          </button>
+                            <div className="flex items-center gap-3">
+                              {imgMatch && (
+                                <img
+                                  src={imgMatch.dataUrl}
+                                  alt={pb.filename}
+                                  className="w-20 h-14 object-cover rounded-lg bg-slate-900 border border-slate-300 shrink-0 shadow-xs"
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <div className="font-extrabold text-xs text-slate-900 truncate group-hover:text-indigo-600 transition">
+                                  #{pIdx + 1} {pb.filename}
+                                </div>
+                                <div className="text-[11px] font-semibold text-blue-700 mt-0.5">
+                                  Zone: {pb.zone}
+                                </div>
+                                <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                  {pb.fragmentCount} {isFrench ? 'roches mesurées' : 'measured rocks'}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-3 pt-2 border-t border-slate-200/80 flex items-center justify-between text-[11px] font-mono">
+                              <span className="text-slate-600">P50: <strong>{pb.p50Mm}mm</strong></span>
+                              <span className="text-blue-900 font-bold">P80: <strong>{pb.p80Mm}mm</strong></span>
+                              <span className={pb.oversizePercent > 10 ? 'text-amber-700 font-bold' : 'text-slate-500'}>
+                                &gt;300mm: {pb.oversizePercent}%
+                              </span>
+                            </div>
+                          </div>
                         );
                       })}
+                    </div>
+                  </div>
 
-                      {/* Sizing Badges Toggle Button */}
-                      {activeStepTab === 'overlay' && activeRun?.stepPreviews?.overlayWithSizing && (
+                  {/* Spatial Muckpile Comparison Table */}
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      {isFrench ? 'Tableau Comparatif des Zones du Tas d’Abattage' : 'Muckpile Spatial Zones Comparison Table'}
+                    </h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                          <tr>
+                            <th className="py-2 px-3">{isFrench ? 'Photo / Cliché' : 'Photo / File'}</th>
+                            <th className="py-2 px-3">{isFrench ? 'Zone du Gradin' : 'Bench Zone'}</th>
+                            <th className="py-2 px-3">{isFrench ? 'Échelle Optique' : 'Resolution'}</th>
+                            <th className="py-2 px-3">{isFrench ? 'Roches' : 'Rocks'}</th>
+                            <th className="py-2 px-3">P50 (mm)</th>
+                            <th className="py-2 px-3">P80 (mm)</th>
+                            <th className="py-2 px-3">{isFrench ? 'Gros Blocs (>300mm)' : 'Oversize (>300mm)'}</th>
+                            <th className="py-2 px-3">{isFrench ? 'Fines (<25mm)' : 'Fines (<25mm)'}</th>
+                            <th className="py-2 px-3 text-right">{isFrench ? 'Action' : 'Action'}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                          {blastState.optical.perImageBreakdown?.map((pb, pIdx) => {
+                            const imgMatch = blast.images.find((i) => i.id === pb.imageId);
+                            return (
+                              <tr key={pb.imageId} className="hover:bg-slate-50/80 transition">
+                                <td className="py-2 px-3 font-bold text-slate-900 font-sans">
+                                  #{pIdx + 1} {pb.filename}
+                                </td>
+                                <td className="py-2 px-3 text-blue-700 font-sans font-semibold">
+                                  {pb.zone}
+                                </td>
+                                <td className="py-2 px-3 text-slate-600">
+                                  {imgMatch?.calibration?.pxPerMm ? `${imgMatch.calibration.pxPerMm.toFixed(3)} px/mm` : '0.400 px/mm'}
+                                </td>
+                                <td className="py-2 px-3 font-bold text-slate-800">
+                                  {pb.fragmentCount}
+                                </td>
+                                <td className="py-2 px-3 text-slate-700">
+                                  {pb.p50Mm} mm
+                                </td>
+                                <td className="py-2 px-3 font-extrabold text-blue-900">
+                                  {pb.p80Mm} mm
+                                </td>
+                                <td className="py-2 px-3">
+                                  <span className={pb.oversizePercent > 10 ? 'text-amber-700 font-bold' : 'text-slate-600'}>
+                                    {pb.oversizePercent}%
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-slate-600">
+                                  {pb.finesPercent}%
+                                </td>
+                                <td className="py-2 px-3 text-right font-sans">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedImageId(pb.imageId)}
+                                    className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg text-xs transition cursor-pointer"
+                                  >
+                                    {isFrench ? 'Inspecter' : 'Inspect'}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Switch back to composite banner if 2+ images analyzed */}
+                  {isMultiImageComposite && (
+                    <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between text-xs text-indigo-950 shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+                        <span>
+                          {isFrench
+                            ? `Inspection de la photo #${blast.images.findIndex((i) => i.id === selectedImage?.id) + 1} (${selectedImage?.filename || ''})`
+                            : `Inspecting individual photo #${blast.images.findIndex((i) => i.id === selectedImage?.id) + 1} (${selectedImage?.filename || ''})`}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedImageId('composite')}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>{isFrench ? 'Afficher la Synthèse Globale du Tir' : 'Switch to Combined Blast Composite'}</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Interactive Scale Calibration & ROI Crop Tool Bar */}
+                  {selectedImage && (
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* 1. Scale Calibration Button */}
                         <button
                           type="button"
-                          onClick={() => setShowMinMaxSizing(!showMinMaxSizing)}
-                          className={`ml-auto px-2.5 py-1 rounded font-bold text-xs flex items-center gap-1.5 transition ${
-                            showMinMaxSizing
-                              ? 'bg-amber-500 text-slate-950 shadow-xs'
-                              : 'bg-slate-800 text-slate-300 hover:text-white'
-                          }`}
-                          title={isFrench ? 'Afficher ou masquer les tailles Min et Max de chaque bloc sur la photo' : 'Toggle Min & Max dimensions on each stone'}
+                          onClick={() => setShowScaleModal(true)}
+                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                          title={isFrench ? 'Définir l’échelle avec un objet témoin (stylo, pièce, mire)' : 'Calibrate reference scale with known object (pen, coin, ruler)'}
                         >
-                          <Ruler className="w-3.5 h-3.5" />
-                          <span>{isFrench ? 'Tailles Min / Max (mm)' : 'Min/Max Sizing (mm)'}</span>
+                          <Ruler className="w-3.5 h-3.5 text-blue-600" />
+                          <span>{isFrench ? 'Échelle :' : 'Scale:'}</span>
+                          <span className="font-extrabold text-blue-900">
+                            {selectedImage.calibration?.pxPerMm
+                              ? `${selectedImage.calibration.pxPerMm.toFixed(3)} px/mm`
+                              : isFrench ? 'Non calibrée' : 'Uncalibrated'}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-600 text-white ml-0.5">
+                            {isFrench ? 'Ajuster' : 'Set'}
+                          </span>
+                        </button>
+
+                        {/* 2. ROI & Non-Rock Crop Button */}
+                        <button
+                          type="button"
+                          onClick={() => setShowRoiModal(true)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs border ${selectedImage.roiPolygon && selectedImage.roiPolygon.length >= 3
+                              ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          title={isFrench ? 'Découper les zones sans roches (ciel, godet de pelle, pistes)' : 'Cut out non-rock areas (sky, excavator, trucks)'}
+                        >
+                          <Crop className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>{isFrench ? 'Zone de roches :' : 'Rock Area:'}</span>
+                          <span className="font-extrabold text-emerald-900">
+                            {selectedImage.roiPolygon && selectedImage.roiPolygon.length >= 3
+                              ? (isFrench ? 'Délimitée' : 'Active ROI')
+                              : (isFrench ? 'Pleine image' : 'Full image')}
+                          </span>
+                          {selectedImage.exclusionPolygons && selectedImage.exclusionPolygons.length > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">
+                              {selectedImage.exclusionPolygons.length} {isFrench ? 'exclus' : 'masked'}
+                            </span>
+                          )}
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white ml-0.5">
+                            {isFrench ? 'Recadrer' : 'Crop'}
+                          </span>
+                        </button>
+                      </div>
+
+                      {/* Manual Editor shortcut */}
+                      {activeRun && (
+                        <button
+                          type="button"
+                          onClick={() => setShowManualEditor(true)}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition border border-slate-200 cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                          <span>{isFrench ? 'Retouche Manuelle' : 'Manual Editor'}</span>
                         </button>
                       )}
                     </div>
                   )}
 
-                  <div className="relative p-2 flex justify-center items-center min-h-[360px] max-h-[500px] overflow-hidden">
-                    {selectedImage && (
-                      <img
-                        src={
-                          activeStepTab === 'overlay' && showMinMaxSizing && activeRun?.stepPreviews?.overlayWithSizing
-                            ? activeRun.stepPreviews.overlayWithSizing
-                            : activeRun?.stepPreviews && activeRun.stepPreviews[activeStepTab]
-                            ? activeRun.stepPreviews[activeStepTab]
-                            : selectedImage.dataUrl
-                        }
-                        alt="Muck pile analysis"
-                        className="max-h-[480px] w-auto object-contain rounded-lg"
-                      />
+                  {/* Engine Selector */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1 text-xs">
+                      <span className="font-bold text-slate-700 mr-1">{t('colEngine', lang)}:</span>
+                      <button
+                        onClick={() => handleExecuteEngine('classical')}
+                        disabled={isProcessing}
+                        className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${activeEngine === 'classical' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          }`}
+                      >
+                        <Sliders className="w-3.5 h-3.5" /> {t('engineA', lang)}
+                      </button>
+                      <button
+                        onClick={() => handleExecuteEngine('ai_sam')}
+                        disabled={isProcessing}
+                        className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${activeEngine === 'ai_sam' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          }`}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> {t('engineB', lang)}
+                      </button>
+                      <button
+                        onClick={() => handleExecuteEngine('hybrid')}
+                        disabled={isProcessing}
+                        className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition ${activeEngine === 'hybrid' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          }`}
+                      >
+                        <Layers className="w-3.5 h-3.5" /> {t('engineC', lang)}
+                      </button>
+                    </div>
+
+                    {isProcessing && (
+                      <span className="text-xs font-bold text-blue-600 flex items-center gap-1 animate-pulse">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> {progressMsg || t('processingMsg', lang)}
+                      </span>
                     )}
                   </div>
 
-                  {/* Quality & Scale Pill */}
-                  {selectedImage && (
-                    <div className="px-4 py-2 bg-slate-900 text-xs text-slate-400 border-t border-slate-800 space-y-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setShowScaleModal(true)}
-                            className="flex items-center gap-1 text-slate-300 hover:text-white transition cursor-pointer hover:underline"
-                            title={isFrench ? 'Cliquer pour ajuster l’échelle' : 'Click to calibrate scale'}
-                          >
-                            <Ruler className="w-3.5 h-3.5 text-blue-400" />
-                            <span>{t('scaleResult', lang)} {selectedImage.calibration?.pxPerMm?.toFixed(3) || '0.400'} px/mm</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowRoiModal(true)}
-                            className="flex items-center gap-1 text-slate-300 hover:text-white transition cursor-pointer hover:underline"
-                            title={isFrench ? 'Cliquer pour recadrer la zone' : 'Click to crop rock area'}
-                          >
-                            <Crop className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>
-                              {selectedImage.roiPolygon && selectedImage.roiPolygon.length >= 3
-                                ? (isFrench ? 'Zone délimitée' : 'Custom ROI')
-                                : (isFrench ? 'Pleine image' : 'Full image')}
-                            </span>
-                          </button>
-                          <span>Zone: {selectedImage.zone}</span>
-                          <span>Lighting: {selectedImage.lighting}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span>{t('sharpness', lang)}: {selectedImage.qualityCheck.blurScore} ({selectedImage.qualityCheck.blurStatus})</span>
-                          <button
-                            type="button"
-                            onClick={handleCheckImageWithGemini}
-                            disabled={isAiImageChecking}
-                            className="px-2 py-0.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded text-[11px] font-medium flex items-center gap-1 transition"
-                            title={isFrench ? 'Vérifier la photo du tas avec Gemini IA (obstacles, échelle, éclairage)' : 'Audit muck pile image with Gemini AI (obstacles, scale, lighting)'}
-                          >
-                            <Sparkles className="w-3 h-3 text-amber-300" />
-                            <span>{isAiImageChecking ? (isFrench ? 'Audit IA...' : 'Checking...') : (isFrench ? 'Audit IA Cliché' : 'AI Scene Check')}</span>
-                          </button>
-                        </div>
-                      </div>
+                  {/* Main Visual Viewport with Intermediate Steps Tabs */}
+                  <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-md">
+                    {/* Step Previews Tab Bar */}
+                    {activeRun?.stepPreviews && (
+                      <div className="flex flex-wrap items-center bg-slate-900 border-b border-slate-800 px-2 py-1.5 overflow-x-auto text-[11px] gap-1">
+                        {(['overlay', 'grayscale', 'clahe', 'threshold', 'distance', 'markers', 'depthMap'] as const).map((tab) => {
+                          const labelMap: Record<string, string> = {
+                            overlay: t('tabOverlay', lang),
+                            grayscale: t('tabGrayscale', lang),
+                            clahe: t('tabClahe', lang),
+                            threshold: t('tabThreshold', lang),
+                            distance: t('tabDistance', lang),
+                            markers: t('tabMarkers', lang),
+                            depthMap: t('tabDepthMap', lang),
+                          };
+                          return (
+                            <button
+                              key={tab}
+                              onClick={() => setActiveStepTab(tab)}
+                              className={`px-2.5 py-1 rounded font-semibold capitalize whitespace-nowrap transition ${activeStepTab === tab ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'
+                                }`}
+                            >
+                              {labelMap[tab]}
+                            </button>
+                          );
+                        })}
 
-                      {aiImageAdvice && (
-                        <div className="p-2.5 bg-blue-950/80 border border-blue-500/40 rounded-lg text-xs text-blue-200 flex items-start gap-2">
-                          <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
-                          <div>
-                            <strong className="block text-white text-[11px]">
-                              {isFrench ? 'Conseil IA de l\'Assistant Gemini :' : 'Gemini AI Operator Advice:'}
-                            </strong>
-                            <span>{aiImageAdvice}</span>
-                          </div>
-                        </div>
+                        {/* Sizing Badges Toggle Button */}
+                        {activeStepTab === 'overlay' && activeRun?.stepPreviews?.overlayWithSizing && (
+                          <button
+                            type="button"
+                            onClick={() => setShowMinMaxSizing(!showMinMaxSizing)}
+                            className={`ml-auto px-2.5 py-1 rounded font-bold text-xs flex items-center gap-1.5 transition ${showMinMaxSizing
+                                ? 'bg-amber-500 text-slate-950 shadow-xs'
+                                : 'bg-slate-800 text-slate-300 hover:text-white'
+                              }`}
+                            title={isFrench ? 'Afficher ou masquer les tailles Min et Max de chaque bloc sur la photo' : 'Toggle Min & Max dimensions on each stone'}
+                          >
+                            <Ruler className="w-3.5 h-3.5" />
+                            <span>{isFrench ? 'Tailles Min / Max (mm)' : 'Min/Max Sizing (mm)'}</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="relative p-2 flex justify-center items-center min-h-[360px] max-h-[500px] overflow-hidden">
+                      {selectedImage && (
+                        <img
+                          src={
+                            activeStepTab === 'overlay' && showMinMaxSizing && activeRun?.stepPreviews?.overlayWithSizing
+                              ? activeRun.stepPreviews.overlayWithSizing
+                              : activeRun?.stepPreviews && activeRun.stepPreviews[activeStepTab]
+                                ? activeRun.stepPreviews[activeStepTab]
+                                : selectedImage.dataUrl
+                          }
+                          alt="Muck pile analysis"
+                          className="max-h-[480px] w-auto object-contain rounded-lg"
+                        />
                       )}
                     </div>
-                  )}
+
+                    {/* Quality & Scale Pill */}
+                    {selectedImage && (
+                      <div className="px-4 py-2 bg-slate-900 text-xs text-slate-400 border-t border-slate-800 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setShowScaleModal(true)}
+                              className="flex items-center gap-1 text-slate-300 hover:text-white transition cursor-pointer hover:underline"
+                              title={isFrench ? 'Cliquer pour ajuster l’échelle' : 'Click to calibrate scale'}
+                            >
+                              <Ruler className="w-3.5 h-3.5 text-blue-400" />
+                              <span>{t('scaleResult', lang)} {selectedImage.calibration?.pxPerMm?.toFixed(3) || '0.400'} px/mm</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowRoiModal(true)}
+                              className="flex items-center gap-1 text-slate-300 hover:text-white transition cursor-pointer hover:underline"
+                              title={isFrench ? 'Cliquer pour recadrer la zone' : 'Click to crop rock area'}
+                            >
+                              <Crop className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>
+                                {selectedImage.roiPolygon && selectedImage.roiPolygon.length >= 3
+                                  ? (isFrench ? 'Zone délimitée' : 'Custom ROI')
+                                  : (isFrench ? 'Pleine image' : 'Full image')}
+                              </span>
+                            </button>
+                            <span>Zone: {selectedImage.zone}</span>
+                            <span>Lighting: {selectedImage.lighting}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span>{t('sharpness', lang)}: {selectedImage.qualityCheck.blurScore} ({selectedImage.qualityCheck.blurStatus})</span>
+                            <button
+                              type="button"
+                              onClick={handleCheckImageWithGemini}
+                              disabled={isAiImageChecking}
+                              className="px-2 py-0.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded text-[11px] font-medium flex items-center gap-1 transition"
+                              title={isFrench ? 'Vérifier la photo du tas avec Gemini IA (obstacles, échelle, éclairage)' : 'Audit muck pile image with Gemini AI (obstacles, scale, lighting)'}
+                            >
+                              <Sparkles className="w-3 h-3 text-amber-300" />
+                              <span>{isAiImageChecking ? (isFrench ? 'Audit IA...' : 'Checking...') : (isFrench ? 'Audit IA Cliché' : 'AI Scene Check')}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {aiImageAdvice && (
+                          <div className="p-2.5 bg-blue-950/80 border border-blue-500/40 rounded-lg text-xs text-blue-200 flex items-start gap-2">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <strong className="block text-white text-[11px]">
+                                {isFrench ? 'Conseil IA de l\'Assistant Gemini :' : 'Gemini AI Operator Advice:'}
+                              </strong>
+                              <span>{aiImageAdvice}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Sizing Distribution Percentiles Table */}
+              {activeRun && (
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2">
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    {t('percentilesTitle', lang)}
+                  </h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                        <tr>
+                          <th className="py-2 px-3">{t('percentile', lang)}</th>
+                          <th className="py-2 px-3">{t('sizeMm', lang)}</th>
+                          <th className="py-2 px-3">{t('bootstrapCI', lang)}</th>
+                          <th className="py-2 px-3">{t('description', lang)}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        <tr>
+                          <td className="py-1.5 px-3 font-semibold text-slate-700">{t('p10', lang)}</td>
+                          <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p10} mm</td>
+                          <td className="py-1.5 px-3 text-slate-500">
+                            [{activeRun.metrics.bootstrapCI.p10[0]} - {activeRun.metrics.bootstrapCI.p10[1]}]
+                          </td>
+                          <td className="py-1.5 px-3 text-slate-500">{t('p10Desc', lang)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-1.5 px-3 font-semibold text-slate-700">{t('p20', lang)}</td>
+                          <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p20} mm</td>
+                          <td className="py-1.5 px-3 text-slate-500">
+                            [{activeRun.metrics.bootstrapCI.p20[0]} - {activeRun.metrics.bootstrapCI.p20[1]}]
+                          </td>
+                          <td className="py-1.5 px-3 text-slate-500">{t('p20Desc', lang)}</td>
+                        </tr>
+                        <tr className="bg-blue-50/50">
+                          <td className="py-1.5 px-3 font-bold text-blue-900">{t('p50', lang)}</td>
+                          <td className="py-1.5 px-3 font-extrabold text-blue-950">{activeRun.metrics.p50} mm</td>
+                          <td className="py-1.5 px-3 text-blue-700">
+                            [{activeRun.metrics.bootstrapCI.p50[0]} - {activeRun.metrics.bootstrapCI.p50[1]}]
+                          </td>
+                          <td className="py-1.5 px-3 text-blue-700 font-medium">{t('p50Desc', lang)}</td>
+                        </tr>
+                        <tr className="bg-blue-50/50">
+                          <td className="py-1.5 px-3 font-bold text-blue-900">{t('p80', lang)}</td>
+                          <td className="py-1.5 px-3 font-extrabold text-blue-950">{activeRun.metrics.p80} mm</td>
+                          <td className="py-1.5 px-3 text-blue-700">
+                            [{activeRun.metrics.bootstrapCI.p80[0]} - {activeRun.metrics.bootstrapCI.p80[1]}]
+                          </td>
+                          <td className="py-1.5 px-3 text-blue-700 font-medium">{t('p80Desc', lang)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-1.5 px-3 font-semibold text-slate-700">{t('p90', lang)}</td>
+                          <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p90} mm</td>
+                          <td className="py-1.5 px-3 text-slate-500">
+                            [{activeRun.metrics.bootstrapCI.p90[0]} - {activeRun.metrics.bootstrapCI.p90[1]}]
+                          </td>
+                          <td className="py-1.5 px-3 text-slate-500">{t('p90Desc', lang)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </>
-            )}
-
-            {/* Sizing Distribution Percentiles Table */}
-            {activeRun && (
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2">
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  {t('percentilesTitle', lang)}
-                </h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                      <tr>
-                        <th className="py-2 px-3">{t('percentile', lang)}</th>
-                        <th className="py-2 px-3">{t('sizeMm', lang)}</th>
-                        <th className="py-2 px-3">{t('bootstrapCI', lang)}</th>
-                        <th className="py-2 px-3">{t('description', lang)}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      <tr>
-                        <td className="py-1.5 px-3 font-semibold text-slate-700">{t('p10', lang)}</td>
-                        <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p10} mm</td>
-                        <td className="py-1.5 px-3 text-slate-500">
-                          [{activeRun.metrics.bootstrapCI.p10[0]} - {activeRun.metrics.bootstrapCI.p10[1]}]
-                        </td>
-                        <td className="py-1.5 px-3 text-slate-500">{t('p10Desc', lang)}</td>
-                      </tr>
-                      <tr>
-                        <td className="py-1.5 px-3 font-semibold text-slate-700">{t('p20', lang)}</td>
-                        <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p20} mm</td>
-                        <td className="py-1.5 px-3 text-slate-500">
-                          [{activeRun.metrics.bootstrapCI.p20[0]} - {activeRun.metrics.bootstrapCI.p20[1]}]
-                        </td>
-                        <td className="py-1.5 px-3 text-slate-500">{t('p20Desc', lang)}</td>
-                      </tr>
-                      <tr className="bg-blue-50/50">
-                        <td className="py-1.5 px-3 font-bold text-blue-900">{t('p50', lang)}</td>
-                        <td className="py-1.5 px-3 font-extrabold text-blue-950">{activeRun.metrics.p50} mm</td>
-                        <td className="py-1.5 px-3 text-blue-700">
-                          [{activeRun.metrics.bootstrapCI.p50[0]} - {activeRun.metrics.bootstrapCI.p50[1]}]
-                        </td>
-                        <td className="py-1.5 px-3 text-blue-700 font-medium">{t('p50Desc', lang)}</td>
-                      </tr>
-                      <tr className="bg-blue-50/50">
-                        <td className="py-1.5 px-3 font-bold text-blue-900">{t('p80', lang)}</td>
-                        <td className="py-1.5 px-3 font-extrabold text-blue-950">{activeRun.metrics.p80} mm</td>
-                        <td className="py-1.5 px-3 text-blue-700">
-                          [{activeRun.metrics.bootstrapCI.p80[0]} - {activeRun.metrics.bootstrapCI.p80[1]}]
-                        </td>
-                        <td className="py-1.5 px-3 text-blue-700 font-medium">{t('p80Desc', lang)}</td>
-                      </tr>
-                      <tr>
-                        <td className="py-1.5 px-3 font-semibold text-slate-700">{t('p90', lang)}</td>
-                        <td className="py-1.5 px-3 font-bold text-slate-900">{activeRun.metrics.p90} mm</td>
-                        <td className="py-1.5 px-3 text-slate-500">
-                          [{activeRun.metrics.bootstrapCI.p90[0]} - {activeRun.metrics.bootstrapCI.p90[1]}]
-                        </td>
-                        <td className="py-1.5 px-3 text-slate-500">{t('p90Desc', lang)}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right Column (5 cols): Cumulative Curve & Blast Parameters */}
-          <div className="lg:col-span-5 space-y-4">
-            {activeRun && (
-              <CumulativeDistributionChart
-                metrics={activeRun.metrics}
-                sieveData={blast.groundTruth?.sieveData}
-                lang={lang}
-              />
-            )}
-          </div>
-        </div>
-
-        {/* Geotechnical Engineering Commentary & Gemini AI Review */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
-                <Sparkles className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
-                  <span>
-                    {isFrench
-                      ? `Avis Technique & Synthèse d'Ingénierie Géotechnique (${isAiActive ? `${aiProviderName} IA` : 'IA Cloud'})`
-                      : `Geotechnical Blast Engineering Review & AI Commentary (${isAiActive ? `${aiProviderName} AI` : 'Cloud AI'})`}
-                  </span>
-                  {isAiActive ? (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 font-semibold">
-                      ● {aiProviderName} IA Connecté
-                    </span>
-                  ) : (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-slate-100 text-slate-600 border border-slate-200">
-                      ○ Mode Déterministe Hors-ligne
-                    </span>
-                  )}
-                </h4>
-                <p className="text-[11px] text-slate-500">
-                  {isFrench
-                    ? 'Analyse croisée de la fragmentation P80, du massif rocheux et des performances usine (concassage / broyage).'
-                    : 'Cross-analysis of measured P80, rock mass discontinuities, and plant comminution efficiency.'}
-                </p>
-              </div>
+              )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleGenerateAiCommentary}
-                disabled={isGeneratingAiCommentary}
-                className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>
-                  {isGeneratingAiCommentary
-                    ? (isFrench ? 'Rédaction en cours...' : 'Drafting...')
-                    : (isFrench ? 'Générer Synthèse IA' : 'Generate AI Review')}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSaveCommentary}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition cursor-pointer"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{isFrench ? 'Enregistrer dans le Tir' : 'Save to Blast'}</span>
-              </button>
+            {/* Right Column (5 cols): Cumulative Curve & Blast Parameters */}
+            <div className="lg:col-span-5 space-y-4">
+              {activeRun && (
+                <CumulativeDistributionChart
+                  metrics={activeRun.metrics}
+                  sieveData={blast.groundTruth?.sieveData}
+                  lang={lang}
+                />
+              )}
             </div>
           </div>
 
-          <textarea
-            rows={4}
-            value={aiCommentary}
-            onChange={(e) => setAiCommentary(e.target.value)}
-            placeholder={
-              isFrench
-                ? 'Cliquez sur "Générer Synthèse IA" pour obtenir l\'évaluation géotechnique complète par Gemini, ou saisissez directement vos observations d\'ingénieur...'
-                : 'Click "Generate AI Review" to obtain Gemini engineering evaluation, or enter your geotechnical remarks directly...'
-            }
-            className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white leading-relaxed font-sans"
-          />
-
-          {commentarySavedMsg && (
-            <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>{isFrench ? 'Avis technique enregistré dans les données du tir avec succès !' : 'Engineering commentary saved to blast records successfully!'}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Granulometry Details Table: Min & Max Sizes for Every Rock Fragment */}
-        {activeRun && activeRun.fragments && activeRun.fragments.length > 0 && (
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                  <Tag className="w-4 h-4" />
+          {/* Geotechnical Engineering Commentary & Gemini AI Review */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+                  <Sparkles className="w-4 h-4" />
                 </div>
                 <div>
                   <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
-                    <span>{isFrench ? 'Tableau Détaillé des Fragments & Granulats' : 'Individual Fragment Min & Max Sizing Table'}</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                      {activeRun.fragments.length} {isFrench ? 'blocs mesurés' : 'rocks measured'}
+                    <span>
+                      {isFrench
+                        ? `Avis Technique & Synthèse d'Ingénierie Géotechnique (${isAiActive ? `${aiProviderName} IA` : 'IA Cloud'})`
+                        : `Geotechnical Blast Engineering Review & AI Commentary (${isAiActive ? `${aiProviderName} AI` : 'Cloud AI'})`}
                     </span>
+                    {isAiActive ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 font-semibold">
+                        ● {aiProviderName} IA Connecté
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-slate-100 text-slate-600 border border-slate-200">
+                        ○ Mode Déterministe Hors-ligne
+                      </span>
+                    )}
                   </h4>
                   <p className="text-[11px] text-slate-500">
                     {isFrench
-                      ? 'Taille minimale (calibre crible passant) et longueur maximale (calibre d’encombrement) pour chaque morceau'
-                      : 'Minimum passing aperture (Min Feret) and maximum length for each segmented rock fragment'}
+                      ? 'Analyse croisée de la fragmentation P80, du massif rocheux et des performances usine (concassage / broyage).'
+                      : 'Cross-analysis of measured P80, rock mass discontinuities, and plant comminution efficiency.'}
                   </p>
                 </div>
               </div>
 
-              {/* Filter Tabs: All, Fines (<25mm), Nominal (25-250mm), Oversize (>300mm) */}
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
-                {(['all', 'fines', 'nominal', 'oversize'] as const).map((filter) => {
-                  const count = activeRun.fragments.filter((f: Fragment) => {
-                    if (filter === 'fines') return f.minFeretMm < settings.finesThresholdMm;
-                    if (filter === 'oversize') return f.maxFeretMm > settings.oversizeThresholdMm;
-                    if (filter === 'nominal') return f.minFeretMm >= settings.finesThresholdMm && f.maxFeretMm <= settings.oversizeThresholdMm;
-                    return true;
-                  }).length;
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleGenerateAiCommentary}
+                  disabled={isGeneratingAiCommentary}
+                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>
+                    {isGeneratingAiCommentary
+                      ? (isFrench ? 'Rédaction en cours...' : 'Drafting...')
+                      : (isFrench ? 'Générer Synthèse IA' : 'Generate AI Review')}
+                  </span>
+                </button>
 
-                  const label =
-                    filter === 'all'
-                      ? (isFrench ? `Tous (${count})` : `All (${count})`)
-                      : filter === 'fines'
-                      ? (isFrench ? `Fines <${settings.finesThresholdMm}mm (${count})` : `Fines <${settings.finesThresholdMm}mm (${count})`)
-                      : filter === 'nominal'
-                      ? (isFrench ? `Nominal (${count})` : `Nominal (${count})`)
-                      : (isFrench ? `Gros >${settings.oversizeThresholdMm}mm (${count})` : `Oversize >${settings.oversizeThresholdMm}mm (${count})`);
-
-                  return (
-                    <button
-                      key={filter}
-                      type="button"
-                      onClick={() => setFragmentFilter(filter)}
-                      className={`px-2.5 py-1 rounded-lg transition text-[11px] ${
-                        fragmentFilter === filter
-                          ? 'bg-blue-600 text-white font-bold shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
+                <button
+                  type="button"
+                  onClick={handleSaveCommentary}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isFrench ? 'Enregistrer dans le Tir' : 'Save to Blast'}</span>
+                </button>
               </div>
             </div>
 
-            {/* Scrollable Table of Individual Rock Fragments */}
-            <div className="overflow-x-auto max-h-72 overflow-y-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 sticky top-0 shadow-xs">
-                  <tr>
-                    <th className="py-2 px-3">#ID</th>
-                    <th className="py-2 px-3 text-blue-700">{isFrench ? 'Taille Min (d_min)' : 'Min Size (d_min)'}</th>
-                    <th className="py-2 px-3 text-purple-700">{isFrench ? 'Taille Max (d_max)' : 'Max Size (d_max)'}</th>
-                    <th className="py-2 px-3">{isFrench ? 'Diamètre Équiv. (ECD)' : 'Equiv. Diam. (ECD)'}</th>
-                    <th className="py-2 px-3">{isFrench ? 'Épaisseur 3D' : '3D Thickness'}</th>
-                    <th className="py-2 px-3">{isFrench ? 'Volume Estimé' : 'Estimated Volume'}</th>
-                    <th className="py-2 px-3">{isFrench ? 'Élongation' : 'Aspect Ratio'}</th>
-                    <th className="py-2 px-3">{isFrench ? 'Classification' : 'Category'}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                  {activeRun.fragments
-                    .filter((f: Fragment) => {
-                      if (fragmentFilter === 'fines') return f.minFeretMm < settings.finesThresholdMm;
-                      if (fragmentFilter === 'oversize') return f.maxFeretMm > settings.oversizeThresholdMm;
-                      if (fragmentFilter === 'nominal') return f.minFeretMm >= settings.finesThresholdMm && f.maxFeretMm <= settings.oversizeThresholdMm;
-                      return true;
-                    })
-                    .slice(0, 100)
-                    .map((f: Fragment) => {
-                      const isFines = f.minFeretMm < settings.finesThresholdMm;
-                      const isOversize = f.maxFeretMm > settings.oversizeThresholdMm;
-                      return (
-                        <tr
-                          key={f.id}
-                          className={`hover:bg-blue-50/70 transition cursor-pointer ${
-                            selectedFragmentId === f.id ? 'bg-blue-100 font-bold' : ''
-                          }`}
-                          onClick={() => setSelectedFragmentId(f.id === selectedFragmentId ? null : f.id)}
-                        >
-                          <td className="py-1.5 px-3 font-bold text-slate-800">#{f.id}</td>
-                          <td className="py-1.5 px-3 font-extrabold text-blue-700">{f.minFeretMm} mm</td>
-                          <td className="py-1.5 px-3 font-extrabold text-purple-700">{f.maxFeretMm} mm</td>
-                          <td className="py-1.5 px-3 text-slate-700">{f.ecdMm} mm</td>
-                          <td className="py-1.5 px-3 text-slate-600">{f.thicknessMm ? `${f.thicknessMm} mm` : '-'}</td>
-                          <td className="py-1.5 px-3 text-slate-600">
-                            {f.trueVolume3DMm3
-                              ? `${(f.trueVolume3DMm3 / 1000).toFixed(1)} cm³`
-                              : `${(f.volumeMm3 / 1000).toFixed(1)} cm³`}
-                          </td>
-                          <td className="py-1.5 px-3 text-slate-600">{f.aspectRatio.toFixed(2)}</td>
-                          <td className="py-1.5 px-3 font-sans">
-                            {isFines ? (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
-                                {isFrench ? 'Fine' : 'Fine'}
-                              </span>
-                            ) : isOversize ? (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">
-                                {isFrench ? 'Hors-gabarit' : 'Oversize'}
-                              </span>
-                            ) : (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                                {isFrench ? 'Nominal' : 'Nominal'}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
+            <textarea
+              rows={4}
+              value={aiCommentary}
+              onChange={(e) => setAiCommentary(e.target.value)}
+              placeholder={
+                isFrench
+                  ? 'Cliquez sur "Générer Synthèse IA" pour obtenir l\'évaluation géotechnique complète par Gemini, ou saisissez directement vos observations d\'ingénieur...'
+                  : 'Click "Generate AI Review" to obtain Gemini engineering evaluation, or enter your geotechnical remarks directly...'
+              }
+              className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white leading-relaxed font-sans"
+            />
+
+            {commentarySavedMsg && (
+              <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>{isFrench ? 'Avis technique enregistré dans les données du tir avec succès !' : 'Engineering commentary saved to blast records successfully!'}</span>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+
+          {/* Granulometry Details Table: Min & Max Sizes for Every Rock Fragment */}
+          {activeRun && activeRun.fragments && activeRun.fragments.length > 0 && (
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                    <Tag className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
+                      <span>{isFrench ? 'Tableau Détaillé des Fragments & Granulats' : 'Individual Fragment Min & Max Sizing Table'}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                        {activeRun.fragments.length} {isFrench ? 'blocs mesurés' : 'rocks measured'}
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      {isFrench
+                        ? 'Taille minimale (calibre crible passant) et longueur maximale (calibre d’encombrement) pour chaque morceau'
+                        : 'Minimum passing aperture (Min Feret) and maximum length for each segmented rock fragment'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Filter Tabs: All, Fines (<25mm), Nominal (25-250mm), Oversize (>300mm) */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+                  {(['all', 'fines', 'nominal', 'oversize'] as const).map((filter) => {
+                    const count = activeRun.fragments.filter((f: Fragment) => {
+                      if (filter === 'fines') return f.minFeretMm < settings.finesThresholdMm;
+                      if (filter === 'oversize') return f.maxFeretMm > settings.oversizeThresholdMm;
+                      if (filter === 'nominal') return f.minFeretMm >= settings.finesThresholdMm && f.maxFeretMm <= settings.oversizeThresholdMm;
+                      return true;
+                    }).length;
+
+                    const label =
+                      filter === 'all'
+                        ? (isFrench ? `Tous (${count})` : `All (${count})`)
+                        : filter === 'fines'
+                          ? (isFrench ? `Fines <${settings.finesThresholdMm}mm (${count})` : `Fines <${settings.finesThresholdMm}mm (${count})`)
+                          : filter === 'nominal'
+                            ? (isFrench ? `Nominal (${count})` : `Nominal (${count})`)
+                            : (isFrench ? `Gros >${settings.oversizeThresholdMm}mm (${count})` : `Oversize >${settings.oversizeThresholdMm}mm (${count})`);
+
+                    return (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setFragmentFilter(filter)}
+                        className={`px-2.5 py-1 rounded-lg transition text-[11px] ${fragmentFilter === filter
+                            ? 'bg-blue-600 text-white font-bold shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Scrollable Table of Individual Rock Fragments */}
+              <div className="overflow-x-auto max-h-72 overflow-y-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 sticky top-0 shadow-xs">
+                    <tr>
+                      <th className="py-2 px-3">#ID</th>
+                      <th className="py-2 px-3 text-blue-700">{isFrench ? 'Taille Min (d_min)' : 'Min Size (d_min)'}</th>
+                      <th className="py-2 px-3 text-purple-700">{isFrench ? 'Taille Max (d_max)' : 'Max Size (d_max)'}</th>
+                      <th className="py-2 px-3">{isFrench ? 'Diamètre Équiv. (ECD)' : 'Equiv. Diam. (ECD)'}</th>
+                      <th className="py-2 px-3">{isFrench ? 'Épaisseur 3D' : '3D Thickness'}</th>
+                      <th className="py-2 px-3">{isFrench ? 'Volume Estimé' : 'Estimated Volume'}</th>
+                      <th className="py-2 px-3">{isFrench ? 'Élongation' : 'Aspect Ratio'}</th>
+                      <th className="py-2 px-3">{isFrench ? 'Classification' : 'Category'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                    {activeRun.fragments
+                      .filter((f: Fragment) => {
+                        if (fragmentFilter === 'fines') return f.minFeretMm < settings.finesThresholdMm;
+                        if (fragmentFilter === 'oversize') return f.maxFeretMm > settings.oversizeThresholdMm;
+                        if (fragmentFilter === 'nominal') return f.minFeretMm >= settings.finesThresholdMm && f.maxFeretMm <= settings.oversizeThresholdMm;
+                        return true;
+                      })
+                      .slice(0, 100)
+                      .map((f: Fragment) => {
+                        const isFines = f.minFeretMm < settings.finesThresholdMm;
+                        const isOversize = f.maxFeretMm > settings.oversizeThresholdMm;
+                        return (
+                          <tr
+                            key={f.id}
+                            className={`hover:bg-blue-50/70 transition cursor-pointer ${selectedFragmentId === f.id ? 'bg-blue-100 font-bold' : ''
+                              }`}
+                            onClick={() => setSelectedFragmentId(f.id === selectedFragmentId ? null : f.id)}
+                          >
+                            <td className="py-1.5 px-3 font-bold text-slate-800">#{f.id}</td>
+                            <td className="py-1.5 px-3 font-extrabold text-blue-700">{f.minFeretMm} mm</td>
+                            <td className="py-1.5 px-3 font-extrabold text-purple-700">{f.maxFeretMm} mm</td>
+                            <td className="py-1.5 px-3 text-slate-700">{f.ecdMm} mm</td>
+                            <td className="py-1.5 px-3 text-slate-600">{f.thicknessMm ? `${f.thicknessMm} mm` : '-'}</td>
+                            <td className="py-1.5 px-3 text-slate-600">
+                              {f.trueVolume3DMm3
+                                ? `${(f.trueVolume3DMm3 / 1000).toFixed(1)} cm³`
+                                : `${(f.volumeMm3 / 1000).toFixed(1)} cm³`}
+                            </td>
+                            <td className="py-1.5 px-3 text-slate-600">{f.aspectRatio.toFixed(2)}</td>
+                            <td className="py-1.5 px-3 font-sans">
+                              {isFines ? (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
+                                  {isFrench ? 'Fine' : 'Fine'}
+                                </span>
+                              ) : isOversize ? (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">
+                                  {isFrench ? 'Hors-gabarit' : 'Oversize'}
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                  {isFrench ? 'Nominal' : 'Nominal'}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Interactive Drillhole Matrix & Excel/CSV Importer */}

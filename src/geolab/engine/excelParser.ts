@@ -303,12 +303,31 @@ function parseGrainSizeSheet(ws: xlsx.WorkSheet, sheetName: string, errors: Cell
 
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
+    if (!row) continue;
     const firstCell = String(row[0] || '').toLowerCase();
     if (firstCell.includes('masse sèche') || firstCell.includes('dry sample mass')) {
-      const val = parseFloat(row[1]);
+      const val = parseFloat(String(row[1]).replace(',', '.'));
       if (!isNaN(val) && val > 0) initMass = val;
     }
-    if (firstCell.includes('maille') || firstCell.includes('sieve') || firstCell.includes('aperture')) {
+  }
+
+  // Find sieve table header row. Must have at least 2 non-empty cells to avoid matching single-cell section headers.
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    if (!row || row.length < 2) continue;
+    const nonEmpties = row.filter((c: any) => c !== '' && c !== null && c !== undefined);
+    if (nonEmpties.length < 2) continue;
+
+    const firstCell = String(row[0] || '').toLowerCase().trim();
+    const secondCell = String(row[1] || '').toLowerCase().trim();
+
+    if (
+      firstCell.includes('maille') ||
+      firstCell.includes('aperture') ||
+      firstCell.includes('tamis') ||
+      (firstCell.includes('sieve') && !firstCell.includes('stack') && !firstCell.includes('colonne')) ||
+      (secondCell.includes('pass') || secondCell.includes('refus') || secondCell.includes('retained'))
+    ) {
       headerIdx = i;
       break;
     }
@@ -329,9 +348,22 @@ function parseGrainSizeSheet(ws: xlsx.WorkSheet, sheetName: string, errors: Cell
   const sieves: any[] = [];
   for (let r = headerIdx + 1; r < data.length; r++) {
     const row = data[r];
-    if (!row || row.length === 0 || row[0] === '') continue;
+    if (!row || row.length === 0 || row[0] === '' || row[0] === null || row[0] === undefined) continue;
 
-    const sieveMm = parseFloat(row[0]);
+    const firstStr = String(row[0]).trim();
+    const lowerFirst = firstStr.toLowerCase();
+    if (
+      lowerFirst.includes('maille') ||
+      lowerFirst.includes('aperture') ||
+      lowerFirst.includes('sieve') ||
+      lowerFirst.includes('tamis') ||
+      lowerFirst.includes('passant') ||
+      lowerFirst.includes('passing')
+    ) {
+      continue;
+    }
+
+    const sieveMm = parseFloat(firstStr.replace(',', '.'));
     if (isNaN(sieveMm) || sieveMm <= 0) {
       errors.push({
         sheet: sheetName,
@@ -344,15 +376,15 @@ function parseGrainSizeSheet(ws: xlsx.WorkSheet, sheetName: string, errors: Cell
       continue;
     }
 
-    const passPct = row[1] !== '' ? parseFloat(row[1]) : undefined;
-    const retMass = row[2] !== '' ? parseFloat(row[2]) : undefined;
+    const passPct = row[1] !== '' && row[1] !== null && row[1] !== undefined ? parseFloat(String(row[1]).replace(',', '.')) : undefined;
+    const retMass = row[2] !== '' && row[2] !== null && row[2] !== undefined ? parseFloat(String(row[2]).replace(',', '.')) : undefined;
 
     sieves.push({
       sieveMm,
-      passingPercent: passPct,
-      retainedMassG: retMass,
-      minSpecPercent: row[3] !== '' ? parseFloat(row[3]) : undefined,
-      maxSpecPercent: row[4] !== '' ? parseFloat(row[4]) : undefined,
+      passingPercent: passPct !== undefined && !isNaN(passPct) ? passPct : undefined,
+      retainedMassG: retMass !== undefined && !isNaN(retMass) ? retMass : undefined,
+      minSpecPercent: row[3] !== '' && row[3] !== null && !isNaN(parseFloat(String(row[3]).replace(',', '.'))) ? parseFloat(String(row[3]).replace(',', '.')) : undefined,
+      maxSpecPercent: row[4] !== '' && row[4] !== null && !isNaN(parseFloat(String(row[4]).replace(',', '.'))) ? parseFloat(String(row[4]).replace(',', '.')) : undefined,
     });
   }
 
