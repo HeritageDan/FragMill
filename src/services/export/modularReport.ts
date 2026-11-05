@@ -848,6 +848,43 @@ export async function generateModularVaultPdfReport(
         headerTitle,
         headerSub
       );
+
+      // 11. AVIS TECHNIQUE & SYNTHÈSE GÉOTECHNIQUE DU TIR (GEMINI AI / INGÉNIERIE)
+      if (blast.notes && blast.notes.trim().length > 0) {
+        const splitNotes = doc.splitTextToSize(blast.notes.trim(), 174);
+        const boxH = Math.max(22, splitNotes.length * 4.2 + 14);
+        if (y + boxH > 280) {
+          doc.addPage();
+          drawHeader(activeHeaderTitle, activeHeaderSub);
+          y = 26;
+        }
+
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(59, 130, 246);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(14, y, 182, boxH, 2, 2, 'FD');
+
+        doc.setFillColor(31, 56, 100);
+        doc.roundedRect(14, y, 182, 7, 2, 2, 'F');
+        doc.rect(14, y + 4, 182, 3, 'F');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(255, 255, 255);
+        doc.text(
+          isFr
+            ? "11. AVIS TECHNIQUE & ÉVALUATION D'INGÉNIERIE GÉOTECHNIQUE (ASSISTANT IA)"
+            : '11. GEOTECHNICAL BLAST ENGINEERING EVALUATION & AI COMMENTARY',
+          18,
+          y + 5
+        );
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(30, 41, 59);
+        doc.text(splitNotes, 18, y + 12);
+        y += boxH + 6;
+      }
     }
 
     // SECTION 2: DRONE 3D SIZING

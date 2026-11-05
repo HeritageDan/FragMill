@@ -19,7 +19,11 @@ import {
   RefreshCw,
   Upload,
   FlaskConical,
+  ExternalLink,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
+import { testGeminiApiKey } from '../../services/gemini';
 
 interface SettingsViewProps {
   settings: AppSettings;
@@ -38,6 +42,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [hasWebGpu, setHasWebGpu] = useState(false);
   const [storageEstimateMb, setStorageEstimateMb] = useState<string>('0');
   const [backupStatus, setBackupStatus] = useState<string>('');
+  const [isTestingApiKey, setIsTestingApiKey] = useState(false);
+  const [apiKeyTestResult, setApiKeyTestResult] = useState<{ success: boolean; message: string; model?: string } | null>(null);
+
+  const handleTestApiKey = async () => {
+    if (!settings.geminiApiKey?.trim()) {
+      setApiKeyTestResult({
+        success: false,
+        message: lang === 'fr' ? 'Veuillez d\'abord saisir une clé API Gemini (AIzaSy...).' : 'Please enter a Gemini API key first (AIzaSy...).',
+      });
+      return;
+    }
+    setIsTestingApiKey(true);
+    setApiKeyTestResult(null);
+    try {
+      const res = await testGeminiApiKey(settings.geminiApiKey.trim());
+      setApiKeyTestResult(res);
+    } catch (err: any) {
+      setApiKeyTestResult({
+        success: false,
+        message: err.message || (lang === 'fr' ? 'Erreur lors du test de connexion.' : 'Error during connection test.'),
+      });
+    } finally {
+      setIsTestingApiKey(false);
+    }
+  };
 
   useEffect(() => {
     loadModelsAndGpu();
@@ -418,21 +447,104 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {settings.enableGemini && (
           <div className="space-y-3 pt-2 text-xs border-t border-slate-100">
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900">
-              {t('geminiPrivacy', lang)}
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 space-y-1">
+              <p className="font-semibold">{t('geminiPrivacy', lang)}</p>
+              <p className="text-[11px] text-blue-800">
+                {lang === 'fr'
+                  ? 'Active l\'intelligence artificielle Gemini Flash pour la rédaction automatique d\'avis géotechniques personnalisés dans Geolab et l\'évaluation d\'ingénierie des tirs dans FragMill.'
+                  : 'Enables Gemini Flash AI to draft personalized geotechnical interpretations in Geolab and blast engineering evaluations in FragMill.'}
+              </p>
             </div>
 
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">
-                {t('apiKeyLabel', lang)}
-              </label>
-              <input
-                type="password"
-                placeholder="AIzaSy..."
-                value={settings.geminiApiKey || ''}
-                onChange={(e) => onUpdateSettings({ ...settings, geminiApiKey: e.target.value })}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 font-mono"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-slate-700 font-semibold">
+                  {t('apiKeyLabel', lang)}
+                </label>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 text-[11px]"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  {lang === 'fr' ? 'Obtenir une clé sur Google AI Studio (Gratuit)' : 'Get a key from Google AI Studio (Free)'}
+                </a>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="password"
+                  placeholder="AIzaSy..."
+                  value={settings.geminiApiKey || ''}
+                  onChange={(e) => {
+                    onUpdateSettings({ ...settings, geminiApiKey: e.target.value });
+                    setApiKeyTestResult(null);
+                  }}
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-slate-800 font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={handleTestApiKey}
+                  disabled={isTestingApiKey}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold rounded-lg flex items-center gap-1.5 transition text-xs flex-shrink-0 cursor-pointer"
+                >
+                  {isTestingApiKey ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>{lang === 'fr' ? 'Test en cours...' : 'Testing...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>{lang === 'fr' ? 'Tester la Clé' : 'Test API Key'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {apiKeyTestResult && (
+              <div
+                className={`p-3 rounded-xl border flex items-start gap-2 ${
+                  apiKeyTestResult.success
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-red-50 border-red-200 text-red-900'
+                }`}
+              >
+                {apiKeyTestResult.success ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-0.5">
+                  <p className="font-semibold text-xs">{apiKeyTestResult.message}</p>
+                  {apiKeyTestResult.success && (
+                    <p className="text-[11px] text-emerald-700">
+                      {lang === 'fr'
+                        ? 'Votre clé est valide. Les modules Geolab et FragMill généreront désormais des interprétations réelles et personnalisées.'
+                        : 'Your key is valid. Both Geolab and FragMill will now generate live, personalized interpretations.'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-slate-700">
+              <span className="font-bold text-slate-900 block">
+                {lang === 'fr' ? 'Fonctionnalités activées par Gemini :' : 'Features powered by Gemini:'}
+              </span>
+              <ul className="list-disc list-inside space-y-1 text-[11px]">
+                <li>
+                  <strong className="text-slate-800">Geolab :</strong> {lang === 'fr'
+                    ? 'Synthèse personnalisée d\'ingénieur sur les feuilles d\'essais (Proctor, Granulo, Teneur en eau...) et rédaction des 4 chapitres de rapports d\'étude.'
+                    : 'Custom engineering reviews on laboratory test sheets and 4-chapter narrative drafting in geotechnical study reports.'}
+                </li>
+                <li>
+                  <strong className="text-slate-800">FragMill :</strong> {lang === 'fr'
+                    ? 'Évaluation technique du tir de mine (distribution P80, oversize/fines, impact concassage/broyage usine) et audit qualité des clichés du tas d\'abattage.'
+                    : 'Blast geotechnical review (P80 curve, oversize/fines, plant comminution efficiency) and muck pile photo scene assessment.'}
+                </li>
+              </ul>
             </div>
           </div>
         )}

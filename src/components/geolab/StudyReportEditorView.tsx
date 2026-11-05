@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db, getOrganisationProfile } from '../../db';
+import { db, getOrganisationProfile, getSettings } from '../../db';
 import type {
   StudyReport,
   StudySection,
@@ -357,8 +357,8 @@ export const StudyReportEditorView: React.FC<Props> = ({
     const includedSet = new Set(study.includedAnalysisIds || []);
     const includedAnalyses = projectAnalyses.filter((a) => includedSet.has(a.id));
 
-    const settingsRow = await db.settings.get('fragmill_settings');
-    const apiKey = settingsRow?.value?.geminiApiKey;
+    const appSettings = await getSettings();
+    const apiKey = appSettings.enableGemini ? appSettings.geminiApiKey : undefined;
 
     try {
       const draft = await generateStudyAiNarrative({

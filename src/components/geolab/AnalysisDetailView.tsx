@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db, getOrganisationProfile } from '../../db';
+import { db, getOrganisationProfile, getSettings } from '../../db';
 import type {
   GeoLabAnalysis,
   GeoLabClient,
@@ -44,6 +44,7 @@ export const AnalysisDetailView: React.FC<Props> = ({
 
   const [narrativeText, setNarrativeText] = useState('');
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [isGeminiActive, setIsGeminiActive] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
 
@@ -66,6 +67,13 @@ export const AnalysisDetailView: React.FC<Props> = ({
 
     const org = await getOrganisationProfile();
     setOrgProfile(org);
+
+    try {
+      const appSettings = await getSettings();
+      setIsGeminiActive(Boolean(appSettings.enableGemini && appSettings.geminiApiKey?.trim()));
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {
@@ -119,11 +127,21 @@ export const AnalysisDetailView: React.FC<Props> = ({
   const handleGenerateAiNarrative = async () => {
     setIsGeneratingAi(true);
     try {
+      const appSettings = await getSettings();
+      const apiKey = appSettings.enableGemini ? appSettings.geminiApiKey : undefined;
       const text = await generateGeoLabNarrative({
         analysis,
         language,
+        apiKey,
       });
       setNarrativeText(text);
+      if (!apiKey || apiKey.trim() === '') {
+        alert(
+          language === 'fr'
+            ? 'Interprétation déterministe générée (mode local hors-ligne). Pour activer l\'analyse personnalisée par Gemini IA, activez Gemini et saisissez votre clé API Google AI Studio dans l\'onglet Paramètres.'
+            : 'Deterministic interpretation generated (offline mode). To activate personalized Gemini AI reasoning, enable Gemini and enter your Google AI Studio API key in the Settings tab.'
+        );
+      }
     } catch (err: any) {
       alert(`AI error: ${err.message}`);
     } finally {
@@ -361,11 +379,22 @@ export const AnalysisDetailView: React.FC<Props> = ({
 
       {/* Engineering Observations & AI Narrative */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
-        <div className="flex justify-between items-center">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+        <div className="flex flex-wrap justify-between items-center gap-2">
+          <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-400" />
-            {language === 'fr' ? 'Interprétation & Avis Technique Géotechnique' : 'Observations & Engineering Interpretation'}
-          </h3>
+            <h3 className="text-sm font-bold text-white">
+              {language === 'fr' ? 'Interprétation & Avis Technique Géotechnique' : 'Observations & Engineering Interpretation'}
+            </h3>
+            {isGeminiActive ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1">
+                ● Gemini IA Actif
+              </span>
+            ) : (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-slate-800 text-slate-400 border border-slate-700">
+                ○ Mode Local Hors-ligne
+              </span>
+            )}
+          </div>
 
           <button
             onClick={handleGenerateAiNarrative}

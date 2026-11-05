@@ -107,7 +107,10 @@ export const DEFAULT_ORGANISATION_PROFILE: OrganisationProfile = {
 };
 
 export async function getSettings(): Promise<AppSettings> {
-  const row = await db.settings.get('app_settings');
+  let row = await db.settings.get('app_settings');
+  if (!row) {
+    row = await db.settings.get('fragmill_settings');
+  }
   if (row) {
     return { ...DEFAULT_SETTINGS, ...row.value };
   }
@@ -116,6 +119,7 @@ export async function getSettings(): Promise<AppSettings> {
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
   await db.settings.put({ key: 'app_settings', value: settings });
+  await db.settings.put({ key: 'fragmill_settings', value: settings });
 }
 
 export async function getOrganisationProfile(): Promise<OrganisationProfile> {

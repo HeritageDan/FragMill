@@ -73,7 +73,8 @@ STRICT RULES:
       return text.trim();
     }
     return `${disclaimer}\n\n${deterministicFallback}`;
-  } catch {
+  } catch (err: any) {
+    console.warn('Gemini narrative call failed:', err?.message);
     return `${disclaimer}\n\n${deterministicFallback}`;
   }
 }

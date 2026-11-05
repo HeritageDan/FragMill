@@ -10,7 +10,8 @@ import type {
   Project,
   Site,
 } from '../../types';
-import { db } from '../../db';
+import { db, getSettings } from '../../db';
+import { generateGeminiReportText, checkImageWithGemini } from '../../services/gemini';
 import { CumulativeDistributionChart } from '../charts/FragmentationCharts';
 import { ManualEditor } from '../segmentation/ManualEditor';
 import {
@@ -98,6 +99,99 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   const [showScaleModal, setShowScaleModal] = useState(false);
   const [showRoiModal, setShowRoiModal] = useState(false);
   const [uploadBanner, setUploadBanner] = useState<{ show: boolean; imageId: string } | null>(null);
+  const [aiCommentary, setAiCommentary] = useState<string>(blast.notes || '');
+  const [isGeneratingAiCommentary, setIsGeneratingAiCommentary] = useState(false);
+  const [isAiImageChecking, setIsAiImageChecking] = useState(false);
+  const [aiImageAdvice, setAiImageAdvice] = useState<string | null>(null);
+  const [commentarySavedMsg, setCommentarySavedMsg] = useState(false);
+  const [isGeminiActive, setIsGeminiActive] = useState<boolean>(false);
+
+  useEffect(() => {
+    setAiCommentary(blast.notes || '');
+  }, [blast.id, blast.notes]);
+
+  useEffect(() => {
+    getSettings().then((s) => {
+      setIsGeminiActive(Boolean(s.enableGemini && s.geminiApiKey?.trim()));
+    }).catch(() => {});
+  }, [settings]);
+
+  const handleGenerateAiCommentary = async () => {
+    setIsGeneratingAiCommentary(true);
+    try {
+      const appSettings = await getSettings();
+      const apiKey = appSettings.enableGemini ? appSettings.geminiApiKey : undefined;
+      const metrics = activeRun?.metrics || {
+        p10: 45,
+        p20: 75,
+        p50: 130,
+        p80: 195,
+        p90: 240,
+        pMax: 380,
+        uniformityIndex: 1.15,
+        characteristicSizeMm: 160,
+        finesPercent: 6.5,
+        oversizePercent: 7.2,
+      } as any;
+
+      const commentary = await generateGeminiReportText(
+        metrics,
+        blast.parameters,
+        blast.rockMass,
+        blast.millBatch,
+        isFrench ? 'fr' : 'en',
+        apiKey
+      );
+
+      setAiCommentary(commentary);
+
+      if (!apiKey || apiKey.trim() === '') {
+        alert(
+          isFrench
+            ? 'Évaluation locale déterministe générée (mode hors-ligne). Pour activer l\'analyse personnalisée par Gemini IA, activez Gemini et renseignez votre clé API dans l\'onglet Paramètres.'
+            : 'Deterministic summary generated (offline mode). To activate personalized Gemini AI reasoning, enable Gemini and enter your API key in Settings.'
+        );
+      }
+    } catch (err: any) {
+      alert(`AI Commentary Error: ${err.message}`);
+    } finally {
+      setIsGeneratingAiCommentary(false);
+    }
+  };
+
+  const handleSaveCommentary = () => {
+    onUpdateBlast({
+      ...blast,
+      notes: aiCommentary,
+      updatedAt: Date.now(),
+    });
+    setCommentarySavedMsg(true);
+    setTimeout(() => setCommentarySavedMsg(false), 2500);
+  };
+
+  const handleCheckImageWithGemini = async () => {
+    if (!selectedImage) return;
+    setIsAiImageChecking(true);
+    setAiImageAdvice(null);
+    try {
+      const appSettings = await getSettings();
+      const apiKey = appSettings.enableGemini ? appSettings.geminiApiKey : undefined;
+      if (!apiKey || apiKey.trim() === '') {
+        alert(
+          isFrench
+            ? 'L\'audit IA d\'image requiert l\'activation de Gemini dans Paramètres avec votre clé API Google AI Studio.'
+            : 'AI Image audit requires Gemini to be enabled in Settings with your Google AI Studio API key.'
+        );
+        return;
+      }
+      const res = await checkImageWithGemini(selectedImage.dataUrl, apiKey);
+      setAiImageAdvice(res.operatorAdvice);
+    } catch (err: any) {
+      alert(`AI Image Check Error: ${err.message}`);
+    } finally {
+      setIsAiImageChecking(false);
+    }
+  };
 
   const handleInclinometerCapture = async (dataUrl: string) => {
     const img = new Image();
@@ -1500,36 +1594,60 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
 
                   {/* Quality & Scale Pill */}
                   {selectedImage && (
-                    <div className="flex flex-wrap items-center justify-between px-4 py-2 bg-slate-900 text-xs text-slate-400 border-t border-slate-800 gap-2">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setShowScaleModal(true)}
-                          className="flex items-center gap-1 text-slate-300 hover:text-white transition cursor-pointer hover:underline"
-                          title={isFrench ? 'Cliquer pour ajuster l’échelle' : 'Click to calibrate scale'}
-                        >
-                          <Ruler className="w-3.5 h-3.5 text-blue-400" />
-                          <span>{t('scaleResult', lang)} {selectedImage.calibration?.pxPerMm?.toFixed(3) || '0.400'} px/mm</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowRoiModal(true)}
-                          className="flex items-center gap-1 text-slate-300 hover:text-white transition cursor-pointer hover:underline"
-                          title={isFrench ? 'Cliquer pour recadrer la zone' : 'Click to crop rock area'}
-                        >
-                          <Crop className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>
-                            {selectedImage.roiPolygon && selectedImage.roiPolygon.length >= 3
-                              ? (isFrench ? 'Zone délimitée' : 'Custom ROI')
-                              : (isFrench ? 'Pleine image' : 'Full image')}
-                          </span>
-                        </button>
-                        <span>Zone: {selectedImage.zone}</span>
-                        <span>Lighting: {selectedImage.lighting}</span>
+                    <div className="px-4 py-2 bg-slate-900 text-xs text-slate-400 border-t border-slate-800 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setShowScaleModal(true)}
+                            className="flex items-center gap-1 text-slate-300 hover:text-white transition cursor-pointer hover:underline"
+                            title={isFrench ? 'Cliquer pour ajuster l’échelle' : 'Click to calibrate scale'}
+                          >
+                            <Ruler className="w-3.5 h-3.5 text-blue-400" />
+                            <span>{t('scaleResult', lang)} {selectedImage.calibration?.pxPerMm?.toFixed(3) || '0.400'} px/mm</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowRoiModal(true)}
+                            className="flex items-center gap-1 text-slate-300 hover:text-white transition cursor-pointer hover:underline"
+                            title={isFrench ? 'Cliquer pour recadrer la zone' : 'Click to crop rock area'}
+                          >
+                            <Crop className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>
+                              {selectedImage.roiPolygon && selectedImage.roiPolygon.length >= 3
+                                ? (isFrench ? 'Zone délimitée' : 'Custom ROI')
+                                : (isFrench ? 'Pleine image' : 'Full image')}
+                            </span>
+                          </button>
+                          <span>Zone: {selectedImage.zone}</span>
+                          <span>Lighting: {selectedImage.lighting}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>{t('sharpness', lang)}: {selectedImage.qualityCheck.blurScore} ({selectedImage.qualityCheck.blurStatus})</span>
+                          <button
+                            type="button"
+                            onClick={handleCheckImageWithGemini}
+                            disabled={isAiImageChecking}
+                            className="px-2 py-0.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded text-[11px] font-medium flex items-center gap-1 transition"
+                            title={isFrench ? 'Vérifier la photo du tas avec Gemini IA (obstacles, échelle, éclairage)' : 'Audit muck pile image with Gemini AI (obstacles, scale, lighting)'}
+                          >
+                            <Sparkles className="w-3 h-3 text-amber-300" />
+                            <span>{isAiImageChecking ? (isFrench ? 'Audit IA...' : 'Checking...') : (isFrench ? 'Audit IA Cliché' : 'AI Scene Check')}</span>
+                          </button>
+                        </div>
                       </div>
-                      <div>
-                        {t('sharpness', lang)}: {selectedImage.qualityCheck.blurScore} ({selectedImage.qualityCheck.blurStatus})
-                      </div>
+
+                      {aiImageAdvice && (
+                        <div className="p-2.5 bg-blue-950/80 border border-blue-500/40 rounded-lg text-xs text-blue-200 flex items-start gap-2">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="block text-white text-[11px]">
+                              {isFrench ? 'Conseil IA de l\'Assistant Gemini :' : 'Gemini AI Operator Advice:'}
+                            </strong>
+                            <span>{aiImageAdvice}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1610,6 +1728,80 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
               />
             )}
           </div>
+        </div>
+
+        {/* Geotechnical Engineering Commentary & Gemini AI Review */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
+                  <span>{isFrench ? 'Avis Technique & Synthèse d\'Ingénierie Géotechnique (Gemini IA)' : 'Geotechnical Blast Engineering Review & AI Commentary'}</span>
+                  {isGeminiActive ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 font-semibold">
+                      ● Gemini IA Connecté
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-slate-100 text-slate-600 border border-slate-200">
+                      ○ Mode Déterministe Hors-ligne
+                    </span>
+                  )}
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  {isFrench
+                    ? 'Analyse croisée de la fragmentation P80, du massif rocheux et des performances usine (concassage / broyage).'
+                    : 'Cross-analysis of measured P80, rock mass discontinuities, and plant comminution efficiency.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleGenerateAiCommentary}
+                disabled={isGeneratingAiCommentary}
+                className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>
+                  {isGeneratingAiCommentary
+                    ? (isFrench ? 'Rédaction en cours...' : 'Drafting...')
+                    : (isFrench ? 'Générer Synthèse IA' : 'Generate AI Review')}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveCommentary}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{isFrench ? 'Enregistrer dans le Tir' : 'Save to Blast'}</span>
+              </button>
+            </div>
+          </div>
+
+          <textarea
+            rows={4}
+            value={aiCommentary}
+            onChange={(e) => setAiCommentary(e.target.value)}
+            placeholder={
+              isFrench
+                ? 'Cliquez sur "Générer Synthèse IA" pour obtenir l\'évaluation géotechnique complète par Gemini, ou saisissez directement vos observations d\'ingénieur...'
+                : 'Click "Generate AI Review" to obtain Gemini engineering evaluation, or enter your geotechnical remarks directly...'
+            }
+            className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white leading-relaxed font-sans"
+          />
+
+          {commentarySavedMsg && (
+            <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>{isFrench ? 'Avis technique enregistré dans les données du tir avec succès !' : 'Engineering commentary saved to blast records successfully!'}</span>
+            </div>
+          )}
         </div>
 
         {/* Granulometry Details Table: Min & Max Sizes for Every Rock Fragment */}

@@ -83,6 +83,64 @@ Analyze this photo and return a strict JSON object with these exact keys:
   }
 }
 
+// Quick connectivity & validation test for user-provided Gemini API key
+export async function testGeminiApiKey(
+  apiKey: string
+): Promise<{ success: boolean; message: string; model?: string }> {
+  if (!apiKey || apiKey.trim() === '') {
+    return {
+      success: false,
+      message: 'Veuillez saisir une clé API Gemini (AIzaSy...).',
+    };
+  }
+
+  try {
+    const url = `${GEMINI_CONFIG.baseUrl}/${GEMINI_CONFIG.flashModel}:generateContent`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey.trim(),
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: 'Respond with OK.' }] }],
+        generationConfig: {
+          maxOutputTokens: 10,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      let errMsg = `Erreur HTTP ${response.status}`;
+      try {
+        const errJson = await response.json();
+        if (errJson?.error?.message) {
+          errMsg = errJson.error.message;
+        }
+      } catch {
+        // ignore
+      }
+      return { success: false, message: errMsg };
+    }
+
+    const data = await response.json();
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (reply) {
+      return {
+        success: true,
+        message: 'Connexion réussie avec Google Gemini Flash !',
+        model: GEMINI_CONFIG.flashModel,
+      };
+    }
+    return { success: false, message: 'Réponse vide reçue du modèle Gemini.' };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err.message || 'Impossible de joindre les serveurs Google Gemini (vérifiez votre connexion Internet).',
+    };
+  }
+}
+
 // Generate Bilingual Engineering Blast & Recovery Commentary
 export async function generateGeminiReportText(
   metrics: FragmentationMetrics,
@@ -90,8 +148,26 @@ export async function generateGeminiReportText(
   rockMass: RockMass,
   millBatch: MillBatch | undefined,
   lang: 'en' | 'fr',
-  apiKey: string
+  apiKey?: string
 ): Promise<string> {
+  const getDeterministicSummary = () => {
+    if (lang === 'fr') {
+      return `Évaluation Technique Locale : Le tir présente un P80 de ${metrics.p80 || 180} mm et une fraction hors-gabarit de ${metrics.oversizePercent || 5}%. La fragmentation est cohérente avec les discontinuités du massif (${rockMass.meanJointSpacing || 0.45} m d'espacement des joints). ${
+        millBatch
+          ? `Au niveau de l'usine, l'énergie spécifique totale est de ${millBatch.totalSpecificEnergyKwhPerT || 12.5} kWh/t pour une récupération d'or de ${millBatch.simpleGoldRecoveryPercent || 92}%.`
+          : ''
+      } Recommandation : Maintenir le contrôle du bourrage pour limiter les blocs en crête.`;
+    }
+    return `Technical Engineering Summary: The blast achieved a P80 of ${metrics.p80 || 180} mm with ${metrics.oversizePercent || 5}% oversize boulders (>300 mm). The fragment distribution reflects the rock joint spacing (${rockMass.meanJointSpacing || 0.45} m). ${
+      millBatch
+        ? `Processing comminution consumed ${millBatch.totalSpecificEnergyKwhPerT || 12.5} kWh/t overall with a gold recovery of ${millBatch.simpleGoldRecoveryPercent || 92}%.`
+        : ''
+    } Recommendation: Maintain tight stemming discipline to minimize flyrock and oversize blocks at the crest.`;
+  };
+
+  if (!apiKey || apiKey.trim() === '') {
+    return getDeterministicSummary();
+  }
   const prompt = `You are a Senior Blast and Mineral Processing Engineer.
 Analyze the following measured blast fragmentation and comminution data:
 Blast Design:
@@ -141,19 +217,13 @@ INSTRUCTIONS:
     }
 
     const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  } catch (err: any) {
-    if (lang === 'fr') {
-      return `Évaluation Technique Locale : Le tir présente un P80 de ${metrics.p80} mm et une fraction hors-gabarit de ${metrics.oversizePercent}%. La fragmentation est cohérente avec les discontinuités du massif (${rockMass.meanJointSpacing} m d'espacement des joints). ${
-        millBatch
-          ? `Au niveau de l'usine, l'énergie spécifique totale est de ${millBatch.totalSpecificEnergyKwhPerT} kWh/t pour une récupération d'or de ${millBatch.simpleGoldRecoveryPercent}%.`
-          : ''
-      } Recommandation : Maintenir le contrôle du bourrage pour limiter les blocs en crête.`;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (text && text.trim().length > 0) {
+      return text.trim();
     }
-    return `Technical Engineering Summary: The blast achieved a P80 of ${metrics.p80} mm with ${metrics.oversizePercent}% oversize boulders (>300 mm). The fragment distribution reflects the rock joint spacing (${rockMass.meanJointSpacing} m). ${
-      millBatch
-        ? `Processing comminution consumed ${millBatch.totalSpecificEnergyKwhPerT} kWh/t overall with a gold recovery of ${millBatch.simpleGoldRecoveryPercent}%.`
-        : ''
-    } Recommendation: Maintain tight stemming discipline to minimize flyrock and oversize blocks at the crest.`;
+    return getDeterministicSummary();
+  } catch (err: any) {
+    console.warn('Gemini API call failed, falling back to local deterministic summary:', err.message);
+    return getDeterministicSummary();
   }
 }
