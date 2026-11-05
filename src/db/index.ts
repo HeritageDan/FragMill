@@ -81,8 +81,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   finesThresholdMm: 25,
   maxImageDimension: 4000,
   enableGemini: false,
-  geminiModelFlash: 'gemini-2.5-flash',
-  geminiModelPro: 'gemini-2.5-pro',
+  geminiModelFlash: 'gemini-1.5-flash',
+  geminiModelPro: 'gemini-1.5-pro',
   validationErrorThresholdPercent: 15,
   showExperimentalModules: false,
 };
@@ -111,10 +111,15 @@ export async function getSettings(): Promise<AppSettings> {
   if (!row) {
     row = await db.settings.get('fragmill_settings');
   }
-  if (row) {
-    return { ...DEFAULT_SETTINGS, ...row.value };
+  const s = row ? { ...DEFAULT_SETTINGS, ...row.value } : DEFAULT_SETTINGS;
+  // Migrate legacy/experimental models that trigger 403 on standard AI Studio keys
+  if (s.geminiModelFlash === 'gemini-2.5-flash') {
+    s.geminiModelFlash = 'gemini-1.5-flash';
   }
-  return DEFAULT_SETTINGS;
+  if (s.geminiModelPro === 'gemini-2.5-pro') {
+    s.geminiModelPro = 'gemini-1.5-pro';
+  }
+  return s;
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {

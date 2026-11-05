@@ -22,8 +22,9 @@ import {
   ExternalLink,
   CheckCircle,
   XCircle,
+  Info,
 } from 'lucide-react';
-import { testGeminiApiKey } from '../../services/gemini';
+import { testGeminiApiKey, type GeminiTestResult } from '../../services/gemini';
 
 interface SettingsViewProps {
   settings: AppSettings;
@@ -43,7 +44,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [storageEstimateMb, setStorageEstimateMb] = useState<string>('0');
   const [backupStatus, setBackupStatus] = useState<string>('');
   const [isTestingApiKey, setIsTestingApiKey] = useState(false);
-  const [apiKeyTestResult, setApiKeyTestResult] = useState<{ success: boolean; message: string; model?: string } | null>(null);
+  const [apiKeyTestResult, setApiKeyTestResult] = useState<GeminiTestResult | null>(null);
 
   const handleTestApiKey = async () => {
     if (!settings.geminiApiKey?.trim()) {
@@ -56,8 +57,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setIsTestingApiKey(true);
     setApiKeyTestResult(null);
     try {
-      const res = await testGeminiApiKey(settings.geminiApiKey.trim());
+      const res = await testGeminiApiKey(settings.geminiApiKey.trim(), settings.geminiModelFlash);
       setApiKeyTestResult(res);
+      if (res.success && res.model && res.model !== settings.geminiModelFlash) {
+        onUpdateSettings({ ...settings, geminiModelFlash: res.model });
+      }
     } catch (err: any) {
       setApiKeyTestResult({
         success: false,
@@ -501,11 +505,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   )}
                 </button>
               </div>
+
+              <div className="pt-2">
+                <label className="text-slate-700 font-semibold block mb-1 text-[11px]">
+                  {lang === 'fr' ? 'Modèle Gemini Flash (Recommandé)' : 'Gemini Flash Model (Recommended)'}
+                </label>
+                <select
+                  value={settings.geminiModelFlash || 'gemini-1.5-flash'}
+                  onChange={(e) => {
+                    onUpdateSettings({ ...settings, geminiModelFlash: e.target.value });
+                    setApiKeyTestResult(null);
+                  }}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-slate-800 text-xs bg-white"
+                >
+                  <option value="gemini-1.5-flash">Gemini 1.5 Flash (Standard - Gratuit universel)</option>
+                  <option value="gemini-2.0-flash">Gemini 2.0 Flash (Haute vitesse)</option>
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                </select>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {lang === 'fr'
+                    ? 'Le modèle Gemini 1.5 Flash est actif par défaut et supporté par tous les comptes gratuits Google AI Studio.'
+                    : 'Gemini 1.5 Flash is the default stable model supported by all free Google AI Studio accounts.'}
+                </p>
+              </div>
             </div>
 
             {apiKeyTestResult && (
               <div
-                className={`p-3 rounded-xl border flex items-start gap-2 ${
+                className={`p-3.5 rounded-xl border flex items-start gap-2.5 ${
                   apiKeyTestResult.success
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                     : 'bg-red-50 border-red-200 text-red-900'
@@ -516,8 +543,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 ) : (
                   <XCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
                 )}
-                <div className="space-y-0.5">
-                  <p className="font-semibold text-xs">{apiKeyTestResult.message}</p>
+                <div className="space-y-1.5 flex-1">
+                  <p className="font-semibold text-xs leading-relaxed">{apiKeyTestResult.message}</p>
                   {apiKeyTestResult.success && (
                     <p className="text-[11px] text-emerald-700">
                       {lang === 'fr'
@@ -525,6 +552,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         : 'Your key is valid. Both Geolab and FragMill will now generate live, personalized interpretations.'}
                     </p>
                   )}
+                  {!apiKeyTestResult.success &&
+                    apiKeyTestResult.fixSuggestions &&
+                    apiKeyTestResult.fixSuggestions.length > 0 && (
+                      <div className="mt-2.5 p-3 bg-white/90 rounded-lg border border-red-200 text-slate-800 space-y-2">
+                        <p className="font-bold text-[11px] text-red-800 flex items-center gap-1.5">
+                          <Info className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
+                          {lang === 'fr'
+                            ? 'Guide de résolution pas-à-pas :'
+                            : 'Step-by-step resolution guide:'}
+                        </p>
+                        <ul className="list-disc list-inside space-y-1.5 text-[11px] text-slate-700">
+                          {apiKeyTestResult.fixSuggestions.map((sug, idx) => (
+                            <li key={idx} className="leading-relaxed pl-1">
+                              {sug}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                 </div>
               </div>
             )}

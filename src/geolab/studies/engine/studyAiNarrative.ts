@@ -1,4 +1,4 @@
-import { GEMINI_CONFIG } from '../../../services/gemini';
+import { postGeminiGenerateContent } from '../../../services/gemini';
 import type {
   StudyReport,
   GeoLabProject,
@@ -282,29 +282,23 @@ Return a STRICT JSON object with these exact 4 keys:
 }`;
 
   try {
-    const url = `${GEMINI_CONFIG.baseUrl}/${GEMINI_CONFIG.flashModel}:generateContent`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+    const res = await postGeminiGenerateContent(
+      apiKey,
+      [{ parts: [{ text: prompt }] }],
+      {
         generationConfig: {
           temperature: 0.2,
           responseMimeType: 'application/json',
         },
-      }),
-    });
+      }
+    );
 
-    if (!response.ok) {
-      console.warn('Gemini API call returned non-200, falling back to deterministic template');
+    if (!res.ok || !res.data) {
+      console.warn('Gemini API call unsuccessful, falling back to deterministic template');
       return fallback;
     }
 
-    const data = await response.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const rawText = res.data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!rawText) return fallback;
 
     const parsed = JSON.parse(rawText);

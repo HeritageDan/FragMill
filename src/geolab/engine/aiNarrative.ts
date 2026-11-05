@@ -1,4 +1,4 @@
-import { GEMINI_CONFIG } from '../../services/gemini';
+import { postGeminiGenerateContent } from '../../services/gemini';
 import type { GeoLabAnalysis } from '../../types/geolab';
 import { getTestDefinition } from '../tests/index';
 
@@ -47,30 +47,22 @@ STRICT RULES:
 6. Prepend the response with: "${disclaimer}"`;
 
   try {
-    const url = `${GEMINI_CONFIG.baseUrl}/${GEMINI_CONFIG.flashModel}:generateContent`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+    const res = await postGeminiGenerateContent(
+      apiKey,
+      [{ parts: [{ text: prompt }] }],
+      {
         generationConfig: {
           temperature: 0.2,
           maxOutputTokens: 500,
         },
-      }),
-    });
+      }
+    );
 
-    if (!response.ok) {
-      throw new Error(`Gemini API HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (text && text.trim().length > 0) {
-      return text.trim();
+    if (res.ok && res.data) {
+      const text = res.data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text && text.trim().length > 0) {
+        return text.trim();
+      }
     }
     return `${disclaimer}\n\n${deterministicFallback}`;
   } catch (err: any) {
