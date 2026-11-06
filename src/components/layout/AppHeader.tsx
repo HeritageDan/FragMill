@@ -213,7 +213,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <button
               onClick={onOpenReportVault}
               className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition"
-              title={isFrench ? 'Ouvrir le registre et télécharger le Rapport Général PDF' : 'Open vault and download General PDF Report'}
+              title={isFrench ? 'Ouvrir le registre et télécharger le Rapport Général Word (.docx)' : 'Open vault and download General Word Report (.docx)'}
             >
               <FileText className="w-3.5 h-3.5 text-white" />
               <span className="hidden sm:inline">{isFrench ? 'Rapport Général' : 'General Report'}</span>

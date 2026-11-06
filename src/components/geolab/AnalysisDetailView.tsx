@@ -8,8 +8,9 @@ import type {
   OrganisationProfile,
 } from '../../types/geolab';
 import { getTestDefinition } from '../../geolab/tests';
-import { generateGeoLabExcelReport } from '../../geolab/engine/excelGenerator';
+import { generateGeoLabExcelReport, generateSoilSummaryExcelReport } from '../../geolab/engine/excelGenerator';
 import { generateGeoLabPdfReport } from '../../geolab/engine/pdfGenerator';
+import { generateGeoLabDocxReport } from '../../geolab/engine/docxGenerator';
 import { generateGeoLabNarrative } from '../../geolab/engine/aiNarrative';
 import { GeoLabTestChart } from './GeoLabTestChart';
 import {
@@ -48,7 +49,9 @@ export const AnalysisDetailView: React.FC<Props> = ({
   const [isAiActive, setIsAiActive] = useState(false);
   const [aiProviderName, setAiProviderName] = useState<'Claude' | 'Gemini'>('Claude');
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isExportingSummary, setIsExportingSummary] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingDocx, setIsExportingDocx] = useState(false);
 
   const loadData = async () => {
     const an = await db.analyses.get(analysisId);
@@ -191,6 +194,32 @@ export const AnalysisDetailView: React.FC<Props> = ({
     }
   };
 
+  const handleDownloadSoilSummaryExcel = async () => {
+    if (!sample || !project || !client || !orgProfile) return;
+    setIsExportingSummary(true);
+    try {
+      const sampleAnalyses = await db.analyses.where('sampleId').equals(sample.id).toArray();
+      const blob = await generateSoilSummaryExcelReport({
+        sample,
+        project,
+        client,
+        orgProfile,
+        analyses: sampleAnalyses.length > 0 ? sampleAnalyses : (analysis ? [analysis] : []),
+        language,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Fiche_Recap_${sample.sampleId.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(`Fiche Récapitulative export error: ${err.message}`);
+    } finally {
+      setIsExportingSummary(false);
+    }
+  };
+
   const handleDownloadPdf = async () => {
     setIsExportingPdf(true);
     try {
@@ -213,6 +242,32 @@ export const AnalysisDetailView: React.FC<Props> = ({
       alert(`PDF export error: ${err.message}`);
     } finally {
       setIsExportingPdf(false);
+    }
+  };
+
+  const handleDownloadDocx = async () => {
+    if (!analysis || !client || !project || !sample || !orgProfile || !testDef) return;
+    setIsExportingDocx(true);
+    try {
+      const blob = await generateGeoLabDocxReport({
+        analysis,
+        client,
+        project,
+        sample,
+        orgProfile,
+        testDef,
+        language,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${analysis.reportNumber}_${analysis.testType}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(`Word export error: ${err.message}`);
+    } finally {
+      setIsExportingDocx(false);
     }
   };
 
@@ -279,9 +334,30 @@ export const AnalysisDetailView: React.FC<Props> = ({
             onClick={handleDownloadExcel}
             disabled={isExportingExcel}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700/80 hover:bg-emerald-600 text-white rounded text-xs font-medium transition shadow"
+            title={language === 'fr' ? 'Feuille Excel d’essai avec formules et graphiques natifs' : 'Individual test Excel sheet'}
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
             {isExportingExcel ? '...' : language === 'fr' ? 'Excel (.xlsx)' : 'Excel (.xlsx)'}
+          </button>
+
+          <button
+            onClick={handleDownloadSoilSummaryExcel}
+            disabled={isExportingSummary}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition shadow"
+            title={language === 'fr' ? 'Fiche récapitulative des sols (Assurance Qualité / Synthèse Multi-Essais)' : 'Soil Summary Sheet (QA Reference Format)'}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-amber-200" />
+            {isExportingSummary ? '...' : language === 'fr' ? 'Fiche Récap (.xlsx)' : 'Soil Summary (.xlsx)'}
+          </button>
+
+          <button
+            onClick={handleDownloadDocx}
+            disabled={isExportingDocx}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded text-xs font-medium transition shadow"
+            title={language === 'fr' ? 'Télécharger le rapport d’essai Word (.docx)' : 'Download Word test report (.docx)'}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            {isExportingDocx ? '...' : language === 'fr' ? 'Word (.docx)' : 'Word (.docx)'}
           </button>
 
           <button

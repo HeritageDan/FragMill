@@ -12,7 +12,6 @@ import { getTestDefinition } from '../tests/index';
 import type { ProctorInput, ProctorResults, ProctorFitMethod } from '../tests/proctor';
 import type { GrainSizeInput, GrainSizeResults } from '../tests/grainSize';
 import type { WaterContentInput, WaterContentResults } from '../tests/waterContent';
-import { renderTestChartPng, isTestWithGraph } from '../studies/engine/chartRenderer';
 
 export interface ExcelGenerationOptions {
   analysis: GeoLabAnalysis;
@@ -23,6 +22,8 @@ export interface ExcelGenerationOptions {
   testDef: GeoLabTestDefinition;
   language?: 'en' | 'fr';
 }
+
+export { generateSoilSummaryExcelReport, type SoilSummaryExcelOptions } from './soilSummaryExcelGenerator';
 
 interface EmbeddedLogo {
   id: string;
@@ -98,29 +99,7 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
     zip.file(`xl/media/${logo.fileName}`, logo.b64, { base64: true });
   }
 
-  // Render High-Resolution Chart PNG matching software UI exactly
-  const testId = testDef?.id || analysis.testType;
-  let chartPngBytes: Uint8Array | null = null;
-  if (isTestWithGraph(testId)) {
-    try {
-      chartPngBytes = await renderTestChartPng(
-        analysis.testType,
-        analysis.rawInput,
-        analysis.computedResults,
-        lang,
-        orgProfile.primaryColor
-      );
-    } catch (err) {
-      console.warn('Failed to render chart PNG for Excel:', err);
-    }
-  }
-
-  const hasChartImage = Boolean(chartPngBytes && chartPngBytes.length > 0);
-  if (hasChartImage && chartPngBytes) {
-    zip.file('xl/media/chartImage.png', chartPngBytes);
-  }
-
-  // Build Sheet XML based on test type
+  // Build Sheet XML based on test type (native DrawingML charts only, zero screenshot images)
   const { sheetXml, chartXml, hasChart } = buildTestSheetAndChart(
     testDef.id,
     analysis,
@@ -132,10 +111,10 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
     watermarkText
   );
 
-  const hasDrawing = hasChart || logos.length > 0 || hasChartImage;
+  const hasDrawing = hasChart || logos.length > 0;
 
   // [Content_Types].xml
-  zip.file('[Content_Types].xml', getContentTypesXml(hasChart, hasDrawing, logos, hasChartImage));
+  zip.file('[Content_Types].xml', getContentTypesXml(hasChart, hasDrawing, logos));
 
   // _rels/.rels
   zip.file('_rels/.rels', getGlobalRelsXml());
@@ -165,10 +144,10 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
     );
 
     // xl/drawings/drawing1.xml
-    zip.file('xl/drawings/drawing1.xml', getDrawingXml(logos, hasChart, hasChartImage));
+    zip.file('xl/drawings/drawing1.xml', getDrawingXml(logos, hasChart));
 
     // xl/drawings/_rels/drawing1.xml.rels
-    zip.file('xl/drawings/_rels/drawing1.xml.rels', getDrawingRelsXml(logos, hasChart, hasChartImage));
+    zip.file('xl/drawings/_rels/drawing1.xml.rels', getDrawingRelsXml(logos, hasChart));
 
     if (hasChart && chartXml) {
       // xl/charts/chart1.xml
@@ -1233,7 +1212,7 @@ function buildGenericSheet(
 // -------------------------------------------------------------
 // OpenXML Packaging Helpers
 // -------------------------------------------------------------
-function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean, hasChartImage: boolean = false): string {
+function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean): string {
   let anchorsXml = '';
 
   // Logo Anchors
@@ -1263,38 +1242,12 @@ function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean, hasChartImage: 
     </xdr:twoCellAnchor>`;
   });
 
-  // Rendered Chart Image Anchor (Matching software UI pixel-for-pixel)
-  if (hasChartImage) {
-    anchorsXml += `
-    <xdr:twoCellAnchor editAs="oneCell">
-      <xdr:from><xdr:col>7</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>15000</xdr:rowOff></xdr:from>
-      <xdr:to><xdr:col>14</xdr:col><xdr:colOff>100000</xdr:colOff><xdr:row>23</xdr:row><xdr:rowOff>40000</xdr:rowOff></xdr:to>
-      <xdr:pic>
-        <xdr:nvPicPr>
-          <xdr:cNvPr id="200" name="TestChartImage"/>
-          <xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
-        </xdr:nvPicPr>
-        <xdr:blipFill>
-          <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rIdChartImg"/>
-          <a:stretch><a:fillRect/></a:stretch>
-        </xdr:blipFill>
-        <xdr:spPr>
-          <a:xfrm><a:off x="0" y="0"/><a:ext cx="5600000" cy="3400000"/></a:xfrm>
-          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-        </xdr:spPr>
-      </xdr:pic>
-      <xdr:clientData/>
-    </xdr:twoCellAnchor>`;
-  }
-
-  // Native DrawingML Chart Anchor
+  // Native DrawingML Chart Anchor (Real plotted Excel vector chart from worksheet cells)
   if (hasChart) {
-    const rowFrom = hasChartImage ? 25 : 3;
-    const rowTo = hasChartImage ? 45 : 23;
     anchorsXml += `
     <xdr:twoCellAnchor>
-      <xdr:from><xdr:col>7</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${rowFrom}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
-      <xdr:to><xdr:col>14</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${rowTo}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+      <xdr:from><xdr:col>7</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+      <xdr:to><xdr:col>14</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>23</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
       <xdr:graphicFrame macro="">
         <xdr:nvGraphicFramePr>
           <xdr:cNvPr id="2" name="Chart"/>
@@ -1317,14 +1270,11 @@ function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean, hasChartImage: 
 </xdr:wsDr>`;
 }
 
-function getDrawingRelsXml(logos: EmbeddedLogo[], hasChart: boolean, hasChartImage: boolean = false): string {
+function getDrawingRelsXml(logos: EmbeddedLogo[], hasChart: boolean): string {
   let rels = '';
   logos.forEach((logo) => {
     rels += `\n  <Relationship Id="${logo.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${logo.fileName}"/>`;
   });
-  if (hasChartImage) {
-    rels += `\n  <Relationship Id="rIdChartImg" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/chartImage.png"/>`;
-  }
   if (hasChart) {
     rels += `\n  <Relationship Id="rIdChart" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/>`;
   }
@@ -1334,7 +1284,7 @@ function getDrawingRelsXml(logos: EmbeddedLogo[], hasChart: boolean, hasChartIma
 </Relationships>`;
 }
 
-function getContentTypesXml(hasChart: boolean, hasDrawing: boolean, logos: EmbeddedLogo[], hasChartImage: boolean = false): string {
+function getContentTypesXml(hasChart: boolean, hasDrawing: boolean, logos: EmbeddedLogo[]): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>

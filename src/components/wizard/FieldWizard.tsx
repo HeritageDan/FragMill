@@ -11,7 +11,7 @@ import { db } from '../../db';
 import { analyzeImageQuality, calibrateTwoPoint, runClassicalSegmentation } from '../../services/imageProcessing';
 import { computeFragmentationMetrics } from '../../services/statistics';
 import { CumulativeDistributionChart } from '../charts/FragmentationCharts';
-import { generateBlastPdfReport, exportFragmentsCsv } from '../../services/export';
+import { generateBlastPdfReport, generateBlastDocxReport, exportFragmentsCsv } from '../../services/export';
 import { createSyntheticMuckpileDataUrl } from '../../db/seedData';
 import { t } from '../../i18n';
 import {
@@ -763,7 +763,7 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                         updatedAt: 0,
                       };
 
-                      const blob = await generateBlastPdfReport(
+                      const blob = await generateBlastDocxReport(
                         resolvedProject,
                         resolvedSite,
                         currentBlast,
@@ -775,18 +775,18 @@ export const FieldWizard: React.FC<FieldWizardProps> = ({
                       const a = document.createElement('a');
                       a.href = url;
                       const dateStr = new Date().toISOString().slice(0, 10);
-                      a.download = `FraGeo_Rapport_General_${currentBlast.blastId}_${dateStr}.pdf`;
+                      a.download = `FraGeo_Rapport_General_${currentBlast.blastId}_${dateStr}.docx`;
                       a.click();
                       URL.revokeObjectURL(url);
                     } catch (err) {
-                      console.error('Failed to generate PDF report:', err);
+                      console.error('Failed to generate Word report:', err);
                     }
                   }}
                   className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow transition"
-                  title={lang === 'fr' ? 'Télécharger le rapport général PDF complet' : 'Download complete general PDF report'}
+                  title={lang === 'fr' ? 'Télécharger le rapport général Word (.docx) complet' : 'Download complete general Word report (.docx)'}
                 >
                   <FileDown className="w-3.5 h-3.5" />
-                  <span>{lang === 'fr' ? 'Rapport PDF' : 'PDF Report'}</span>
+                  <span>{lang === 'fr' ? 'Rapport Word (.docx)' : 'Word Report (.docx)'}</span>
                 </button>
 
                 <button

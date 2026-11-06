@@ -48,7 +48,10 @@ export async function generateBlastPdfReport(
     if (run) {
       targetImage.segmentationRuns = [run, ...(targetImage.segmentationRuns || []).filter((r) => r.id !== run.id)];
     }
-    targetBlast.images = [targetImage, ...(targetBlast.images || []).filter((i) => i.id !== targetImage.id)];
+    // In case of combined blast composite or multiple images, just ONE representative image is sent to the report
+    targetBlast.images = [targetImage];
+  } else if (targetBlast.images && targetBlast.images.length > 1) {
+    targetBlast.images = [targetBlast.images[0]];
   }
 
   const activeImg = targetBlast.images?.[0];
@@ -738,3 +741,4 @@ export async function importProjectBackupJson(jsonString: string): Promise<strin
 }
 
 export { generateModularVaultPdfReport, generateSingleSectionPdfReport } from './modularReport';
+export { generateBlastDocxReport, generateModularVaultDocxReport } from './docxReportGenerator';

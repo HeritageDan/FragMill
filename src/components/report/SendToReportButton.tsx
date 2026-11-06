@@ -202,7 +202,7 @@ export const SendToReportButton: React.FC<SendToReportButtonProps> = ({
               ) : (
                 <FileText className="w-4 h-4 text-indigo-600" />
               )}
-              <span>{isFr ? 'Télécharger le Rapport Général Complet (PDF)' : 'Download Full General Report (PDF)'}</span>
+              <span>{isFr ? 'Télécharger le Rapport Général Complet (Word .docx)' : 'Download Full General Report (Word .docx)'}</span>
             </button>
           )}
         </div>

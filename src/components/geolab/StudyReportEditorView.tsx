@@ -19,7 +19,6 @@ import {
   updateStudyPhotoCaption,
   reorderStudyPhotos,
   buildDocumentModel,
-  generateStudyPdfReport,
   generateStudyDocxReport,
   exportStudyPackageZip,
   checkStudyConsistency,
@@ -28,6 +27,7 @@ import {
   type StudyNarrativeDraft,
 } from '../../geolab/studies';
 import { getTestDefinition } from '../../geolab/tests';
+import { generateSoilSummaryExcelReport } from '../../geolab/engine/excelGenerator';
 import {
   ArrowLeft,
   BookOpen,
@@ -97,7 +97,7 @@ export const StudyReportEditorView: React.FC<Props> = ({
 
   // Status & Notification
   const [statusError, setStatusError] = useState<string | null>(null);
-  const [isExporting, setIsExporting] = useState<'docx' | 'pdf' | 'zip' | null>(null);
+  const [isExporting, setIsExporting] = useState<'docx' | 'zip' | null>(null);
   const [exportProgress, setExportProgress] = useState<string>('');
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
@@ -465,25 +465,6 @@ export const StudyReportEditorView: React.FC<Props> = ({
     }
   };
 
-  const handleExportPdf = async () => {
-    const model = getDocModel();
-    if (!model) return;
-    try {
-      setIsExporting('pdf');
-      setExportProgress(lang === 'fr' ? 'Compilation PDF...' : 'Compiling PDF...');
-      const blob = await generateStudyPdfReport(model, {
-        onProgress: (p) => setExportProgress(`${p.message} (${Math.round((p.current / p.total) * 100)}%)`),
-      });
-      const filename = `${study.reportNumber || 'Study'}.pdf`;
-      downloadBlob(blob, filename);
-    } catch (err: any) {
-      alert(`PDF export failed: ${err?.message}`);
-    } finally {
-      setIsExporting(null);
-      setExportProgress('');
-    }
-  };
-
   const handleExportZip = async () => {
     try {
       setIsExporting('zip');
@@ -495,6 +476,41 @@ export const StudyReportEditorView: React.FC<Props> = ({
       downloadBlob(blob, filename);
     } catch (err: any) {
       alert(`Package export failed: ${err?.message}`);
+    } finally {
+      setIsExporting(null);
+      setExportProgress('');
+    }
+  };
+
+  const handleExportSoilSummary = async () => {
+    if (!project || !client || !orgProfile) return;
+    try {
+      setIsExporting('docx');
+      setExportProgress(lang === 'fr' ? 'Génération de la Fiche Récapitulative...' : 'Generating Soil Summary Sheet...');
+      const targetSample = samples[0] || {
+        id: 'sample-default',
+        projectId: project.id,
+        sampleId: 'ECH-01',
+        samplingDate: new Date().toISOString().split('T')[0],
+        materialType: 'Sol',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const includedSet = new Set(study.includedAnalysisIds || []);
+      const includedAnalyses = projectAnalyses.filter((a) => includedSet.has(a.id));
+      const sampleAnalyses = includedAnalyses.filter((a) => a.sampleId === targetSample.id);
+      const blob = await generateSoilSummaryExcelReport({
+        sample: targetSample,
+        project,
+        client,
+        orgProfile,
+        analyses: sampleAnalyses.length > 0 ? sampleAnalyses : includedAnalyses,
+        language: lang,
+      });
+      const filename = `Fiche_Recap_${(targetSample.sampleId || 'Sol').replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
+      downloadBlob(blob, filename);
+    } catch (err: any) {
+      alert(`Soil Summary export failed: ${err?.message}`);
     } finally {
       setIsExporting(null);
       setExportProgress('');
@@ -588,19 +604,20 @@ export const StudyReportEditorView: React.FC<Props> = ({
           </button>
 
           <button
-            onClick={handleExportPdf}
+            onClick={handleExportSoilSummary}
             disabled={isExporting !== null}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-700 hover:bg-rose-600 text-white rounded-lg text-xs font-bold transition shadow-sm disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold transition shadow-sm disabled:opacity-50"
+            title={lang === 'fr' ? 'Télécharger la Fiche Récapitulative des Sols (Synthèse Multi-Essais)' : 'Download Soil Summary Sheet (.xlsx)'}
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>PDF</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 text-amber-200" />
+            <span>{lang === 'fr' ? 'Fiche Récap (.xlsx)' : 'Soil Summary (.xlsx)'}</span>
           </button>
 
           <button
             onClick={handleExportZip}
             disabled={isExporting !== null}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-bold transition shadow-sm disabled:opacity-50"
-            title={lang === 'fr' ? 'Télécharger l’archive complète (DOCX + PDF + Feuilles Excel + Photos)' : 'Download package ZIP'}
+            title={lang === 'fr' ? 'Télécharger l’archive complète (DOCX + Feuilles Excel + Photos)' : 'Download package ZIP (DOCX + Excel + Photos)'}
           >
             <Archive className="w-3.5 h-3.5 text-amber-400" />
             <span>Package ZIP</span>

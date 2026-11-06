@@ -8,8 +8,9 @@ import type {
   OrganisationProfile,
 } from '../../types/geolab';
 import { getTestDefinition } from '../../geolab/tests';
-import { generateGeoLabExcelReport } from '../../geolab/engine/excelGenerator';
+import { generateGeoLabExcelReport, generateSoilSummaryExcelReport } from '../../geolab/engine/excelGenerator';
 import { generateGeoLabPdfReport } from '../../geolab/engine/pdfGenerator';
+import { generateGeoLabDocxReport } from '../../geolab/engine/docxGenerator';
 import { exportProjectReportsZip } from '../../geolab/engine/projectZipExporter';
 import {
   FileSpreadsheet,
@@ -114,6 +115,31 @@ export const ReportsListView: React.FC<Props> = ({ language, onSelectAnalysis, o
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadSoilSummary = async (an: GeoLabAnalysis, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!orgProfile) return;
+    const s = sampleMap.get(an.sampleId);
+    const p = s ? projectMap.get(s.projectId) : null;
+    const c = p ? clientMap.get(p.clientId) : null;
+    if (!s || !p || !c) return;
+
+    const sampleAnalyses = analyses.filter((a) => a.sampleId === s.id);
+    const blob = await generateSoilSummaryExcelReport({
+      sample: s,
+      project: p,
+      client: c,
+      orgProfile,
+      analyses: sampleAnalyses.length > 0 ? sampleAnalyses : [an],
+      language,
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Fiche_Recap_${s.sampleId.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownloadPdf = async (an: GeoLabAnalysis, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!orgProfile) return;
@@ -136,6 +162,32 @@ export const ReportsListView: React.FC<Props> = ({ language, onSelectAnalysis, o
     const a = document.createElement('a');
     a.href = url;
     a.download = `${an.reportNumber}_${an.testType}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadDocx = async (an: GeoLabAnalysis, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!orgProfile) return;
+    const s = sampleMap.get(an.sampleId);
+    const p = s ? projectMap.get(s.projectId) : null;
+    const c = p ? clientMap.get(p.clientId) : null;
+    if (!s || !p || !c) return;
+
+    const testDef = getTestDefinition(an.testType);
+    const blob = await generateGeoLabDocxReport({
+      analysis: an,
+      client: c,
+      project: p,
+      sample: s,
+      orgProfile,
+      testDef,
+      language,
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${an.reportNumber}_${an.testType}.docx`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -323,6 +375,20 @@ export const ReportsListView: React.FC<Props> = ({ language, onSelectAnalysis, o
                           className="p-1.5 bg-emerald-950 text-emerald-400 hover:bg-emerald-900 border border-emerald-800 rounded transition"
                         >
                           <FileSpreadsheet className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => handleDownloadSoilSummary(an, e)}
+                          title={language === 'fr' ? 'Fiche Récapitulative des Sols (.xlsx)' : 'Soil Summary Sheet (.xlsx)'}
+                          className="p-1.5 bg-amber-950 text-amber-400 hover:bg-amber-900 border border-amber-800 rounded transition"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5 text-amber-300" />
+                        </button>
+                        <button
+                          onClick={(e) => handleDownloadDocx(an, e)}
+                          title="Word (.docx)"
+                          className="p-1.5 bg-blue-950 text-blue-400 hover:bg-blue-900 border border-blue-800 rounded transition"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={(e) => handleDownloadPdf(an, e)}

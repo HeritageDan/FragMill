@@ -3,7 +3,7 @@ import { db, getOrganisationProfile } from '../../../db';
 import { buildDocumentModel } from './documentModel';
 import { generateStudyPdfReport } from './studyPdfRenderer';
 import { generateStudyDocxReport } from './studyWordRenderer';
-import { generateGeoLabExcelReport } from '../../engine/excelGenerator';
+import { generateGeoLabExcelReport, generateSoilSummaryExcelReport } from '../../engine/excelGenerator';
 import { getTestDefinition } from '../../tests/index';
 import type { GeoLabSample } from '../../../types/geolab';
 
@@ -114,6 +114,28 @@ export async function exportStudyPackageZip(options: StudyPackageExportOptions):
       testSheetsFolder?.file(sheetName, xlsxBuffer);
     } catch (err) {
       console.warn(`Failed to export Excel for analysis ${analysis.id}:`, err);
+    }
+  }
+
+  // 3b. Soil Summary Synthesis Sheets (Fiche Récapitulative des Sols)
+  onProgress?.({ message: 'Generating Soil Summary Sheets (Fiche Récapitulative)...', percent: 85 });
+  const summaryFolder = zip.folder('Fiches_Recapitulatives_Sols');
+  for (const sample of samples) {
+    const sampleAnalyses = analyses.filter((a) => a.sampleId === sample.id);
+    try {
+      const summaryBlob = await generateSoilSummaryExcelReport({
+        sample,
+        project,
+        client,
+        orgProfile,
+        analyses: sampleAnalyses,
+        language: (study.language as 'en' | 'fr') || orgProfile.defaultLanguage || 'fr',
+      });
+      const summaryBuffer = await summaryBlob.arrayBuffer();
+      const summaryFilename = `Fiche_Recap_${sample.sampleId.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
+      summaryFolder?.file(summaryFilename, summaryBuffer);
+    } catch (err) {
+      console.warn(`Failed to export Soil Summary for sample ${sample.id}:`, err);
     }
   }
 

@@ -245,15 +245,15 @@ export const ReportVaultModal: React.FC<ReportVaultModalProps> = ({
               {isGeneratingPdf ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>{isFr ? 'Génération du PDF...' : 'Generating PDF...'}</span>
+                  <span>{isFr ? 'Génération du Word (.docx)...' : 'Generating Word (.docx)...'}</span>
                 </>
               ) : (
                 <>
                   <Download className="w-4 h-4" />
                   <span>
                     {isFr
-                      ? `Télécharger le Rapport Général PDF (${selectedKeys.length})`
-                      : `Download General PDF Report (${selectedKeys.length})`}
+                      ? `Télécharger le Rapport Général Word (.docx) (${selectedKeys.length})`
+                      : `Download General Word Report (.docx) (${selectedKeys.length})`}
                   </span>
                 </>
               )}

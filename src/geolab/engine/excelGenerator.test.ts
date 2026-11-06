@@ -514,14 +514,15 @@ describe('GeoLab Excel Generator with Native DrawingML Charts', () => {
 
     const zip = await JSZip.loadAsync(await blob.arrayBuffer());
 
-    // 1. Drawing XML references chart image
+    // 1. Drawing XML references native chart only (NO screenshot image)
     expect(zip.file('xl/drawings/drawing1.xml')).not.toBeNull();
     const drawingXml = await zip.file('xl/drawings/drawing1.xml')!.async('string');
-    expect(drawingXml).toContain('TestChartImage');
-    expect(drawingXml).toContain('r:embed="rIdChartImg"');
+    expect(drawingXml).not.toContain('TestChartImage');
+    expect(drawingXml).not.toContain('rIdChartImg');
+    expect(drawingXml).toContain('rIdChart');
 
-    // 2. Media contains chart image binary
-    expect(zip.file('xl/media/chartImage.png')).not.toBeNull();
+    // 2. Media does NOT contain screenshot images
+    expect(zip.file('xl/media/chartImage.png')).toBeNull();
 
     // 3. DrawingML chart has <c:numCache> with correct points
     const chartXml = await zip.file('xl/charts/chart1.xml')!.async('string');
@@ -531,7 +532,7 @@ describe('GeoLab Excel Generator with Native DrawingML Charts', () => {
     expect(chartXml).toContain('<c:v>2.115</c:v>');
   });
 
-  it('embeds chart image in Excel results for tests with graphs (e.g. water content)', async () => {
+  it('does NOT embed chart for tests where charts are not industrially plotted (e.g. water content)', async () => {
     const rawInput = {
       specimens: [
         { specimenId: 'A', containerId: 'T1', tareMassG: 45.2, wetSoilPlusTareG: 198.6, drySoilPlusTareG: 183.8 },
@@ -565,10 +566,9 @@ describe('GeoLab Excel Generator with Native DrawingML Charts', () => {
     });
 
     const zip = await JSZip.loadAsync(await blob.arrayBuffer());
-    expect(zip.file('xl/drawings/drawing1.xml')).not.toBeNull();
-    const drawingXml = await zip.file('xl/drawings/drawing1.xml')!.async('string');
-    expect(drawingXml).toContain('TestChartImage');
-    expect(zip.file('xl/media/chartImage.png')).not.toBeNull();
+    // For water content, no chart is plotted (neither native chart nor screenshot image)
+    expect(zip.file('xl/charts/chart1.xml')).toBeNull();
+    expect(zip.file('xl/media/chartImage.png')).toBeNull();
   });
 });
 

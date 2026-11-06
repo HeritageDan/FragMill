@@ -7,7 +7,7 @@ import type {
 } from '../types/reportVault';
 import { REPORT_SECTIONS_REGISTRY, getAvailableSectionKeys } from '../types/reportVault';
 import type { Blast, Project, Site } from '../types';
-import { generateModularVaultPdfReport, generateSingleSectionPdfReport } from '../services/export';
+import { generateModularVaultPdfReport, generateModularVaultDocxReport, generateSingleSectionPdfReport } from '../services/export';
 
 export const STORAGE_KEY = 'fragmill_report_vault_v1';
 
@@ -298,7 +298,7 @@ export const ReportVaultProvider: React.FC<ReportVaultProviderProps> = ({
           }
         });
 
-        const blob = await generateModularVaultPdfReport(
+        const blob = await generateModularVaultDocxReport(
           filteredState,
           project,
           site,
@@ -310,11 +310,11 @@ export const ReportVaultProvider: React.FC<ReportVaultProviderProps> = ({
         const a = document.createElement('a');
         a.href = url;
         const dateStr = new Date().toISOString().slice(0, 10);
-        a.download = `FraGeo_Rapport_Complet_${blast.blastId}_${dateStr}.pdf`;
+        a.download = `FraGeo_Rapport_Complet_${blast.blastId}_${dateStr}.docx`;
         a.click();
         URL.revokeObjectURL(url);
       } catch (err) {
-        console.error('Failed to generate combined PDF report:', err);
+        console.error('Failed to generate combined Word report:', err);
       } finally {
         setIsGeneratingPdf(false);
       }

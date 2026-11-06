@@ -64,8 +64,26 @@ export function computeBlastDiagnosticSummary(
   blastState: BlastState,
   metricsOverride?: FragmentationMetrics
 ): BlastDiagnosticSummary {
-  const p = blast.parameters;
-  const rock = blast.rockMass;
+  const p = blast.parameters || (blastState?.geometry ? {
+    burden: blastState.geometry.burden,
+    spacing: blastState.geometry.spacing,
+    benchHeight: blastState.geometry.benchHeight,
+    holeDiameter: blastState.geometry.holeDiameterMm,
+    subdrill: blastState.geometry.subdrill,
+    stemmingLength: blastState.geometry.stemmingLength,
+    chargePerHole: blastState.explosive?.chargePerHole,
+    explosiveType: blastState.explosive?.explosiveType,
+  } as any : {}) || {};
+  const rock = blast.rockMass || {
+    rockType: blastState?.rock?.rockType || 'Standard Granite / Rock',
+    ucsMPa: blastState?.rock?.ucsMPa || 110,
+    density: blastState?.rock?.densityTPerM3 || 2.7,
+    youngsModulusGPa: 50,
+    poissonsRatio: 0.25,
+    jointSpacingM: 1.0,
+    jointDipDeg: 0,
+    rqdPercent: 80,
+  };
   const metrics = metricsOverride || blast.images?.[0]?.segmentationRuns?.[0]?.metrics || {
     p50: blastState.optical.p50Mm,
     p80: blastState.optical.p80Mm,
@@ -272,8 +290,21 @@ export function generateFullDynamicBlastEvaluationText(
   metricsOverride?: FragmentationMetrics
 ): string {
   const diag = computeBlastDiagnosticSummary(blast, blastState, metricsOverride);
-  const p = blast.parameters;
-  const rock = blast.rockMass;
+  const p = blast.parameters || (blastState?.geometry ? {
+    burden: blastState.geometry.burden,
+    spacing: blastState.geometry.spacing,
+    benchHeight: blastState.geometry.benchHeight,
+    holeDiameter: blastState.geometry.holeDiameterMm,
+    subdrill: blastState.geometry.subdrill,
+    stemmingLength: blastState.geometry.stemmingLength,
+    chargePerHole: blastState.explosive?.chargePerHole,
+    explosiveType: blastState.explosive?.explosiveType,
+  } as any : {}) || {};
+  const rock = blast.rockMass || {
+    rockType: blastState?.rock?.rockType || 'Standard Granite / Rock',
+    ucsMPa: blastState?.rock?.ucsMPa || 110,
+    density: blastState?.rock?.densityTPerM3 || 2.7,
+  };
   const metrics = metricsOverride || blast.images?.[0]?.segmentationRuns?.[0]?.metrics || {
     p50: blastState.optical.p50Mm,
     p80: blastState.optical.p80Mm,

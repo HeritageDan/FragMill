@@ -8,7 +8,6 @@ import type {
 } from '../../types/geolab';
 import {
   buildDocumentModel,
-  generateStudyPdfReport,
   generateStudyDocxReport,
   exportStudyPackageZip,
 } from '../../geolab/studies';
@@ -141,40 +140,6 @@ export const StudyReportsListView: React.FC<Props> = ({
     }
   };
 
-  const handleExportPdf = async (study: StudyReport, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const proj = projectMap.get(study.projectId);
-    if (!proj || !orgProfile) return;
-    const cli = clientMap.get(proj.clientId);
-    if (!cli) return;
-
-    try {
-      setExportingStudyId(study.id);
-
-      const allAnalyses = await db.analyses.toArray();
-      const includedAnalyses = allAnalyses.filter((a) => (study.includedAnalysisIds || []).includes(a.id));
-      const samples = await db.samples.where('projectId').equals(proj.id).toArray();
-      const photos = await db.studyPhotos.where('studyId').equals(study.id).sortBy('order');
-
-      const model = buildDocumentModel({
-        study,
-        project: proj,
-        client: cli,
-        organisation: orgProfile,
-        analyses: includedAnalyses,
-        samples,
-        photos,
-      });
-
-      const blob = await generateStudyPdfReport(model);
-      downloadBlob(blob, `${study.reportNumber || 'Study'}.pdf`);
-    } catch (err: any) {
-      alert(`PDF export failed: ${err?.message}`);
-    } finally {
-      setExportingStudyId(null);
-    }
-  };
-
   const handleExportZip = async (study: StudyReport, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -200,8 +165,8 @@ export const StudyReportsListView: React.FC<Props> = ({
           </h2>
           <p className="text-xs text-slate-400">
             {language === 'fr'
-              ? 'Rapports d’études complets et personnalisés (DOCX, PDF, Package ZIP)'
-              : 'Comprehensive geotechnical study reports (DOCX, PDF, Package ZIP)'}
+              ? 'Rapports d’études complets et personnalisés (DOCX, Package ZIP)'
+              : 'Comprehensive geotechnical study reports (DOCX, Package ZIP)'}
           </p>
         </div>
 
@@ -392,16 +357,6 @@ export const StudyReportsListView: React.FC<Props> = ({
                   >
                     <FileText className="w-3.5 h-3.5" />
                     <span>Word</span>
-                  </button>
-
-                  <button
-                    onClick={(e) => handleExportPdf(study, e)}
-                    disabled={isCurrentlyExporting}
-                    className="px-2.5 py-1.5 text-xs font-semibold bg-rose-900/60 hover:bg-rose-800 text-rose-200 border border-rose-700/60 rounded-lg transition disabled:opacity-50 flex items-center gap-1.5"
-                    title="Export PDF"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>PDF</span>
                   </button>
 
                   <button
