@@ -481,18 +481,24 @@ function buildProctorSheet(
   <sheetPr>
     <pageSetUpPr fitToPage="1"/>
   </sheetPr>
+  <sheetViews>
+    <sheetView tabSelected="1" workbookViewId="0" showGridLines="1"/>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="19"/>
   <cols>
-    <col min="1" max="1" width="30" customWidth="1"/>
-    <col min="2" max="2" width="24" customWidth="1"/>
-    <col min="3" max="3" width="22" customWidth="1"/>
-    <col min="4" max="4" width="24" customWidth="1"/>
-    <col min="5" max="5" width="20" customWidth="1"/>
-    <col min="6" max="6" width="22" customWidth="1"/>
-    <col min="7" max="7" width="26" customWidth="1"/>
+    <col min="1" max="1" width="10" customWidth="1"/>
+    <col min="2" max="2" width="14" customWidth="1"/>
+    <col min="3" max="3" width="16" customWidth="1"/>
+    <col min="4" max="4" width="16" customWidth="1"/>
+    <col min="5" max="5" width="14" customWidth="1"/>
+    <col min="6" max="6" width="16" customWidth="1"/>
+    <col min="7" max="7" width="4" customWidth="1"/>
+    <col min="8" max="16" width="12" customWidth="1"/>
   </cols>
   <sheetData>
     ${rowsXml}
   </sheetData>
+  <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
   <pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/>
   <drawing r:id="rId1"/>
 </worksheet>`;
@@ -520,7 +526,7 @@ function buildProctorChartXml(
 ): string {
   const sheetName = lang === 'fr' ? 'Rapport' : 'Report';
   const chartTitle = lang === 'fr' ? 'COURBE PROCTOR ET SATURATION' : 'PROCTOR COMPACTION CURVE';
-  const ser1Title = lang === 'fr' ? 'Points Proctor' : 'Proctor Points';
+  const ser1Title = lang === 'fr' ? 'Points Proctor (OPM)' : 'Proctor Points (OPM)';
   const ser2Title = lang === 'fr' ? 'Ligne de Saturation (Sr=100%)' : 'Saturation Line (Sr=100%)';
   const xTitle = lang === 'fr' ? 'Teneur en eau w (%)' : 'Moisture content w (%)';
   const yTitle = lang === 'fr' ? 'Densité sèche ρd (g/cm³)' : 'Dry density ρd (g/cm³)';
@@ -531,6 +537,7 @@ function buildProctorChartXml(
 <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <c:chart>
     <c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${chartTitle}</a:t></a:r></a:p></c:rich></c:tx></c:title>
+    <c:autoTitleDeleted val="0"/>
     <c:plotArea>
       <c:layout/>
       <c:scatterChart>
@@ -552,7 +559,7 @@ function buildProctorChartXml(
             </c:spPr>
           </c:marker>
           <c:trendline>
-            <c:name>${lang === 'fr' ? 'Courbe d’ajustement polynomiale' : 'Polynomial trendline'}</c:name>
+            <c:name>${lang === 'fr' ? 'Courbe OPM polynomiale' : 'OPM polynomial fit'}</c:name>
             <c:spPr>
               <a:ln w="25400" cmpd="s">
                 <a:solidFill><a:srgbClr val="1E40AF"/></a:solidFill>
@@ -629,9 +636,13 @@ function buildProctorChartXml(
       <c:valAx>
         <c:axId val="1001"/>
         <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
         <c:axPos val="b"/>
         <c:majorGridlines/>
         <c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${xTitle}</a:t></a:r></a:p></c:rich></c:tx></c:title>
+        <c:numFmt formatCode="0.0" sourceLinked="0"/>
+        <c:majorTickMark val="out"/>
+        <c:tickLblPos val="nextTo"/>
         <c:crossAx val="1002"/>
         <c:crosses val="autoZero"/>
       </c:valAx>
@@ -639,14 +650,20 @@ function buildProctorChartXml(
       <c:valAx>
         <c:axId val="1002"/>
         <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
         <c:axPos val="l"/>
         <c:majorGridlines/>
         <c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${yTitle}</a:t></a:r></a:p></c:rich></c:tx></c:title>
+        <c:numFmt formatCode="0.000" sourceLinked="0"/>
+        <c:majorTickMark val="out"/>
+        <c:tickLblPos val="nextTo"/>
         <c:crossAx val="1001"/>
         <c:crosses val="autoZero"/>
       </c:valAx>
     </c:plotArea>
-    <c:legend><c:legendPos val="b"/></c:legend>
+    <c:legend><c:legendPos val="b"/><c:layout/></c:legend>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
   </c:chart>
 </c:chartSpace>`;
 }
@@ -783,18 +800,23 @@ function buildGrainSizeSheet(
   <sheetPr>
     <pageSetUpPr fitToPage="1"/>
   </sheetPr>
+  <sheetViews>
+    <sheetView tabSelected="1" workbookViewId="0" showGridLines="1"/>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="19"/>
   <cols>
-    <col min="1" max="1" width="30" customWidth="1"/>
-    <col min="2" max="2" width="22" customWidth="1"/>
-    <col min="3" max="3" width="22" customWidth="1"/>
-    <col min="4" max="4" width="22" customWidth="1"/>
-    <col min="5" max="5" width="22" customWidth="1"/>
-    <col min="6" max="6" width="20" customWidth="1"/>
-    <col min="7" max="7" width="24" customWidth="1"/>
+    <col min="1" max="1" width="14" customWidth="1"/>
+    <col min="2" max="2" width="14" customWidth="1"/>
+    <col min="3" max="3" width="14" customWidth="1"/>
+    <col min="4" max="4" width="14" customWidth="1"/>
+    <col min="5" max="5" width="14" customWidth="1"/>
+    <col min="6" max="6" width="4" customWidth="1"/>
+    <col min="7" max="16" width="12" customWidth="1"/>
   </cols>
   <sheetData>
     ${rowsXml}
   </sheetData>
+  <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
   <pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/>
   <drawing r:id="rId1"/>
 </worksheet>`;
@@ -820,6 +842,7 @@ function buildGrainSizeChartXml(
 <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <c:chart>
     <c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${chartTitle}</a:t></a:r></a:p></c:rich></c:tx></c:title>
+    <c:autoTitleDeleted val="0"/>
     <c:plotArea>
       <c:layout/>
       <c:scatterChart>
@@ -861,10 +884,14 @@ function buildGrainSizeChartXml(
           <c:logBase val="10"/>
           <c:orientation val="minMax"/>
         </c:scaling>
+        <c:delete val="0"/>
         <c:axPos val="b"/>
         <c:majorGridlines/>
         <c:minorGridlines/>
         <c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${xTitle}</a:t></a:r></a:p></c:rich></c:tx></c:title>
+        <c:numFmt formatCode="0.00" sourceLinked="0"/>
+        <c:majorTickMark val="out"/>
+        <c:tickLblPos val="nextTo"/>
         <c:crossAx val="2002"/>
         <c:crosses val="autoZero"/>
       </c:valAx>
@@ -872,14 +899,20 @@ function buildGrainSizeChartXml(
       <c:valAx>
         <c:axId val="2002"/>
         <c:scaling><c:orientation val="minMax"/><c:max val="100"/><c:min val="0"/></c:scaling>
+        <c:delete val="0"/>
         <c:axPos val="l"/>
         <c:majorGridlines/>
         <c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${yTitle}</a:t></a:r></a:p></c:rich></c:tx></c:title>
+        <c:numFmt formatCode="0.0" sourceLinked="0"/>
+        <c:majorTickMark val="out"/>
+        <c:tickLblPos val="nextTo"/>
         <c:crossAx val="2001"/>
         <c:crosses val="autoZero"/>
       </c:valAx>
     </c:plotArea>
-    <c:legend><c:legendPos val="b"/></c:legend>
+    <c:legend><c:legendPos val="b"/><c:layout/></c:legend>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
   </c:chart>
 </c:chartSpace>`;
 }
@@ -1246,12 +1279,12 @@ function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean): string {
   if (hasChart) {
     anchorsXml += `
     <xdr:twoCellAnchor>
-      <xdr:from><xdr:col>7</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
-      <xdr:to><xdr:col>14</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>23</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+      <xdr:from><xdr:col>7</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+      <xdr:to><xdr:col>16</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>24</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
       <xdr:graphicFrame macro="">
         <xdr:nvGraphicFramePr>
           <xdr:cNvPr id="2" name="Chart"/>
-          <xdr:cNvGraphicFramePr/>
+          <xdr:cNvGraphicFramePr><a:graphicFrameLocks/></xdr:cNvGraphicFramePr>
         </xdr:nvGraphicFramePr>
         <xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>
         <a:graphic>

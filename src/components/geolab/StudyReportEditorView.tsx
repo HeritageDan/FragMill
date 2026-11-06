@@ -517,6 +517,22 @@ export const StudyReportEditorView: React.FC<Props> = ({
     }
   };
 
+  const handleDeleteStudy = async () => {
+    const confirmed = window.confirm(
+      lang === 'fr'
+        ? `Êtes-vous sûr de vouloir supprimer définitivement le rapport d’étude "${study.reportNumber || study.title}" ? Cette action est irréversible.`
+        : `Are you sure you want to permanently delete study report "${study.reportNumber || study.title}"? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+    try {
+      await db.studyReports.delete(study.id);
+      await db.studyPhotos.where('studyId').equals(study.id).delete();
+      onBack();
+    } catch (err: any) {
+      alert(`Error deleting study report: ${err?.message}`);
+    }
+  };
+
   const sampleMap = new Map<string, GeoLabSample>();
   samples.forEach((s) => sampleMap.set(s.id, s));
 
@@ -621,6 +637,15 @@ export const StudyReportEditorView: React.FC<Props> = ({
           >
             <Archive className="w-3.5 h-3.5 text-amber-400" />
             <span>Package ZIP</span>
+          </button>
+
+          <button
+            onClick={handleDeleteStudy}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded-lg text-xs font-bold transition shadow-sm"
+            title={lang === 'fr' ? 'Supprimer définitivement ce rapport d’étude' : 'Delete this study report'}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>{lang === 'fr' ? 'Supprimer' : 'Delete'}</span>
           </button>
         </div>
       </div>

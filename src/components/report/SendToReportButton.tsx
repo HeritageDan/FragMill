@@ -29,8 +29,7 @@ export const SendToReportButton: React.FC<SendToReportButtonProps> = ({
   lang = 'fr',
   className = '',
 }) => {
-  const { stageSection, isStaged, downloadSingleSection, downloadCombinedReport, isGeneratingPdf } = useReportVault();
-  const [isExportingThis, setIsExportingThis] = useState(false);
+  const { stageSection, isStaged, downloadCombinedReport, isGeneratingPdf } = useReportVault();
   const [isExportingGeneral, setIsExportingGeneral] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -79,37 +78,6 @@ export const SendToReportButton: React.FC<SendToReportButtonProps> = ({
     }
   };
 
-  const handleDownloadSingle = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!blast) return;
-    setIsExportingThis(true);
-    setShowDropdown(false);
-    try {
-      const payload = getPayload();
-      stageSection(sectionKey, payload, summaryFr, summaryEn);
-      const defaultProj: Project = project || {
-        id: blast?.projectId || 'proj-1',
-        name: 'Demo Project',
-        description: 'Mining Operation',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      const defaultSite: Site = site || {
-        id: blast?.siteId || 'site-1',
-        projectId: blast?.projectId || 'proj-1',
-        name: 'Demo Site',
-        locationText: 'Site Location',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      await downloadSingleSection(sectionKey, defaultProj, defaultSite, blast, lang);
-    } catch (err) {
-      console.error('Failed to download single section PDF:', err);
-    } finally {
-      setIsExportingThis(false);
-    }
-  };
-
   return (
     <div className={`relative inline-flex items-center rounded-xl shadow-xs ${className}`}>
       {/* Primary Action: Stage to Report */}
@@ -123,7 +91,7 @@ export const SendToReportButton: React.FC<SendToReportButtonProps> = ({
         title={
           staged
             ? (isFr ? 'Déjà dans le rapport. Cliquez pour actualiser.' : 'Already in report. Click to update.')
-            : (isFr ? 'Envoyer les résultats de cette fenêtre au rapport PDF' : 'Send this window’s results to PDF report')
+            : (isFr ? 'Envoyer les résultats de cette fenêtre au rapport' : 'Send this window’s results to report')
         }
       >
         {staged ? (
@@ -139,13 +107,13 @@ export const SendToReportButton: React.FC<SendToReportButtonProps> = ({
         )}
       </button>
 
-      {/* Secondary Dropdown Toggle for Direct PDF Export */}
+      {/* Secondary Dropdown Toggle for Direct Export */}
       <button
         onClick={() => setShowDropdown(!showDropdown)}
         className={`px-2 py-2 rounded-r-xl border-l border-white/20 text-white text-xs font-bold transition flex items-center justify-center ${
           staged ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-blue-700 hover:bg-blue-800'
         }`}
-        title={isFr ? 'Options de téléchargement' : 'Download options'}
+        title={isFr ? 'Options de rapport' : 'Report options'}
       >
         <ChevronDown className="w-3.5 h-3.5" />
       </button>
@@ -161,7 +129,7 @@ export const SendToReportButton: React.FC<SendToReportButtonProps> = ({
               {isFr ? meta?.tabNameFr : meta?.tabNameEn}
             </span>
             <span className="text-[10px] text-slate-500">
-              {isFr ? 'Export direct ou ajout au rapport global' : 'Direct export or global report staging'}
+              {isFr ? 'Ajout au rapport global ou export complet' : 'Stage to global report or full export'}
             </span>
           </div>
 
@@ -178,23 +146,8 @@ export const SendToReportButton: React.FC<SendToReportButtonProps> = ({
 
           {blast && (
             <button
-              onClick={handleDownloadSingle}
-              disabled={isExportingThis || isExportingGeneral || isGeneratingPdf}
-              className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-center gap-2 text-blue-700 font-bold border-t border-slate-100 disabled:opacity-50"
-            >
-              {isExportingThis ? (
-                <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />
-              ) : (
-                <Download className="w-4 h-4 text-blue-600" />
-              )}
-              <span>{isFr ? 'Télécharger le PDF de cette fenêtre' : 'Download this window as PDF'}</span>
-            </button>
-          )}
-
-          {blast && (
-            <button
               onClick={handleDownloadFullReport}
-              disabled={isExportingThis || isExportingGeneral || isGeneratingPdf}
+              disabled={isExportingGeneral || isGeneratingPdf}
               className="w-full text-left px-3 py-2 hover:bg-indigo-50 flex items-center gap-2 text-indigo-700 font-bold border-t border-slate-100 disabled:opacity-50"
             >
               {isExportingGeneral ? (

@@ -20,6 +20,7 @@ import {
   CheckCircle,
   Clock,
   BookOpen,
+  Trash2,
 } from 'lucide-react';
 
 interface Props {
@@ -213,6 +214,22 @@ export const ReportsListView: React.FC<Props> = ({ language, onSelectAnalysis, o
     }
   };
 
+  const handleDeleteAnalysis = async (an: GeoLabAnalysis, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const confirmed = window.confirm(
+      language === 'fr'
+        ? `Êtes-vous sûr de vouloir supprimer définitivement l'essai ${an.reportNumber} ? Cette action est irréversible.`
+        : `Are you sure you want to permanently delete test ${an.reportNumber}? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+    try {
+      await db.analyses.delete(an.id);
+      await loadData();
+    } catch (err: any) {
+      alert(`Error deleting test: ${err?.message}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Banner */}
@@ -391,11 +408,11 @@ export const ReportsListView: React.FC<Props> = ({ language, onSelectAnalysis, o
                           <FileText className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={(e) => handleDownloadPdf(an, e)}
-                          title="PDF (.pdf)"
-                          className="p-1.5 bg-rose-950 text-rose-400 hover:bg-rose-900 border border-rose-800 rounded transition"
+                          onClick={(e) => handleDeleteAnalysis(an, e)}
+                          title={language === 'fr' ? 'Supprimer cet essai' : 'Delete test'}
+                          className="p-1.5 bg-rose-950/70 text-rose-400 hover:bg-rose-900 border border-rose-800 rounded transition"
                         >
-                          <FileText className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </td>

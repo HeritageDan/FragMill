@@ -25,6 +25,7 @@ import {
   Building2,
   Layers,
   Save,
+  Trash2,
 } from 'lucide-react';
 
 interface Props {
@@ -271,6 +272,21 @@ export const AnalysisDetailView: React.FC<Props> = ({
     }
   };
 
+  const handleDeleteAnalysis = async () => {
+    const confirmed = window.confirm(
+      language === 'fr'
+        ? `Êtes-vous sûr de vouloir supprimer définitivement l'essai ${analysis.reportNumber} (${testDef.name[language]}) ? Cette action est irréversible.`
+        : `Are you sure you want to permanently delete test ${analysis.reportNumber} (${testDef.name[language]})? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+    try {
+      await db.analyses.delete(analysis.id);
+      onBack();
+    } catch (err: any) {
+      alert(`Error deleting test: ${err?.message}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Navigation & Status Bar */}
@@ -361,12 +377,12 @@ export const AnalysisDetailView: React.FC<Props> = ({
           </button>
 
           <button
-            onClick={handleDownloadPdf}
-            disabled={isExportingPdf}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-700/80 hover:bg-rose-600 text-white rounded text-xs font-medium transition shadow"
+            onClick={handleDeleteAnalysis}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/70 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded text-xs font-medium transition shadow"
+            title={language === 'fr' ? 'Supprimer définitivement cet essai' : 'Delete this test'}
           >
-            <FileText className="w-3.5 h-3.5" />
-            {isExportingPdf ? '...' : language === 'fr' ? 'PDF (.pdf)' : 'PDF (.pdf)'}
+            <Trash2 className="w-3.5 h-3.5" />
+            {language === 'fr' ? 'Supprimer' : 'Delete'}
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../../db';
-import type { GeoLabClient, GeoLabProject, GeoLabSample, GeoLabAnalysis } from '../../types/geolab';
+import { db, getOrganisationProfile } from '../../db';
+import type { GeoLabClient, GeoLabProject, GeoLabSample, GeoLabAnalysis, OrganisationProfile } from '../../types/geolab';
+import { generateSoilSummaryExcelReport } from '../../geolab/engine/excelGenerator';
 import {
   FolderOpen,
   Plus,
@@ -10,6 +11,7 @@ import {
   Edit2,
   FlaskConical,
   FileSpreadsheet,
+  Trash2,
 } from 'lucide-react';
 
 interface Props {
@@ -40,16 +42,20 @@ export const ProjectSampleView: React.FC<Props> = ({
 
   const [isSampleModalOpen, setIsSampleModalOpen] = useState(false);
   const [editingSample, setEditingSample] = useState<GeoLabSample | null>(null);
+  const [orgProfile, setOrgProfile] = useState<OrganisationProfile | null>(null);
+  const [isExportingSampleId, setIsExportingSampleId] = useState<string | null>(null);
 
   const loadData = async () => {
     const c = await db.clients.toArray();
     const p = await db.geolabProjects.toArray();
     const s = await db.samples.toArray();
     const a = await db.analyses.toArray();
+    const org = await getOrganisationProfile();
     setClients(c);
     setProjects(p);
     setSamples(s);
     setAnalyses(a);
+    setOrgProfile(org);
 
     if (p.length > 0 && !selectedProjectId) {
       setSelectedProjectId(p[0].id);
@@ -137,6 +143,112 @@ export const ProjectSampleView: React.FC<Props> = ({
     setIsSampleModalOpen(false);
     setEditingSample(null);
     loadData();
+  };
+
+  const handleDownloadSampleExcel = async (sample: GeoLabSample) => {
+    if (!selectedProject || !projectClient) return;
+    let org = orgProfile;
+    if (!org) {
+      org = await getOrganisationProfile();
+      setOrgProfile(org);
+    }
+    setIsExportingSampleId(sample.id);
+    try {
+      const sampleAnalyses = getAnalysesForSample(sample.id);
+      const blob = await generateSoilSummaryExcelReport({
+        sample,
+        project: selectedProject,
+        client: projectClient,
+        orgProfile: org,
+        analyses: sampleAnalyses,
+        language,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeName = (sample.sampleId || 'echantillon').replace(/[^a-zA-Z0-9_-]/g, '_');
+      a.download = `Fiche_Recap_${safeName}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(
+        language === 'fr'
+          ? `Erreur lors de l'export de la fiche récapitulative : ${err?.message}`
+          : `Error exporting soil summary: ${err?.message}`
+      );
+    } finally {
+      setIsExportingSampleId(null);
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string, projectName: string) => {
+    const confirmed = window.confirm(
+      language === 'fr'
+        ? `Êtes-vous sûr de vouloir supprimer définitivement le projet "${projectName}" ?\n\nAttention : cette action supprimera également tous les échantillons du projet, tous les essais en laboratoire et tous les rapports d'étude associés. Cette action est irréversible.`
+        : `Are you sure you want to permanently delete project "${projectName}"?\n\nWarning: this action will also delete all associated samples, lab tests, and study reports. This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      // Cascade delete samples and analyses
+      const projectSamps = await db.samples.where('projectId').equals(projectId).toArray();
+      for (const s of projectSamps) {
+        await db.analyses.where('sampleId').equals(s.id).delete();
+      }
+      await db.samples.where('projectId').equals(projectId).delete();
+
+      // Cascade delete study reports and photos
+      const projectStudies = await db.studyReports.where('projectId').equals(projectId).toArray();
+      for (const st of projectStudies) {
+        await db.studyPhotos.where('studyId').equals(st.id).delete();
+      }
+      await db.studyReports.where('projectId').equals(projectId).delete();
+
+      // Delete project itself
+      await db.geolabProjects.delete(projectId);
+
+      // Update selectedProjectId
+      const remainingProjects = projects.filter((p) => p.id !== projectId);
+      setSelectedProjectId(remainingProjects.length > 0 ? remainingProjects[0].id : null);
+      await loadData();
+    } catch (err: any) {
+      alert(`Error deleting project: ${err?.message}`);
+    }
+  };
+
+  const handleDeleteSample = async (sampleId: string, sampleCode: string) => {
+    const confirmed = window.confirm(
+      language === 'fr'
+        ? `Êtes-vous sûr de vouloir supprimer définitivement l'échantillon "${sampleCode}" ainsi que tous les essais en laboratoire associés ? Cette action est irréversible.`
+        : `Are you sure you want to permanently delete sample "${sampleCode}" and all its associated lab tests? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      await db.analyses.where('sampleId').equals(sampleId).delete();
+      await db.samples.delete(sampleId);
+      await loadData();
+    } catch (err: any) {
+      alert(`Error deleting sample: ${err?.message}`);
+    }
+  };
+
+  const handleDeleteAnalysis = async (analysisId: string, reportNumber: string) => {
+    const confirmed = window.confirm(
+      language === 'fr'
+        ? `Êtes-vous sûr de vouloir supprimer définitivement l'essai "${reportNumber}" ? Cette action est irréversible.`
+        : `Are you sure you want to permanently delete test "${reportNumber}"? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      await db.analyses.delete(analysisId);
+      await loadData();
+    } catch (err: any) {
+      alert(`Error deleting test: ${err?.message}`);
+    }
   };
 
   return (
@@ -273,10 +385,17 @@ export const ProjectSampleView: React.FC<Props> = ({
                       setEditingProject({ ...selectedProject });
                       setIsProjectModalOpen(true);
                     }}
-                    className="p-2 text-slate-400 hover:text-white rounded bg-slate-800"
+                    className="p-2 text-slate-400 hover:text-white rounded bg-slate-800 transition"
                     title={language === 'fr' ? 'Modifier Projet' : 'Edit Project'}
                   >
                     <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteProject(selectedProject.id, selectedProject.projectName)}
+                    className="p-2 text-slate-400 hover:text-rose-400 rounded bg-slate-800 hover:bg-rose-950/40 border border-slate-700 hover:border-rose-800 transition"
+                    title={language === 'fr' ? 'Supprimer définitivement ce Projet' : 'Delete Project'}
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={handleOpenCreateSample}
@@ -324,13 +443,41 @@ export const ProjectSampleView: React.FC<Props> = ({
                               </p>
                             </div>
 
-                            <button
-                              onClick={() => onStartAnalysis(sample.id)}
-                              className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded shadow transition"
-                            >
-                              <FlaskConical className="w-3.5 h-3.5" />
-                              {language === 'fr' ? '+ Nouvel Essai' : '+ New Test'}
-                            </button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                onClick={() => handleDownloadSampleExcel(sample)}
+                                disabled={isExportingSampleId === sample.id}
+                                className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-semibold rounded shadow transition"
+                                title={
+                                  language === 'fr'
+                                    ? 'Télécharger la Fiche Récapitulative Excel (.xlsx) pour cet échantillon (Format Assurance Qualité / Multi-Essais)'
+                                    : 'Download Soil Summary Sheet (.xlsx) for this sample'
+                                }
+                              >
+                                <FileSpreadsheet className="w-3.5 h-3.5 text-amber-200" />
+                                {isExportingSampleId === sample.id
+                                  ? '...'
+                                  : language === 'fr'
+                                  ? 'Fiche Récap. Sol (.xlsx)'
+                                  : 'Soil Summary (.xlsx)'}
+                              </button>
+
+                              <button
+                                onClick={() => onStartAnalysis(sample.id)}
+                                className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded shadow transition"
+                              >
+                                <FlaskConical className="w-3.5 h-3.5" />
+                                {language === 'fr' ? '+ Nouvel Essai' : '+ New Test'}
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteSample(sample.id, sample.sampleId)}
+                                className="p-1.5 text-slate-400 hover:text-rose-400 rounded bg-slate-900 hover:bg-rose-950/40 border border-slate-800 hover:border-rose-800 transition"
+                                title={language === 'fr' ? 'Supprimer cet échantillon' : 'Delete sample'}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
 
                           {/* Analyses badges for this sample */}
@@ -340,24 +487,39 @@ export const ProjectSampleView: React.FC<Props> = ({
                             </span>
                             {sampleAnalyses.length > 0 ? (
                               sampleAnalyses.map((an) => (
-                                <button
+                                <div
                                   key={an.id}
-                                  onClick={() => onViewAnalysis(an.id)}
-                                  className="flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded text-xs transition"
+                                  className="flex items-center bg-slate-800 hover:bg-slate-700/80 border border-slate-700 rounded text-xs transition"
                                 >
-                                  <FileSpreadsheet className="w-3 h-3 text-blue-400" />
-                                  <span className="font-semibold">{an.reportNumber}</span>
-                                  <span className="text-[10px] text-slate-400">({an.testType})</span>
-                                  <span
-                                    className={`w-2 h-2 rounded-full ${
-                                      an.status === 'approved'
-                                        ? 'bg-emerald-400'
-                                        : an.status === 'checked'
-                                        ? 'bg-blue-400'
-                                        : 'bg-amber-400'
-                                    }`}
-                                  />
-                                </button>
+                                  <button
+                                    onClick={() => onViewAnalysis(an.id)}
+                                    className="flex items-center gap-1 px-2 py-1 text-white hover:text-blue-300 transition"
+                                    title={language === 'fr' ? 'Consulter le rapport d’essai' : 'View test report'}
+                                  >
+                                    <FileSpreadsheet className="w-3 h-3 text-blue-400" />
+                                    <span className="font-semibold">{an.reportNumber}</span>
+                                    <span className="text-[10px] text-slate-400">({an.testType})</span>
+                                    <span
+                                      className={`w-2 h-2 rounded-full ${
+                                        an.status === 'approved'
+                                          ? 'bg-emerald-400'
+                                          : an.status === 'checked'
+                                          ? 'bg-blue-400'
+                                          : 'bg-amber-400'
+                                      }`}
+                                    />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteAnalysis(an.id, an.reportNumber);
+                                    }}
+                                    className="px-1.5 py-1 text-slate-400 hover:text-rose-400 border-l border-slate-700/80 transition"
+                                    title={language === 'fr' ? 'Supprimer cet essai' : 'Delete test'}
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
                               ))
                             ) : (
                               <span className="text-slate-500 italic text-[11px]">
