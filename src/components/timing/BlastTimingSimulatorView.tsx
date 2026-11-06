@@ -92,6 +92,20 @@ export const BlastTimingSimulatorView: React.FC<BlastTimingSimulatorViewProps> =
     };
   }, [flushSaveTiming]);
 
+  useEffect(() => {
+    const cfg = blast.timingConfig || (blast.parameters as any)?.timingParams;
+    setPatternType(cfg?.patternType || 'v_echelon');
+    setSurfaceDelayMs(cfg?.surfaceDelayMs ?? 25);
+    setInHoleDelayMs(cfg?.inHoleDelayMs ?? 400);
+    setDistanceToStructureM(cfg?.distanceToStructureM ?? 350);
+    lastSavedTimingStr.current = JSON.stringify({
+      patternType: cfg?.patternType || 'v_echelon',
+      surfaceDelayMs: cfg?.surfaceDelayMs ?? 25,
+      inHoleDelayMs: cfg?.inHoleDelayMs ?? 400,
+      distanceToStructureM: cfg?.distanceToStructureM ?? 350,
+    });
+  }, [blast.id]);
+
   const dia = blast.parameters.holeDiameter || 79;
   const nHoles = blast.parameters.numberOfHoles || 50;
   const rows = 5;

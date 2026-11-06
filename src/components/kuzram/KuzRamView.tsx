@@ -87,12 +87,52 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
 
   const tablesRef = React.useRef(tables);
   tablesRef.current = tables;
-  const lastSavedTablesStr = React.useRef(JSON.stringify(tables));
+  const kCfg = selectedBlast?.kuzRamConfig;
+
+  // Bayesian MCMC states
+  const [isCalibrating, setIsCalibrating] = useState(false);
+  const [priorMeanA, setPriorMeanA] = useState(kCfg?.priorMeanA ?? 7.0);
+  const [priorStdA, setPriorStdA] = useState(kCfg?.priorStdA ?? 1.5);
+  const [bayesianResult, setBayesianResult] = useState<any>(kCfg?.bayesianResult ?? null);
+
+  // Blast Advisor states
+  const [targetP80, setTargetP80] = useState(kCfg?.targetP80 ?? 180);
+  const [advisorBounds, setAdvisorBounds] = useState(kCfg?.advisorBounds ?? {
+    minBurden: 1.8,
+    maxBurden: 3.2,
+    minSpacing: 2.0,
+    maxSpacing: 3.8,
+    minStemming: 1.5,
+    maxStemming: 3.0,
+    minPowderFactor: 0.45,
+    maxPowderFactor: 1.1,
+  });
+  const [advisorResult, setAdvisorResult] = useState<any>(kCfg?.advisorResult ?? null);
+
+  const extraConfigRef = React.useRef({
+    targetP80,
+    priorMeanA,
+    priorStdA,
+    advisorBounds,
+    advisorResult,
+    bayesianResult,
+  });
+  extraConfigRef.current = {
+    targetP80,
+    priorMeanA,
+    priorStdA,
+    advisorBounds,
+    advisorResult,
+    bayesianResult,
+  };
+
+  const lastSavedTablesStr = React.useRef(JSON.stringify({ tables, extra: extraConfigRef.current }));
 
   const flushSaveTables = React.useCallback(() => {
     if (!selectedBlast || !onUpdateBlast) return;
     const current = tablesRef.current;
-    const curStr = JSON.stringify(current);
+    const extra = extraConfigRef.current;
+    const curStr = JSON.stringify({ tables: current, extra });
     if (curStr === lastSavedTablesStr.current) {
       return;
     }
@@ -101,6 +141,14 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
     const updatedBlast: Blast = {
       ...selectedBlast,
       kuzRamTables: current,
+      kuzRamConfig: {
+        targetP80: extra.targetP80,
+        priorMeanA: extra.priorMeanA,
+        priorStdA: extra.priorStdA,
+        advisorBounds: extra.advisorBounds,
+        advisorResult: extra.advisorResult,
+        bayesianResult: extra.bayesianResult,
+      },
       rockMass: {
         ...selectedBlast.rockMass,
         density: current.density,
@@ -120,13 +168,32 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
     if (selectedBlast) {
       const initial = getInitialRockTables(selectedBlast);
       setTables(initial);
-      lastSavedTablesStr.current = JSON.stringify(initial);
+      const kc = selectedBlast.kuzRamConfig;
+      if (kc) {
+        if (typeof kc.targetP80 === 'number') setTargetP80(kc.targetP80);
+        if (typeof kc.priorMeanA === 'number') setPriorMeanA(kc.priorMeanA);
+        if (typeof kc.priorStdA === 'number') setPriorStdA(kc.priorStdA);
+        if (kc.advisorBounds) setAdvisorBounds(kc.advisorBounds);
+        if (kc.advisorResult) setAdvisorResult(kc.advisorResult);
+        if (kc.bayesianResult) setBayesianResult(kc.bayesianResult);
+      }
+      lastSavedTablesStr.current = JSON.stringify({
+        tables: initial,
+        extra: {
+          targetP80: kc?.targetP80 ?? 180,
+          priorMeanA: kc?.priorMeanA ?? 7.0,
+          priorStdA: kc?.priorStdA ?? 1.5,
+          advisorBounds: kc?.advisorBounds ?? advisorBounds,
+          advisorResult: kc?.advisorResult ?? null,
+          bayesianResult: kc?.bayesianResult ?? null,
+        },
+      });
     }
   }, [selectedBlastId]);
 
-  // Debounced auto-save when tables change
+  // Debounced auto-save when tables or config change
   useEffect(() => {
-    const curStr = JSON.stringify(tables);
+    const curStr = JSON.stringify({ tables, extra: extraConfigRef.current });
     if (curStr === lastSavedTablesStr.current) {
       return;
     }
@@ -134,7 +201,7 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
       flushSaveTables();
     }, 350);
     return () => clearTimeout(timer);
-  }, [tables, flushSaveTables]);
+  }, [tables, targetP80, priorMeanA, priorStdA, advisorBounds, advisorResult, bayesianResult, flushSaveTables]);
 
   // Flush on unmount so switching tabs preserves all Cunningham inputs
   useEffect(() => {
@@ -153,26 +220,6 @@ export const KuzRamView: React.FC<KuzRamViewProps> = ({
       Math.abs(tables.hf - initialTables.hf) > 0.01
     );
   }, [tables, initialTables]);
-
-  // Bayesian MCMC states
-  const [isCalibrating, setIsCalibrating] = useState(false);
-  const [priorMeanA, setPriorMeanA] = useState(7.0);
-  const [priorStdA, setPriorStdA] = useState(1.5);
-  const [bayesianResult, setBayesianResult] = useState<any>(null);
-
-  // Blast Advisor states
-  const [targetP80, setTargetP80] = useState(180);
-  const [advisorBounds, setAdvisorBounds] = useState({
-    minBurden: 1.8,
-    maxBurden: 3.2,
-    minSpacing: 2.0,
-    maxSpacing: 3.8,
-    minStemming: 1.5,
-    maxStemming: 3.0,
-    minPowderFactor: 0.45,
-    maxPowderFactor: 1.1,
-  });
-  const [advisorResult, setAdvisorResult] = useState<any>(null);
 
   const calculatedA = calculateRockFactorA(tables);
 

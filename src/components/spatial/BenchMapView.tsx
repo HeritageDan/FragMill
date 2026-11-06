@@ -19,6 +19,7 @@ interface BenchMapViewProps {
   blasts: Blast[];
   activeBlastId?: string;
   onSelectBlast: (blastId: string) => void;
+  onUpdateBlast?: (blast: Blast) => void;
   project?: Project;
   site?: Site;
   lang?: 'en' | 'fr';
@@ -28,13 +29,13 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
   blasts,
   activeBlastId: propActiveBlastId,
   onSelectBlast,
+  onUpdateBlast,
   project,
   site,
   lang = 'en',
 }) => {
   const isFr = lang === 'fr';
 
-  const [selectedElevation, setSelectedElevation] = useState<number | 'all' | 'upper' | 'lower'>('all');
   const [activeBlastId, setActiveBlastId] = useState<string>(propActiveBlastId || blasts[0]?.id || '');
   const [showExplanation, setShowExplanation] = useState<boolean>(false);
 
@@ -73,14 +74,98 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
   // Lower Benches (Gradins Inférieurs / Fond de Fosse / Front Actif): Elevation < Median Pit Elevation
   const isUpperBench = (elev: number) => elev >= medianPitElevation;
 
-  // Interactive Pattern Geometry Overrides for Active Blast
+  // Interactive Pattern Geometry Overrides for Active Blast with persistence
   const selectedBlast = blasts.find((b) => b.id === activeBlastId) || blasts[0];
-  const [burdenM, setBurdenM] = useState<number>(selectedBlast?.parameters.burden ?? 4.0);
-  const [spacingM, setSpacingM] = useState<number>(selectedBlast?.parameters.spacing ?? 3.0);
-  const [benchHeightM, setBenchHeightM] = useState<number>(selectedBlast?.parameters.benchHeight ?? 15.0);
-  const [numberOfHoles, setNumberOfHoles] = useState<number>(selectedBlast?.parameters.numberOfHoles ?? 50);
-  const [patternType, setPatternType] = useState<'staggered' | 'rectangular'>('staggered');
-  const [clearanceRadiusM, setClearanceRadiusM] = useState<number>(300);
+  const patCfg = selectedBlast?.patternConfig;
+  const [burdenM, setBurdenM] = useState<number>(patCfg?.burdenM ?? selectedBlast?.parameters.burden ?? 4.0);
+  const [spacingM, setSpacingM] = useState<number>(patCfg?.spacingM ?? selectedBlast?.parameters.spacing ?? 3.0);
+  const [benchHeightM, setBenchHeightM] = useState<number>(patCfg?.benchHeightM ?? selectedBlast?.parameters.benchHeight ?? 15.0);
+  const [numberOfHoles, setNumberOfHoles] = useState<number>(patCfg?.numberOfHoles ?? selectedBlast?.parameters.numberOfHoles ?? 50);
+  const [patternType, setPatternType] = useState<'staggered' | 'rectangular'>(patCfg?.patternType ?? 'staggered');
+  const [clearanceRadiusM, setClearanceRadiusM] = useState<number>(patCfg?.clearanceRadiusM ?? 300);
+  const [selectedElevation, setSelectedElevation] = useState<number | 'all' | 'upper' | 'lower'>(patCfg?.selectedElevation ?? 'all');
+
+  const patternRef = React.useRef({
+    burdenM,
+    spacingM,
+    benchHeightM,
+    numberOfHoles,
+    patternType,
+    clearanceRadiusM,
+    selectedElevation,
+  });
+  patternRef.current = {
+    burdenM,
+    spacingM,
+    benchHeightM,
+    numberOfHoles,
+    patternType,
+    clearanceRadiusM,
+    selectedElevation,
+  };
+  const lastSavedPatternStr = React.useRef(JSON.stringify(patternRef.current));
+
+  const flushSavePattern = React.useCallback(() => {
+    if (!onUpdateBlast || !selectedBlast) return;
+    const current = patternRef.current;
+    const curStr = JSON.stringify(current);
+    if (curStr === lastSavedPatternStr.current) return;
+    lastSavedPatternStr.current = curStr;
+
+    const updatedBlast: Blast = {
+      ...selectedBlast,
+      parameters: {
+        ...selectedBlast.parameters,
+        burden: current.burdenM,
+        spacing: current.spacingM,
+        benchHeight: current.benchHeightM,
+        numberOfHoles: current.numberOfHoles,
+      },
+      patternConfig: {
+        burdenM: current.burdenM,
+        spacingM: current.spacingM,
+        benchHeightM: current.benchHeightM,
+        numberOfHoles: current.numberOfHoles,
+        patternType: current.patternType,
+        clearanceRadiusM: current.clearanceRadiusM,
+        selectedElevation: current.selectedElevation,
+      },
+      updatedAt: Date.now(),
+    };
+    onUpdateBlast(updatedBlast);
+  }, [selectedBlast, onUpdateBlast]);
+
+  useEffect(() => {
+    const curStr = JSON.stringify({
+      burdenM,
+      spacingM,
+      benchHeightM,
+      numberOfHoles,
+      patternType,
+      clearanceRadiusM,
+      selectedElevation,
+    });
+    if (curStr === lastSavedPatternStr.current) return;
+    const timer = setTimeout(() => {
+      flushSavePattern();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [
+    burdenM,
+    spacingM,
+    benchHeightM,
+    numberOfHoles,
+    patternType,
+    clearanceRadiusM,
+    selectedElevation,
+    flushSavePattern,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      flushSavePattern();
+    };
+  }, [flushSavePattern]);
 
   // Sync geometry when active blast changes
   const handleSelectBlastBlock = (blastId: string) => {
@@ -88,10 +173,23 @@ export const BenchMapView: React.FC<BenchMapViewProps> = ({
     if (onSelectBlast) onSelectBlast(blastId);
     const b = blasts.find((x) => x.id === blastId);
     if (b) {
-      setBurdenM(b.parameters.burden ?? 4.0);
-      setSpacingM(b.parameters.spacing ?? 3.0);
-      setBenchHeightM(b.parameters.benchHeight ?? 15.0);
-      setNumberOfHoles(b.parameters.numberOfHoles ?? 50);
+      const p = b.patternConfig;
+      setBurdenM(p?.burdenM ?? b.parameters.burden ?? 4.0);
+      setSpacingM(p?.spacingM ?? b.parameters.spacing ?? 3.0);
+      setBenchHeightM(p?.benchHeightM ?? b.parameters.benchHeight ?? 15.0);
+      setNumberOfHoles(p?.numberOfHoles ?? b.parameters.numberOfHoles ?? 50);
+      setPatternType(p?.patternType ?? 'staggered');
+      setClearanceRadiusM(p?.clearanceRadiusM ?? 300);
+      if (p?.selectedElevation) setSelectedElevation(p.selectedElevation);
+      lastSavedPatternStr.current = JSON.stringify({
+        burdenM: p?.burdenM ?? b.parameters.burden ?? 4.0,
+        spacingM: p?.spacingM ?? b.parameters.spacing ?? 3.0,
+        benchHeightM: p?.benchHeightM ?? b.parameters.benchHeight ?? 15.0,
+        numberOfHoles: p?.numberOfHoles ?? b.parameters.numberOfHoles ?? 50,
+        patternType: p?.patternType ?? 'staggered',
+        clearanceRadiusM: p?.clearanceRadiusM ?? 300,
+        selectedElevation: p?.selectedElevation ?? 'all',
+      });
     }
   };
 

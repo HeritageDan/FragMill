@@ -90,6 +90,7 @@ export const PredictOptimiseWorkspaceView: React.FC<PredictOptimiseWorkspaceView
           activeBlastId={activeBlastId}
           onSelectBlast={onSelectBlast}
           onUpdateMillBatch={onUpdateMillBatch}
+          onUpdateBlast={onUpdateBlast}
           project={project || undefined}
           site={site || undefined}
           lang={lang}
@@ -101,6 +102,7 @@ export const PredictOptimiseWorkspaceView: React.FC<PredictOptimiseWorkspaceView
           <ComminutionDigitalTwinView
             key={blast.id}
             blast={blast}
+            onUpdateBlast={onUpdateBlast}
             project={project || undefined}
             site={site || undefined}
             lang={lang}

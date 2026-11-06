@@ -321,6 +321,9 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
   const [meanJointSpacing, setMeanJointSpacing] = useState(blast.rockMass.meanJointSpacing);
   const [jointOrientation, setJointOrientation] = useState(blast.rockMass.jointOrientation);
 
+  // Charging profile ref to preserve hole profile edits
+  const chargingProfileRef = useRef(blast.parameters.chargingProfile);
+
   // Form ref for debounced & unmount auto-saving
   const formValuesRef = useRef({
     benchHeight,
@@ -473,7 +476,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
           numberOfHoles: current.numberOfHoles,
           chargePerHole: current.chargePerHole,
           explosiveType: current.explosiveType,
-          chargingProfile: blast.parameters.chargingProfile,
+          chargingProfile: chargingProfileRef.current || blast.parameters.chargingProfile,
         },
         rockMass: {
           ...blast.rockMass,
@@ -2595,6 +2598,7 @@ export const BlastDetailView: React.FC<BlastDetailViewProps> = ({
           <HoleChargingProfileView
             parameters={blast.parameters}
             onUpdateParameters={(updatedParams) => {
+              chargingProfileRef.current = updatedParams.chargingProfile;
               if (!hasDrillHoles) {
                 setChargePerHole(updatedParams.chargePerHole);
                 setStemmingLength(updatedParams.stemmingLength);

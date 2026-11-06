@@ -114,77 +114,382 @@ export async function generateModularVaultPdfReport(
 
   const finalKeys = keysToRender.length > 0 ? keysToRender : allOrderedKeys;
 
-  // Header Helper with Organization Info & Logo (Zero-Collision Geometry)
+  // 1. Cover Page Renderer (Page 1) with prominent Logo, Report Title, and Organisation Information
+  const renderCoverPage = () => {
+    // Top Decorative Accent Bar
+    doc.setFillColor(31, 56, 100); // Deep Navy #1F3864
+    doc.rect(0, 0, 210, 11, 'F');
+    doc.setFillColor(245, 158, 11); // Amber Accent #F59E0B
+    doc.rect(0, 11, 210, 2, 'F');
+
+    doc.setFont('times', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(
+      cleanPdfText(
+        isFr
+          ? "FRAGEO SUITE — SYSTÈME INDUSTRIEL D'INGÉNIERIE MINIÈRE & DE TIR"
+          : 'FRAGEO SUITE — ADVANCED INDUSTRIAL BLAST & COMMINUTION SUITE'
+      ),
+      14,
+      7.5
+    );
+    doc.text(
+      cleanPdfText(isFr ? 'DOSSIER TECHNIQUE OFFICIEL' : 'OFFICIAL TECHNICAL DOSSIER'),
+      196,
+      7.5,
+      { align: 'right' }
+    );
+
+    // Organization Header Section (Logo, Name, Address, Contact, Accreditation)
+    const orgLogo =
+      orgProfile?.headerLogos?.leftBase64 ||
+      orgProfile?.headerLogos?.rightBase64 ||
+      orgProfile?.logoBase64;
+    const orgName = cleanPdfText(orgProfile?.companyName?.trim() || 'FraGeo Suite Inc.');
+    let infoX = 14;
+
+    if (orgLogo) {
+      try {
+        doc.addImage(orgLogo, 'PNG', 14, 17, 44, 24);
+        infoX = 64;
+      } catch {
+        infoX = 14;
+      }
+    }
+
+    doc.setFont('times', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(31, 56, 100);
+    doc.text(orgName, infoX, 23, { maxWidth: 210 - infoX - 14 });
+
+    doc.setFont('times', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+
+    let contactY = 28.5;
+    if (orgProfile?.address) {
+      doc.text(cleanPdfText(orgProfile.address), infoX, contactY, { maxWidth: 210 - infoX - 14 });
+      contactY += 4.5;
+    }
+
+    const contactParts = [
+      orgProfile?.phone ? (isFr ? `Tél: ${orgProfile.phone}` : `Phone: ${orgProfile.phone}`) : '',
+      orgProfile?.email ? `Email: ${orgProfile.email}` : '',
+    ].filter(Boolean);
+    if (contactParts.length > 0) {
+      doc.text(cleanPdfText(contactParts.join(' | ')), infoX, contactY);
+      contactY += 4.5;
+    }
+
+    if (orgProfile?.accreditationNumber) {
+      doc.setFont('times', 'bold');
+      doc.setTextColor(30, 58, 138);
+      doc.text(
+        cleanPdfText(
+          isFr
+            ? `Agrément / Accréditation : ${orgProfile.accreditationNumber}`
+            : `Accreditation : ${orgProfile.accreditationNumber}`
+        ),
+        infoX,
+        contactY
+      );
+    }
+
+    // Horizontal Rule
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.6);
+    doc.line(14, 45, 196, 45);
+    doc.setDrawColor(245, 158, 11);
+    doc.setLineWidth(1.2);
+    doc.line(14, 45, 65, 45);
+
+    // Document Category Badge
+    doc.setFillColor(239, 246, 255);
+    doc.roundedRect(14, 50, 106, 6.5, 1.5, 1.5, 'F');
+    doc.setFont('times', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(30, 58, 138);
+    doc.text(
+      cleanPdfText(
+        isFr
+          ? 'AUDIT TECHNIQUE INDUSTRIEL & MODÉLISATION PRÉDICTIVE'
+          : 'INDUSTRIAL TECHNICAL AUDIT & PREDICTIVE MODELING'
+      ),
+      18,
+      54.5
+    );
+
+    // Main Report Title
+    doc.setFont('times', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(31, 56, 100);
+    const mainTitle = isFr
+      ? "RAPPORT TECHNIQUE D'INGÉNIERIE DE TIR, FRAGMENTATION & COMMINUTION"
+      : 'TECHNICAL DRILL, BLAST, FRAGMENTATION & COMMINUTION AUDIT REPORT';
+    const titleWrapped = doc.splitTextToSize(cleanPdfText(mainTitle), 182) as string[];
+    doc.text(titleWrapped, 14, 64);
+
+    // Subtitle
+    doc.setFont('times', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+    const mainSub = isFr
+      ? "Évaluation Optique IA • Modélisation Cunningham Kuz-Ram • Séquencement d'Initiation • Simulation Mine-to-Mill"
+      : 'AI Optical Sizing • Cunningham Kuz-Ram Modeling • Initiation Timing • Mine-to-Mill Circuit Twin';
+    doc.text(cleanPdfText(mainSub), 14, 75);
+
+    // Card 1: Operational Blast & Project Context
+    const card1Y = 81;
+    const card1H = 68;
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(14, card1Y, 182, card1H, 2, 2, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(14, card1Y, 182, card1H, 2, 2, 'S');
+
+    doc.setFillColor(31, 56, 100);
+    doc.roundedRect(14, card1Y, 182, 7.5, 2, 2, 'F');
+    doc.rect(14, card1Y + 5, 182, 2.5, 'F');
+    doc.setFont('times', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text(
+      cleanPdfText(
+        isFr
+          ? '1. CONTEXTE OPÉRATIONNEL & PARAMÈTRES DU TIR ÉVALUÉ'
+          : '1. OPERATIONAL CONTEXT & EVALUATED BLAST PARAMETERS'
+      ),
+      18,
+      card1Y + 5.2
+    );
+
+    const col1X = 18;
+    const col2X = 108;
+    let rY = card1Y + 13;
+    const rowGap = 5.2;
+
+    const renderKeyValue = (x: number, yPos: number, label: string, val: string, maxValW = 55) => {
+      doc.setFont('times', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(cleanPdfText(label), x, yPos);
+      doc.setFont('times', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(cleanPdfText(val), x + 38, yPos, { maxWidth: maxValW });
+    };
+
+    renderKeyValue(col1X, rY, isFr ? 'Projet Minier :' : 'Mining Project:', project.name || 'Projet Standard');
+    renderKeyValue(col2X, rY, isFr ? 'Type de Roche :' : 'Rock Mass Type:', blast.rockMass?.rockType || 'Granite');
+    rY += rowGap;
+
+    renderKeyValue(col1X, rY, isFr ? 'Site / Carrière :' : 'Site / Quarry:', site.name || 'Carrière Pilote');
+    renderKeyValue(col2X, rY, isFr ? 'Densité In-situ :' : 'In-situ Density:', `${blast.rockMass?.density || 2.75} t/m³`);
+    rY += rowGap;
+
+    renderKeyValue(col1X, rY, isFr ? 'Identifiant Tir :' : 'Blast ID:', blast.blastId);
+    renderKeyValue(col2X, rY, isFr ? 'Géométrie (B x S) :' : 'Pattern (B x S):', `${blast.parameters?.burden ?? 4.0} m x ${blast.parameters?.spacing ?? 3.0} m`);
+    rY += rowGap;
+
+    renderKeyValue(col1X, rY, isFr ? 'Date & Heure :' : 'Date & Time:', blast.dateTime || new Date().toISOString().slice(0, 16));
+    renderKeyValue(col2X, rY, isFr ? 'Gradin & Profondeur :' : 'Bench H & Depth:', `H: ${blast.parameters?.benchHeight ?? 15} m | L: ${blast.parameters?.holeDepth ?? 16.2} m`);
+    rY += rowGap;
+
+    renderKeyValue(col1X, rY, isFr ? 'Niveau / Gradin :' : 'Bench Elevation:', `${blast.benchElevation ?? 'N/A'} m RL`);
+    const nHoles = blast.drillHoles?.length || blast.parameters?.numberOfHoles || 0;
+    renderKeyValue(col2X, rY, isFr ? 'Nombre de Trous :' : 'Total Drill Holes:', `${nHoles} ${isFr ? 'trous forés' : 'production holes'}`);
+    rY += rowGap;
+
+    renderKeyValue(col1X, rY, isFr ? 'Conditions Météo :' : 'Weather:', blast.weather || 'Normal, Dry');
+    const estVol = ((blast.parameters?.burden || 4) * (blast.parameters?.spacing || 3) * (blast.parameters?.benchHeight || 15) * (nHoles || 50)).toFixed(0);
+    renderKeyValue(col2X, rY, isFr ? 'Volume Estimé :' : 'Estimated Volume:', `~ ${estVol} m³ (${Math.round(Number(estVol) * (blast.rockMass?.density || 2.75))} tonnes)`);
+    rY += rowGap;
+
+    const expText = `${blast.parameters?.explosiveType || 'ANFO'} (${blast.parameters?.chargePerHole || 0} kg/trou)`;
+    renderKeyValue(col1X, rY, isFr ? 'Explosif Utilisé :' : 'Explosive Charge:', expText, 140);
+
+    // Card 2: Executive Scope / Included Modules
+    const card2Y = 153;
+    const card2H = 49;
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(14, card2Y, 182, card2H, 2, 2, 'F');
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(14, card2Y, 182, card2H, 2, 2, 'S');
+
+    doc.setFillColor(239, 246, 255);
+    doc.roundedRect(14, card2Y, 182, 7.5, 2, 2, 'F');
+    doc.rect(14, card2Y + 5, 182, 2.5, 'F');
+    doc.setFont('times', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(30, 58, 138);
+    doc.text(
+      cleanPdfText(
+        isFr
+          ? "2. PÉRIMÈTRE DE L'AUDIT & MODULES TECHNIQUES INCLUS DANS CE RAPPORT"
+          : '2. AUDIT SCOPE & TECHNICAL MODULES INCLUDED IN THIS REPORT'
+      ),
+      18,
+      card2Y + 5.2
+    );
+
+    const modCol1X = 18;
+    const modCol2X = 108;
+    const half = Math.ceil(finalKeys.length / 2);
+
+    for (let mIdx = 0; mIdx < finalKeys.length; mIdx++) {
+      const k = finalKeys[mIdx];
+      const mMeta = REPORT_SECTIONS_REGISTRY[k];
+      const colX = mIdx < half ? modCol1X : modCol2X;
+      const curRow = mIdx < half ? mIdx : mIdx - half;
+      const yPos = card2Y + 12 + curRow * 4.6;
+
+      doc.setFont('times', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(37, 99, 235);
+      doc.text('[OK]', colX, yPos);
+
+      doc.setFont('times', 'normal');
+      doc.setTextColor(30, 41, 59);
+      const titleStr = isFr ? mMeta.titleFr : mMeta.titleEn;
+      doc.text(cleanPdfText(titleStr), colX + 8, yPos, { maxWidth: 78 });
+    }
+
+    // Card 3: Technical Approval Chain & Compliance Sign-off
+    const card3Y = 206;
+    const card3H = 68;
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(14, card3Y, 182, card3H, 2, 2, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.5);
+    doc.roundedRect(14, card3Y, 182, card3H, 2, 2, 'S');
+
+    doc.setFillColor(31, 56, 100);
+    doc.roundedRect(14, card3Y, 182, 7.5, 2, 2, 'F');
+    doc.rect(14, card3Y + 5, 182, 2.5, 'F');
+    doc.setFont('times', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text(
+      cleanPdfText(
+        isFr
+          ? "3. VISAS D'APPROBATION TECHNIQUE & CONFORMITÉ"
+          : '3. TECHNICAL APPROVAL CHAIN & COMPLIANCE SIGN-OFF'
+      ),
+      18,
+      card3Y + 5.2
+    );
+
+    const sigW = 56;
+    const sigBoxes = [
+      { x: 18, role: isFr ? 'Ingénieur Responsable des Tirs' : 'Lead Blasting Engineer' },
+      { x: 77, role: isFr ? 'Ingénieur Géotechnicien' : 'Senior Geotechnical Engineer' },
+      { x: 136, role: isFr ? 'Directeur des Opérations Mine' : 'Mine Operations Director' },
+    ];
+
+    sigBoxes.forEach((sb) => {
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(203, 213, 225);
+      doc.roundedRect(sb.x, card3Y + 11, sigW, 52, 1.5, 1.5, 'FD');
+
+      doc.setFont('times', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(31, 56, 100);
+      const roleLines = doc.splitTextToSize(cleanPdfText(sb.role), sigW - 4) as string[];
+      doc.text(roleLines, sb.x + 3, card3Y + 16);
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(6.8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(cleanPdfText(isFr ? 'Nom :' : 'Name:'), sb.x + 3, card3Y + 26);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(sb.x + 14, card3Y + 26, sb.x + sigW - 3, card3Y + 26);
+
+      doc.text(cleanPdfText(isFr ? 'Date :' : 'Date:'), sb.x + 3, card3Y + 34);
+      doc.text(cleanPdfText(new Date().toISOString().slice(0, 10)), sb.x + 14, card3Y + 34);
+
+      doc.text(cleanPdfText(isFr ? 'Visa / Cachet :' : 'Signature & Stamp:'), sb.x + 3, card3Y + 42);
+      doc.setDrawColor(203, 213, 225);
+      doc.rect(sb.x + 3, card3Y + 45, sigW - 6, 15, 'S');
+      doc.setFontSize(6);
+      doc.setTextColor(203, 213, 225);
+      doc.text(
+        cleanPdfText(isFr ? '[ Cachet Officiel ]' : '[ Official Stamp ]'),
+        sb.x + sigW / 2,
+        card3Y + 54,
+        { align: 'center' }
+      );
+    });
+
+    // Bottom Cover Page Footer Notice
+    doc.setFont('times', 'italic');
+    doc.setFontSize(6.8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      cleanPdfText(
+        isFr
+          ? "Document certifié conforme émis par le système FraGeo Suite • Toute reproduction intégrale ou partielle requiert l'accord du site émetteur."
+          : 'Certified engineering report generated by FraGeo Suite • Unauthorized reproduction or distribution is strictly prohibited.'
+      ),
+      105,
+      283,
+      { align: 'center' }
+    );
+  };
+
+  // 2. Running Header Helper for subsequent content pages (Pages 2+)
+  // Clean, focused running header: NO logos, NO repeated organization credentials
   const drawHeader = (title: string, subTitle: string) => {
     const cleanTitle = cleanPdfText(title);
     const cleanSub = cleanPdfText(subTitle);
 
     doc.setFillColor(31, 56, 100); // Deep Navy #1F3864
-    doc.rect(0, 0, 210, 25, 'F');
+    doc.rect(0, 0, 210, 18, 'F');
+    doc.setFillColor(245, 158, 11); // Amber accent line #F59E0B
+    doc.rect(0, 17.5, 210, 0.5, 'F');
 
-    const headerLogo = orgProfile?.headerLogos?.leftBase64 || orgProfile?.headerLogos?.rightBase64 || orgProfile?.logoBase64;
-    let titleX = 14;
-    if (headerLogo) {
-      try {
-        doc.addImage(headerLogo, 'PNG', 14, 3, 20, 19);
-        titleX = 38;
-      } catch {
-        titleX = 14;
-      }
-    }
-
-    const titleMaxW = headerLogo ? 92 : 114;
+    const titleX = 14;
+    const titleMaxW = 124;
 
     doc.setTextColor(255, 255, 255);
     doc.setFont('times', 'bold');
     doc.setFontSize(9.5);
     const titleLines = doc.splitTextToSize(cleanTitle, titleMaxW) as string[];
 
-    let titleY = 7.5;
-    let subTitleY = 17.5;
+    let titleY = 6.8;
+    let subTitleY = 14.5;
     if (titleLines.length === 1) {
-      titleY = 10.0;
-      subTitleY = 16.5;
+      titleY = 8.5;
+      subTitleY = 14.5;
     } else if (titleLines.length >= 3) {
-      titleY = 6.0;
-      subTitleY = 19.5;
+      titleY = 5.0;
+      subTitleY = 15.5;
     }
 
     doc.text(titleLines, titleX, titleY);
 
-    doc.setFontSize(7.0);
+    doc.setFontSize(6.8);
     doc.setFont('times', 'normal');
-    doc.setTextColor(226, 232, 240);
+    doc.setTextColor(203, 213, 225);
     const subLines = doc.splitTextToSize(cleanSub, titleMaxW) as string[];
     doc.text(subLines.slice(0, 2), titleX, subTitleY);
 
-    // Right-hand side: Organization Name and Credentials
-    const orgName = cleanPdfText(orgProfile?.companyName?.trim() || 'FraGeo Suite');
-    doc.setFontSize(9);
+    // Right-hand side: Subtle document reference and blast ID (NO logo, NO repeated company info)
+    doc.setFontSize(8);
     doc.setFont('times', 'bold');
-    doc.setTextColor(255, 255, 255);
-    doc.text(orgName, 196, 9.0, { align: 'right', maxWidth: 66 });
+    doc.setTextColor(147, 197, 253);
+    doc.text(cleanPdfText(`TIR / BLAST : ${blast.blastId}`), 196, 8.5, { align: 'right', maxWidth: 60 });
 
     doc.setFontSize(6.5);
     doc.setFont('times', 'normal');
     doc.setTextColor(203, 213, 225);
-    const orgContactParts = [
-      orgProfile?.address ? cleanPdfText(orgProfile.address.split(',')[0].trim()) : '',
-      orgProfile?.phone ? `Tél: ${orgProfile.phone}` : '',
-      orgProfile?.email,
-    ].filter(Boolean);
-    const orgContactText = orgContactParts.slice(0, 2).join(' | ');
-    if (orgContactText) {
-      doc.text(orgContactText, 196, 14, { align: 'right', maxWidth: 66 });
-    }
-    if (orgProfile?.accreditationNumber) {
-      doc.text(
-        isFr ? `Agrément N° : ${orgProfile.accreditationNumber}` : `Accreditation No: ${orgProfile.accreditationNumber}`,
-        196,
-        18.5,
-        { align: 'right', maxWidth: 66 }
-      );
-    }
+    const dateStr = blast.dateTime ? cleanPdfText(blast.dateTime.slice(0, 10)) : new Date().toISOString().slice(0, 10);
+    doc.text(
+      cleanPdfText(`Date: ${dateStr} | RL: ${blast.benchElevation ?? 0}m`),
+      196,
+      14.0,
+      { align: 'right', maxWidth: 60 }
+    );
   };
 
   let activeHeaderTitle = '';
@@ -208,7 +513,7 @@ export async function generateModularVaultPdfReport(
       if (curY > 255) {
         doc.addPage();
         drawHeader(pageHeaderTitle, pageHeaderSub);
-        curY = 29;
+        curY = 24;
       }
       doc.setFont('times', 'bold');
       doc.setFontSize(9.5);
@@ -270,7 +575,7 @@ export async function generateModularVaultPdfReport(
       if (curY + rowHeight > 280) {
         doc.addPage();
         drawHeader(pageHeaderTitle, pageHeaderSub);
-        curY = 29;
+        curY = 24;
         curY = drawTableHeaderBlock(curY);
       }
 
@@ -330,7 +635,7 @@ export async function generateModularVaultPdfReport(
       if (curY + boxH > 275) {
         doc.addPage();
         drawHeader(activeHeaderTitle, activeHeaderSub);
-        curY = 29;
+        curY = 24;
       }
 
       doc.setFillColor(...bgColor);
@@ -387,7 +692,7 @@ export async function generateModularVaultPdfReport(
     if (curY + boxH > 280) {
       doc.addPage();
       drawHeader(activeHeaderTitle, activeHeaderSub);
-      curY = 29;
+      curY = 24;
     }
 
     doc.setFillColor(...bgColor);
@@ -486,12 +791,13 @@ export async function generateModularVaultPdfReport(
   const droneSurvey = blast.droneSurvey || generateDemoDroneSurvey(blast.blastId);
   const econResult = evaluateMineToMillEconomics(blast, blastState.optical.p80Mm, blast.millBatch, DEFAULT_ECONOMIC_PARAMS);
 
-  // Render each selected section on dedicated pages
+  // 1. Render Cover Page (Page 1) with prominent Logo, Report Title, and Organisation Information
+  renderCoverPage();
+
+  // 2. Render each selected section on dedicated pages (Pages 2+)
   for (let index = 0; index < finalKeys.length; index++) {
     const key = finalKeys[index];
-    if (index > 0) {
-      doc.addPage();
-    }
+    doc.addPage();
 
     const meta = REPORT_SECTIONS_REGISTRY[key];
     const entry = vaultState[key];
@@ -508,14 +814,14 @@ export async function generateModularVaultPdfReport(
     activeHeaderSub = headerSub;
 
     drawHeader(headerTitle, headerSub);
-    let y = 29;
+    let y = 24;
 
     // Helper to embed graphics with auto page break
     const addImageWithPageCheck = (imgDataUrl: string, width = 182, height = 92) => {
       if (y + height > 280) {
         doc.addPage();
         drawHeader(activeHeaderTitle, activeHeaderSub);
-        y = 29;
+        y = 24;
       }
       doc.addImage(imgDataUrl, 'PNG', 14, y, width, height);
       y += height + 5;
@@ -791,7 +1097,7 @@ export async function generateModularVaultPdfReport(
       // PAGE BREAK FOR STATISTICAL REGRESSIONS & SAMPLING
       doc.addPage();
       drawHeader(activeHeaderTitle, activeHeaderSub);
-      y = 29;
+      y = 24;
 
       // 4. NON-LINEAR REGRESSION CURVE FITTING & MATHEMATICAL MODELS
       y = drawTable(
@@ -978,7 +1284,7 @@ export async function generateModularVaultPdfReport(
       // PAGE BREAK FOR TECHNICAL ENGINEERING DRAWINGS & GRAPHICS (PAGE 3)
       doc.addPage();
       drawHeader(activeHeaderTitle, activeHeaderSub);
-      y = 29;
+      y = 24;
 
       // 8. LOGARITHMIC PASSING CHART (All 3 curves)
       doc.setFontSize(9.5);
@@ -1037,7 +1343,7 @@ export async function generateModularVaultPdfReport(
       // PAGE BREAK FOR COMPUTER VISION PROCESSING PIPELINE (PAGE 4)
       doc.addPage();
       drawHeader(activeHeaderTitle, activeHeaderSub);
-      y = 29;
+      y = 24;
 
       // 10. COMPUTER VISION PROCESSING PIPELINE GALLERY (8 Stages)
       doc.setFontSize(9.5);
@@ -1137,7 +1443,7 @@ export async function generateModularVaultPdfReport(
         if (y > 195) {
           doc.addPage();
           drawHeader(activeHeaderTitle, activeHeaderSub);
-          y = 29;
+          y = 24;
         }
 
         // Section main heading
@@ -1865,7 +2171,7 @@ export async function generateModularVaultPdfReport(
   activeHeaderTitle = qaTitle;
   activeHeaderSub = qaSub;
   drawHeader(qaTitle, qaSub);
-  let qaY = 28;
+  let qaY = 24;
 
   doc.setFont('times', 'bold');
   doc.setFontSize(10);
@@ -1971,7 +2277,7 @@ export async function generateModularVaultPdfReport(
   if (qaY + 36 > 280) {
     doc.addPage();
     drawHeader(qaTitle, qaSub);
-    qaY = 29;
+    qaY = 24;
   }
   doc.setFillColor(248, 250, 252);
   doc.rect(14, qaY + 5, 182, 32, 'F');
@@ -1994,10 +2300,12 @@ export async function generateModularVaultPdfReport(
   doc.text('Signature: _______________________', 75, qaY + 28);
   doc.text('Signature: _______________________', 135, qaY + 28);
 
-  // Stamp clean page numbers on all generated pages
+  // Stamp clean page numbers on all generated subsequent content pages (skip Cover Page)
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
+    if (i === 1) continue; // Cover page has its own dedicated footer
+
     doc.setFontSize(8);
     doc.setFont('times', 'normal');
     doc.setTextColor(148, 163, 184);

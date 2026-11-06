@@ -22,6 +22,7 @@ interface ComminutionDigitalTwinViewProps {
   project?: Project;
   site?: Site;
   lang?: 'en' | 'fr';
+  onUpdateBlast?: (blast: Blast) => void;
 }
 
 export const ComminutionDigitalTwinView: React.FC<ComminutionDigitalTwinViewProps> = ({
@@ -29,22 +30,107 @@ export const ComminutionDigitalTwinView: React.FC<ComminutionDigitalTwinViewProp
   project,
   site,
   lang = 'en',
+  onUpdateBlast,
 }) => {
   const isFrench = lang === 'fr';
 
-  // State for circuit simulation
+  // State for circuit simulation with persistence
   const defaultF80 = blast.images[0]?.segmentationRuns?.[0]?.metrics?.p80 || (blast.parameters as any)?.p80 || 280;
-  const [f80Mm, setF80Mm] = useState<number>(defaultF80); // incoming feed from blast
-  const [targetP80Microns, setTargetP80Microns] = useState<number>(75); // 75 µm = 0.075 mm
-  const [bondWi, setBondWi] = useState<number>(14.5); // 14.5 kWh/t quartz-granodiorite
-  const [rockAxb, setRockAxb] = useState<number>(42); // 42 drop weight hardness
-  const [operatingHours, setOperatingHours] = useState<number>(20);
-  const [powerCostUSD, setPowerCostUSD] = useState<number>(0.14);
-  const [explosiveCostUSD, setExplosiveCostUSD] = useState<number>(1.85);
+  const cfg = blast.circuitConfig;
+  const [f80Mm, setF80Mm] = useState<number>(cfg?.f80Mm ?? defaultF80); // incoming feed from blast
+  const [targetP80Microns, setTargetP80Microns] = useState<number>(cfg?.targetP80Microns ?? 75); // 75 µm = 0.075 mm
+  const [bondWi, setBondWi] = useState<number>(cfg?.bondWi ?? 14.5); // 14.5 kWh/t quartz-granodiorite
+  const [rockAxb, setRockAxb] = useState<number>(cfg?.rockAxb ?? 42); // 42 drop weight hardness
+  const [operatingHours, setOperatingHours] = useState<number>(cfg?.operatingHours ?? 20);
+  const [powerCostUSD, setPowerCostUSD] = useState<number>(cfg?.powerCostUSD ?? 0.14);
+  const [explosiveCostUSD, setExplosiveCostUSD] = useState<number>(cfg?.explosiveCostUSD ?? 1.85);
+
+  const circuitRef = React.useRef({
+    f80Mm,
+    targetP80Microns,
+    bondWi,
+    rockAxb,
+    operatingHours,
+    powerCostUSD,
+    explosiveCostUSD,
+  });
+  circuitRef.current = {
+    f80Mm,
+    targetP80Microns,
+    bondWi,
+    rockAxb,
+    operatingHours,
+    powerCostUSD,
+    explosiveCostUSD,
+  };
+  const lastSavedCircuitStr = React.useRef(JSON.stringify(circuitRef.current));
+
+  const flushSaveCircuit = React.useCallback(() => {
+    if (!onUpdateBlast) return;
+    const current = circuitRef.current;
+    const curStr = JSON.stringify(current);
+    if (curStr === lastSavedCircuitStr.current) return;
+    lastSavedCircuitStr.current = curStr;
+
+    const updatedBlast: Blast = {
+      ...blast,
+      circuitConfig: current,
+      updatedAt: Date.now(),
+    };
+    onUpdateBlast(updatedBlast);
+  }, [blast, onUpdateBlast]);
 
   React.useEffect(() => {
-    const f80 = blast.images[0]?.segmentationRuns?.[0]?.metrics?.p80 || (blast.parameters as any)?.p80 || 280;
+    const curStr = JSON.stringify({
+      f80Mm,
+      targetP80Microns,
+      bondWi,
+      rockAxb,
+      operatingHours,
+      powerCostUSD,
+      explosiveCostUSD,
+    });
+    if (curStr === lastSavedCircuitStr.current) return;
+    const timer = setTimeout(() => {
+      flushSaveCircuit();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [
+    f80Mm,
+    targetP80Microns,
+    bondWi,
+    rockAxb,
+    operatingHours,
+    powerCostUSD,
+    explosiveCostUSD,
+    flushSaveCircuit,
+  ]);
+
+  React.useEffect(() => {
+    return () => {
+      flushSaveCircuit();
+    };
+  }, [flushSaveCircuit]);
+
+  React.useEffect(() => {
+    const c = blast.circuitConfig;
+    const f80 = c?.f80Mm ?? blast.images[0]?.segmentationRuns?.[0]?.metrics?.p80 ?? (blast.parameters as any)?.p80 ?? 280;
     setF80Mm(f80);
+    setTargetP80Microns(c?.targetP80Microns ?? 75);
+    setBondWi(c?.bondWi ?? 14.5);
+    setRockAxb(c?.rockAxb ?? 42);
+    setOperatingHours(c?.operatingHours ?? 20);
+    setPowerCostUSD(c?.powerCostUSD ?? 0.14);
+    setExplosiveCostUSD(c?.explosiveCostUSD ?? 1.85);
+    lastSavedCircuitStr.current = JSON.stringify({
+      f80Mm: f80,
+      targetP80Microns: c?.targetP80Microns ?? 75,
+      bondWi: c?.bondWi ?? 14.5,
+      rockAxb: c?.rockAxb ?? 42,
+      operatingHours: c?.operatingHours ?? 20,
+      powerCostUSD: c?.powerCostUSD ?? 0.14,
+      explosiveCostUSD: c?.explosiveCostUSD ?? 1.85,
+    });
   }, [blast.id]);
 
   const isCircuitModified =

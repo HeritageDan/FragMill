@@ -23,6 +23,7 @@ interface MineToMillViewProps {
   activeBlastId?: string;
   onSelectBlast?: (blastId: string) => void;
   onUpdateMillBatch: (blastId: string, millBatch: MillBatch) => void;
+  onUpdateBlast?: (blast: Blast) => void;
   project?: Project;
   site?: Site;
   lang?: 'en' | 'fr';
@@ -33,6 +34,7 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
   activeBlastId,
   onSelectBlast,
   onUpdateMillBatch,
+  onUpdateBlast,
   project,
   site,
   lang = 'en',
@@ -41,6 +43,7 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
 
   const selectedBlast = blasts.find((b) => b.id === selectedBlastId) || blasts[0];
   const millBatch = selectedBlast?.millBatch;
+  const initialEcon = selectedBlast?.mineToMillEconConfig || millBatch?.economicParams;
 
   // Form states for MillBatch entry
   const [batchTonnage, setBatchTonnage] = useState(millBatch?.batchTonnageTonnes || 1500);
@@ -55,6 +58,20 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
   const [concentrateGrade, setConcentrateGrade] = useState(millBatch?.concentrateGradeGpt || 140);
   const [notes, setNotes] = useState(millBatch?.processingNotes || '');
 
+  // Economic parameters state with persistence
+  const [drillingCostPerM, setDrillingCostPerM] = useState(
+    initialEcon?.drillingCostPerMeter ?? DEFAULT_ECONOMIC_PARAMS.drillingCostPerMeter
+  );
+  const [explosiveCostPerKg, setExplosiveCostPerKg] = useState(
+    initialEcon?.explosiveCostPerKg ?? DEFAULT_ECONOMIC_PARAMS.explosiveCostPerKg
+  );
+  const [secondaryCostPerBoulder, setSecondaryCostPerBoulder] = useState(
+    initialEcon?.secondaryBreakingCostPerBoulder ?? DEFAULT_ECONOMIC_PARAMS.secondaryBreakingCostPerBoulder
+  );
+  const [powerCostPerKwh, setPowerCostPerKwh] = useState(
+    initialEcon?.powerCostPerKwh ?? DEFAULT_ECONOMIC_PARAMS.crushingEnergyCostPerKwh
+  );
+
   const liveFormRef = React.useRef({
     batchTonnage,
     truckCount,
@@ -67,6 +84,10 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
     tailsGrade,
     concentrateGrade,
     notes,
+    drillingCostPerM,
+    explosiveCostPerKg,
+    secondaryCostPerBoulder,
+    powerCostPerKwh,
   });
 
   liveFormRef.current = {
@@ -81,6 +102,10 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
     tailsGrade,
     concentrateGrade,
     notes,
+    drillingCostPerM,
+    explosiveCostPerKg,
+    secondaryCostPerBoulder,
+    powerCostPerKwh,
   };
 
   const lastSavedMillBatchStr = React.useRef(JSON.stringify(liveFormRef.current));
@@ -102,6 +127,13 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
       ).toFixed(1)
     );
 
+    const econParams = {
+      drillingCostPerMeter: cur.drillingCostPerM,
+      explosiveCostPerKg: cur.explosiveCostPerKg,
+      secondaryBreakingCostPerBoulder: cur.secondaryCostPerBoulder,
+      powerCostPerKwh: cur.powerCostPerKwh,
+    };
+
     const updated: MillBatch = {
       id: millBatch?.id || `mb-${selectedBlast.id}`,
       blastId: selectedBlast.id,
@@ -122,12 +154,21 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
       totalSpecificEnergyKwhPerT: totSpec,
       simpleGoldRecoveryPercent: recPercent,
       oversizeRejectsPercent: Number(((cur.boulders * 1.5 * 100) / Math.max(1, cur.batchTonnage)).toFixed(1)),
+      economicParams: econParams,
       createdAt: millBatch?.createdAt || Date.now(),
       updatedAt: Date.now(),
     };
 
     onUpdateMillBatch(selectedBlast.id, updated);
-  }, [selectedBlast, millBatch, onUpdateMillBatch]);
+    if (onUpdateBlast) {
+      onUpdateBlast({
+        ...selectedBlast,
+        millBatch: updated,
+        mineToMillEconConfig: econParams,
+        updatedAt: Date.now(),
+      });
+    }
+  }, [selectedBlast, millBatch, onUpdateMillBatch, onUpdateBlast]);
 
   useEffect(() => {
     const curStr = JSON.stringify(liveFormRef.current);
@@ -148,6 +189,10 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
     tailsGrade,
     concentrateGrade,
     notes,
+    drillingCostPerM,
+    explosiveCostPerKg,
+    secondaryCostPerBoulder,
+    powerCostPerKwh,
     flushSaveMillBatch,
   ]);
 
@@ -161,31 +206,28 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
     if (activeBlastId) {
       setSelectedBlastId(activeBlastId);
       const b = blasts.find((x) => x.id === activeBlastId);
-      if (b?.millBatch) {
-        setBatchTonnage(b.millBatch.batchTonnageTonnes);
-        setTruckCount(b.millBatch.truckCount || 75);
-        setBoulders(b.millBatch.bouldersSecondaryBreakingCount || 0);
-        setCrushingTime(b.millBatch.crushingTimeHours);
-        setCrushingEnergy(b.millBatch.crushingEnergyKwh);
-        setMillingThroughput(b.millBatch.millingThroughputTph);
-        setMillingEnergy(b.millBatch.millingEnergyKwh);
-        setHeadGrade(b.millBatch.headGradeGpt);
-        setTailsGrade(b.millBatch.tailsGradeGpt);
-        setConcentrateGrade(b.millBatch.concentrateGradeGpt || 140);
-        setNotes(b.millBatch.processingNotes || '');
-        lastSavedMillBatchStr.current = JSON.stringify({
-          batchTonnage: b.millBatch.batchTonnageTonnes,
-          truckCount: b.millBatch.truckCount || 75,
-          boulders: b.millBatch.bouldersSecondaryBreakingCount || 0,
-          crushingTime: b.millBatch.crushingTimeHours,
-          crushingEnergy: b.millBatch.crushingEnergyKwh,
-          millingThroughput: b.millBatch.millingThroughputTph,
-          millingEnergy: b.millBatch.millingEnergyKwh,
-          headGrade: b.millBatch.headGradeGpt,
-          tailsGrade: b.millBatch.tailsGradeGpt,
-          concentrateGrade: b.millBatch.concentrateGradeGpt || 140,
-          notes: b.millBatch.processingNotes || '',
-        });
+      if (b) {
+        const mb = b.millBatch;
+        const econ = b.mineToMillEconConfig || mb?.economicParams;
+        if (mb) {
+          setBatchTonnage(mb.batchTonnageTonnes);
+          setTruckCount(mb.truckCount || 75);
+          setBoulders(mb.bouldersSecondaryBreakingCount || 0);
+          setCrushingTime(mb.crushingTimeHours);
+          setCrushingEnergy(mb.crushingEnergyKwh);
+          setMillingThroughput(mb.millingThroughputTph);
+          setMillingEnergy(mb.millingEnergyKwh);
+          setHeadGrade(mb.headGradeGpt);
+          setTailsGrade(mb.tailsGradeGpt);
+          setConcentrateGrade(mb.concentrateGradeGpt || 140);
+          setNotes(mb.processingNotes || '');
+        }
+        if (econ) {
+          setDrillingCostPerM(econ.drillingCostPerMeter ?? DEFAULT_ECONOMIC_PARAMS.drillingCostPerMeter);
+          setExplosiveCostPerKg(econ.explosiveCostPerKg ?? DEFAULT_ECONOMIC_PARAMS.explosiveCostPerKg);
+          setSecondaryCostPerBoulder(econ.secondaryBreakingCostPerBoulder ?? DEFAULT_ECONOMIC_PARAMS.secondaryBreakingCostPerBoulder);
+          setPowerCostPerKwh(econ.powerCostPerKwh ?? DEFAULT_ECONOMIC_PARAMS.crushingEnergyCostPerKwh);
+        }
       }
     }
   }, [activeBlastId, blasts]);
@@ -259,11 +301,7 @@ export const MineToMillView: React.FC<MineToMillViewProps> = ({
     }
   }
 
-  // Economic parameters state
-  const [drillingCostPerM, setDrillingCostPerM] = useState(DEFAULT_ECONOMIC_PARAMS.drillingCostPerMeter);
-  const [explosiveCostPerKg, setExplosiveCostPerKg] = useState(DEFAULT_ECONOMIC_PARAMS.explosiveCostPerKg);
-  const [secondaryCostPerBoulder, setSecondaryCostPerBoulder] = useState(DEFAULT_ECONOMIC_PARAMS.secondaryBreakingCostPerBoulder);
-  const [powerCostPerKwh, setPowerCostPerKwh] = useState(DEFAULT_ECONOMIC_PARAMS.crushingEnergyCostPerKwh);
+
 
   const blastStateForEcon = getBlastState(selectedBlast);
   const activeP80ForEcon =

@@ -431,8 +431,45 @@ export interface MillBatch {
   simpleGoldRecoveryPercent: number; // (f - t) / f * 100
   twoProductGoldRecoveryPercent?: number; // c*(f - t) / (f*(c - t)) * 100
   oversizeRejectsPercent?: number;
+  economicParams?: MineToMillEconomicParams;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface ComminutionCircuitConfig {
+  f80Mm?: number;
+  targetP80Microns?: number;
+  bondWi?: number;
+  rockAxb?: number;
+  operatingHours?: number;
+  powerCostUSD?: number;
+  explosiveCostUSD?: number;
+}
+
+export interface PatternMapConfig {
+  burdenM?: number;
+  spacingM?: number;
+  benchHeightM?: number;
+  numberOfHoles?: number;
+  patternType?: 'staggered' | 'rectangular';
+  clearanceRadiusM?: number;
+  selectedElevation?: number | 'all' | 'upper' | 'lower';
+}
+
+export interface KuzRamConfig {
+  targetP80?: number;
+  priorMeanA?: number;
+  priorStdA?: number;
+  advisorBounds?: BlastAdvisorTarget['bounds'];
+  advisorResult?: any;
+  bayesianResult?: any;
+}
+
+export interface MineToMillEconomicParams {
+  drillingCostPerMeter?: number;
+  explosiveCostPerKg?: number;
+  secondaryBreakingCostPerBoulder?: number;
+  powerCostPerKwh?: number;
 }
 
 export interface KuzRamRockTables {
@@ -584,6 +621,10 @@ export interface Blast {
   drillHoles?: DetailedDrillHole[];
   droneSurvey?: DroneOrthomosaicData;
   kuzRamTables?: KuzRamRockTables;
+  kuzRamConfig?: KuzRamConfig;
+  circuitConfig?: ComminutionCircuitConfig;
+  patternConfig?: PatternMapConfig;
+  mineToMillEconConfig?: MineToMillEconomicParams;
   timingConfig?: {
     patternType: 'v_echelon' | 'row_by_row' | 'diagonal_cut' | 'center_lift' | 'electronic_custom';
     surfaceDelayMs: number;

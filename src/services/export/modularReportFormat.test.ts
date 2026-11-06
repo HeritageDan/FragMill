@@ -257,16 +257,67 @@ describe('FragMill Modular Report Formatting & Persistence Verification', () => 
     // 5. Verify parsed section card titles are present
     expect(fullText.includes('FRAGMENTATION ASSESSMENT')).toBe(true);
     expect(fullText.includes('COMMINUTION CIRCUIT CONSEQUENCES')).toBe(true);
+
+    // 6. Verify Cover Page elements are generated on Page 1
+    expect(fullText.includes('TECHNICAL DRILL, BLAST') || fullText.includes('COMMINUTION AUDIT REPORT')).toBe(true);
+    expect(fullText.includes('1. OPERATIONAL CONTEXT & EVALUATED BLAST PARAMETERS')).toBe(true);
+    expect(fullText.includes('3. TECHNICAL APPROVAL CHAIN & COMPLIANCE SIGN-OFF')).toBe(true);
+    expect(fullText.includes('Laboratoire Du Peuple')).toBe(true);
   });
 
-  it('persists timingConfig and kuzRamTables on the Blast object', () => {
-    expect(mockBlastWithClaudeNotes.timingConfig).toBeDefined();
-    expect(mockBlastWithClaudeNotes.timingConfig?.patternType).toBe('v_echelon');
-    expect(mockBlastWithClaudeNotes.timingConfig?.surfaceDelayMs).toBe(25);
-    expect(mockBlastWithClaudeNotes.timingConfig?.inHoleDelayMs).toBe(400);
+  it('persists timingConfig, patternConfig, circuitConfig, kuzRamConfig and kuzRamTables on the Blast object', () => {
+    const fullBlast: Blast = {
+      ...mockBlastWithClaudeNotes,
+      patternConfig: {
+        burdenM: 3.2,
+        spacingM: 3.6,
+        benchHeightM: 14.0,
+        patternType: 'rectangular',
+        clearanceRadiusM: 350,
+      },
+      circuitConfig: {
+        f80Mm: 250,
+        targetP80Microns: 80,
+        bondWi: 15.2,
+        rockAxb: 45,
+        operatingHours: 22,
+        powerCostUSD: 0.15,
+        explosiveCostUSD: 1.90,
+      },
+      kuzRamConfig: {
+        targetP80: 175,
+        priorMeanA: 7.2,
+        priorStdA: 1.4,
+      },
+      mineToMillEconConfig: {
+        drillingCostPerMeter: 17.5,
+        explosiveCostPerKg: 1.95,
+        secondaryBreakingCostPerBoulder: 50,
+        powerCostPerKwh: 0.15,
+      },
+    };
 
-    expect(mockBlastWithClaudeNotes.kuzRamTables).toBeDefined();
-    expect(mockBlastWithClaudeNotes.kuzRamTables?.density).toBe(2.75);
-    expect(mockBlastWithClaudeNotes.kuzRamTables?.rmd).toBe(20);
+    expect(fullBlast.timingConfig).toBeDefined();
+    expect(fullBlast.timingConfig?.patternType).toBe('v_echelon');
+    expect(fullBlast.timingConfig?.surfaceDelayMs).toBe(25);
+    expect(fullBlast.timingConfig?.inHoleDelayMs).toBe(400);
+
+    expect(fullBlast.kuzRamTables).toBeDefined();
+    expect(fullBlast.kuzRamTables?.density).toBe(2.75);
+    expect(fullBlast.kuzRamTables?.rmd).toBe(20);
+
+    expect(fullBlast.patternConfig?.burdenM).toBe(3.2);
+    expect(fullBlast.patternConfig?.patternType).toBe('rectangular');
+    expect(fullBlast.patternConfig?.clearanceRadiusM).toBe(350);
+
+    expect(fullBlast.circuitConfig?.f80Mm).toBe(250);
+    expect(fullBlast.circuitConfig?.bondWi).toBe(15.2);
+    expect(fullBlast.circuitConfig?.powerCostUSD).toBe(0.15);
+
+    expect(fullBlast.kuzRamConfig?.targetP80).toBe(175);
+    expect(fullBlast.kuzRamConfig?.priorMeanA).toBe(7.2);
+
+    expect(fullBlast.mineToMillEconConfig?.drillingCostPerMeter).toBe(17.5);
+    expect(fullBlast.mineToMillEconConfig?.explosiveCostPerKg).toBe(1.95);
   });
 });

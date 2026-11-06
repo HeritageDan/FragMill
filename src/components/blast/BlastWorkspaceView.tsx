@@ -105,6 +105,7 @@ export const BlastWorkspaceView: React.FC<BlastWorkspaceViewProps> = ({
           blasts={blasts}
           activeBlastId={activeBlastId}
           onSelectBlast={handleSelectBlastFromBenchMap}
+          onUpdateBlast={onUpdateBlast}
           project={project || undefined}
           site={site || undefined}
           lang={lang}
