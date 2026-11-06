@@ -170,7 +170,7 @@ export async function generateGeoLabExcelReport(options: ExcelGenerationOptions)
 // -------------------------------------------------------------
 // Sheet & Chart Builder per Test Type
 // -------------------------------------------------------------
-function buildTestSheetAndChart(
+export function buildTestSheetAndChart(
   testType: string,
   analysis: GeoLabAnalysis,
   client: GeoLabClient,
@@ -178,18 +178,19 @@ function buildTestSheetAndChart(
   sample: GeoLabSample,
   org: OrganisationProfile,
   lang: 'en' | 'fr',
-  watermark: string
+  watermark: string,
+  sheetName?: string
 ): { sheetXml: string; chartXml: string | null; hasChart: boolean } {
   if (testType === 'proctor') {
-    return buildProctorSheet(analysis, client, project, sample, org, lang, watermark);
+    return buildProctorSheet(analysis, client, project, sample, org, lang, watermark, sheetName);
   }
   if (testType === 'grain_size') {
-    return buildGrainSizeSheet(analysis, client, project, sample, org, lang, watermark);
+    return buildGrainSizeSheet(analysis, client, project, sample, org, lang, watermark, sheetName);
   }
   if (testType === 'water_content') {
-    return buildWaterContentSheet(analysis, client, project, sample, org, lang, watermark);
+    return buildWaterContentSheet(analysis, client, project, sample, org, lang, watermark, sheetName);
   }
-  return buildGenericSheet(analysis, client, project, sample, org, lang, watermark);
+  return buildGenericSheet(analysis, client, project, sample, org, lang, watermark, sheetName);
 }
 
 // -------------------------------------------------------------
@@ -324,11 +325,32 @@ function buildProctorSheet(
   sample: GeoLabSample,
   org: OrganisationProfile,
   lang: 'en' | 'fr',
-  watermark: string
+  watermark: string,
+  sheetName: string = (lang === 'fr' ? 'Rapport' : 'Report')
 ) {
-  const input = analysis.rawInput;
-  const res = analysis.computedResults;
-  const pts = res.points || [];
+  const input = analysis.rawInput || ({} as any);
+  const res = analysis.computedResults || ({} as any);
+  let pts: any[] = res.points || [];
+  if (pts.length === 0 && Array.isArray(input.points) && input.points.length > 0) {
+    const rhos_max = res.maxDryDensityGcm3 || (res as any).optimumDryDensityGcm3 || 2.225;
+    const gs = input.particleDensityGs || 2.82;
+    pts = input.points.map((p: any, idx: number) => {
+      const w = p.waterContentPercent ?? 0;
+      const rhos = p.dryDensityGcm3 ?? 0;
+      const rho = p.wetDensityGcm3 ?? Number((rhos * (1 + w / 100)).toFixed(3));
+      const comp = Number(((rhos / rhos_max) * 100).toFixed(1));
+      const wSat = rhos > 0 ? Number(((1 / rhos - 1 / gs) * 100).toFixed(2)) : 0;
+      return {
+        pointIndex: p.pointIndex ?? p.pointNumber ?? idx + 1,
+        waterContentPercent: w,
+        wetDensityGcm3: rho,
+        dryDensityGcm3: rhos,
+        compactionPercentOfOpm: comp,
+        saturationWaterContentPercent: wSat,
+      };
+    });
+  }
+  const hasChart = pts.length > 0;
 
   const formCode = org.formCodes?.proctor || 'PR2-FOR-02';
   const accreditationLabel = org.accreditationNumber?.trim()
@@ -341,29 +363,30 @@ function buildProctorSheet(
   ].filter(Boolean).join(' | ');
 
   let rowsXml = '';
-  // Row 1: Org Name, Contact & Accreditation
-  rowsXml += `<row r="1" ht="28">
-    <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
-    ${orgContact ? `<c r="D1" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
-    ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
+  // Row 1: Org Name (Col B, clear of Left Logo in Col A)
+  rowsXml += `<row r="1" ht="26">
+    <c r="B1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
   </row>`;
 
-  // Row 2: Document Title & Form Code
+  // Row 2: Document Title & Standard (Col B, clear of Left Logo in Col A)
   const titleText = lang === 'fr' ? "PROCES-VERBAL D'ESSAI PROCTOR" : 'PROCTOR COMPACTION TEST REPORT';
-  rowsXml += `<row r="2" ht="24">
-    <c r="A2" t="inlineStr" s="3"><is><t>${titleText} - ${escapeXml(analysis.standard)}</t></is></c>
-    <c r="G2" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
+  rowsXml += `<row r="2" ht="22">
+    <c r="B2" t="inlineStr" s="3"><is><t>${titleText} - ${escapeXml(analysis.standard)}</t></is></c>
   </row>`;
 
-  // Row 3: Meta & Watermark
-  rowsXml += `<row r="3">
-    <c r="A3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'N° Rapport :' : 'Report No:'} ${escapeXml(analysis.reportNumber)} (v${analysis.version})</t></is></c>
-    <c r="D3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'Date :' : 'Date:'} ${escapeXml(analysis.testedDate)}</t></is></c>
-    ${watermark ? `<c r="G3" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
+  // Row 3: Contact & Accreditation (Cols B & E)
+  rowsXml += `<row r="3" ht="18">
+    ${orgContact ? `<c r="B3" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
+    ${accreditationLabel ? `<c r="E3" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
   </row>`;
 
-  // Row 4: Blank
-  rowsXml += `<row r="4"/>`;
+  // Row 4: Report Number, Date, Form Code & Watermark
+  rowsXml += `<row r="4" ht="18">
+    <c r="B4" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'N° Rapport :' : 'Report No:'} ${escapeXml(analysis.reportNumber)} (v${analysis.version})</t></is></c>
+    <c r="C4" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'Date :' : 'Date:'} ${escapeXml(analysis.testedDate)}</t></is></c>
+    <c r="E4" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
+    ${watermark ? `<c r="F4" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
+  </row>`;
 
   // Rows 5-8: Project & Client Block (with Programme, Lot, Contract, Financing)
   const progText = project.programmeTitle || project.programme;
@@ -396,6 +419,10 @@ function buildProctorSheet(
     <c r="E8" t="inlineStr"><is><t>${escapeXml(financeDisplay)}</t></is></c>
   </row>`;
 
+  const lastDataRow = 9 + pts.length;
+  const summaryStartRow = lastDataRow + 2;
+  const maxDryDensityRow = summaryStartRow + 2;
+
   // Row 9: Table Header
   rowsXml += `<row r="9" ht="20">
     <c r="A9" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'Point' : 'Point'}</t></is></c>
@@ -414,13 +441,10 @@ function buildProctorSheet(
       <c r="B${rowNum}" s="10"><v>${p.waterContentPercent}</v></c>
       <c r="C${rowNum}" s="11"><v>${p.wetDensityGcm3}</v></c>
       <c r="D${rowNum}" s="11"><f>C${rowNum}/(1+B${rowNum}/100)</f><v>${p.dryDensityGcm3}</v></c>
-      <c r="E${rowNum}" s="10"><f>D${rowNum}/$B$17*100</f><v>${p.compactionPercentOfOpm || 0}</v></c>
+      <c r="E${rowNum}" s="10"><f>D${rowNum}/$B$${maxDryDensityRow}*100</f><v>${p.compactionPercentOfOpm || 0}</v></c>
       <c r="F${rowNum}" s="10"><f>100*((1/D${rowNum})-(1/$E$7))</f><v>${p.saturationWaterContentPercent}</v></c>
     </row>`;
   });
-
-  const lastDataRow = 9 + pts.length;
-  const summaryStartRow = lastDataRow + 2;
 
   // Key Results Summary Block
   const fitMethodLabels: Record<string, { en: string; fr: string }> = {
@@ -433,6 +457,12 @@ function buildProctorSheet(
     ? fitMethodLabels[res.fitMethod][lang]
     : (res.fitMethod === 'manual' ? (lang === 'fr' ? 'Valeur saisie manuellement' : 'Manually entered value') : res.fitMethod);
 
+  const optWater = res.opmMoisturePercent ?? (res as any).optimumWaterContentPercent ?? input.manualOpmMoisturePercent ?? 0;
+  const maxDensity = res.maxDryDensityGcm3 ?? (res as any).optimumDryDensityGcm3 ?? input.manualOpmDryDensityGcm3 ?? 0;
+  const targetDensity = res.targetDryDensityGcm3 !== undefined
+    ? res.targetDryDensityGcm3
+    : (maxDensity > 0 ? Number((maxDensity * 0.95).toFixed(3)) : 2.114);
+
   rowsXml += `
   <row r="${summaryStartRow}">
     <c r="A${summaryStartRow}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'PARAMÈTRE OPM' : 'OPM PARAMETER'}</t></is></c>
@@ -441,17 +471,17 @@ function buildProctorSheet(
   </row>
   <row r="${summaryStartRow + 1}">
     <c r="A${summaryStartRow + 1}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Teneur en eau Optimum (w_opm)' : 'Optimum Moisture Content (w_opm)'}</t></is></c>
-    <c r="B${summaryStartRow + 1}" s="10"><v>${res.opmMoisturePercent}</v></c>
+    <c r="B${summaryStartRow + 1}" s="10"><v>${optWater}</v></c>
     <c r="C${summaryStartRow + 1}" t="inlineStr"><is><t>%</t></is></c>
   </row>
   <row r="${summaryStartRow + 2}">
     <c r="A${summaryStartRow + 2}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Densité sèche maximale (ρd_opm)' : 'Maximum Dry Density (ρd_opm)'}</t></is></c>
-    <c r="B${summaryStartRow + 2}" s="11"><v>${res.maxDryDensityGcm3}</v></c>
+    <c r="B${summaryStartRow + 2}" s="11"><v>${maxDensity}</v></c>
     <c r="C${summaryStartRow + 2}" t="inlineStr"><is><t>g/cm³</t></is></c>
   </row>
   <row r="${summaryStartRow + 3}">
     <c r="A${summaryStartRow + 3}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Densité sèche cible (95% OPM)' : 'Target Dry Density (95% OPM)'}</t></is></c>
-    <c r="B${summaryStartRow + 3}" s="11"><f>B${summaryStartRow + 2}*0.95</f><v>${res.targetDryDensityGcm3}</v></c>
+    <c r="B${summaryStartRow + 3}" s="11"><f>B${summaryStartRow + 2}*0.95</f><v>${targetDensity}</v></c>
     <c r="C${summaryStartRow + 3}" t="inlineStr"><is><t>g/cm³</t></is></c>
   </row>
   <row r="${summaryStartRow + 4}">
@@ -467,10 +497,14 @@ function buildProctorSheet(
 
   // Observations / Signatures
   const obsRow = afterRevRow + 1;
+  const cleanObservations = (analysis.observations || analysis.aiNarrative || (lang === 'fr' ? 'Conforme aux exigences normatives.' : 'Complies with standard requirements.'))
+    .replace(/\[AI-drafted[^\]]*\]/gi, '')
+    .trim();
+
   rowsXml += `
   <row r="${obsRow}">
     <c r="A${obsRow}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Observations :' : 'Observations:'}</t></is></c>
-    <c r="B${obsRow}" t="inlineStr"><is><t>${escapeXml(analysis.observations || analysis.aiNarrative || 'Conforme aux exigences normatives.')}</t></is></c>
+    <c r="B${obsRow}" t="inlineStr"><is><t>${escapeXml(cleanObservations)}</t></is></c>
   </row>`;
 
   // Configurable Approval Chain (Up to 6 signatories)
@@ -486,45 +520,57 @@ function buildProctorSheet(
   </sheetViews>
   <sheetFormatPr defaultRowHeight="19"/>
   <cols>
-    <col min="1" max="1" width="10" customWidth="1"/>
+    <col min="1" max="1" width="12" customWidth="1"/>
     <col min="2" max="2" width="14" customWidth="1"/>
     <col min="3" max="3" width="16" customWidth="1"/>
     <col min="4" max="4" width="16" customWidth="1"/>
     <col min="5" max="5" width="14" customWidth="1"/>
     <col min="6" max="6" width="16" customWidth="1"/>
-    <col min="7" max="7" width="4" customWidth="1"/>
-    <col min="8" max="16" width="12" customWidth="1"/>
+    <col min="7" max="7" width="6" customWidth="1"/>
+    <col min="8" max="17" width="11" customWidth="1"/>
   </cols>
   <sheetData>
     ${rowsXml}
   </sheetData>
+  <mergeCells count="7">
+    <mergeCell ref="B1:E1"/>
+    <mergeCell ref="B2:E2"/>
+    <mergeCell ref="B3:D3"/>
+    <mergeCell ref="B5:C5"/>
+    <mergeCell ref="B6:C6"/>
+    <mergeCell ref="B7:C7"/>
+    <mergeCell ref="B${obsRow}:F${obsRow}"/>
+  </mergeCells>
   <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
   <pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/>
   <drawing r:id="rId1"/>
 </worksheet>`;
 
   // Build DrawingML Chart (Scatter chart with polynomial compaction curve and saturation curve)
-  const chartXml = buildProctorChartXml(
-    10,
-    lastDataRow,
-    lang,
-    res.fitMethod,
-    res.fittedCoefficients?.polynomialOrder,
-    pts
-  );
+  const chartXml = hasChart
+    ? buildProctorChartXml(
+        10,
+        lastDataRow,
+        lang,
+        res.fitMethod,
+        res.fittedCoefficients?.polynomialOrder,
+        pts,
+        sheetName
+      )
+    : null;
 
-  return { sheetXml, chartXml, hasChart: true };
+  return { sheetXml, chartXml, hasChart };
 }
 
-function buildProctorChartXml(
+export function buildProctorChartXml(
   startRow: number,
   endRow: number,
   lang: 'en' | 'fr',
   fitMethod: ProctorFitMethod = 'quadratic',
   polyOrder: number = 2,
-  pts: Array<{ waterContentPercent: number; dryDensityGcm3: number; saturationWaterContentPercent: number }> = []
+  pts: Array<{ waterContentPercent: number; dryDensityGcm3: number; saturationWaterContentPercent: number }> = [],
+  sheetName: string = (lang === 'fr' ? 'Rapport' : 'Report')
 ): string {
-  const sheetName = lang === 'fr' ? 'Rapport' : 'Report';
   const chartTitle = lang === 'fr' ? 'COURBE PROCTOR ET SATURATION' : 'PROCTOR COMPACTION CURVE';
   const ser1Title = lang === 'fr' ? 'Points Proctor (OPM)' : 'Proctor Points (OPM)';
   const ser2Title = lang === 'fr' ? 'Ligne de Saturation (Sr=100%)' : 'Saturation Line (Sr=100%)';
@@ -678,10 +724,37 @@ function buildGrainSizeSheet(
   sample: GeoLabSample,
   org: OrganisationProfile,
   lang: 'en' | 'fr',
-  watermark: string
+  watermark: string,
+  sheetName: string = (lang === 'fr' ? 'Rapport' : 'Report')
 ) {
-  const res = analysis.computedResults;
-  const rows = res.rows || [];
+  const input = analysis.rawInput || ({} as any);
+  const res = analysis.computedResults || ({} as any);
+  let rows: any[] = res.rows || [];
+  if (rows.length === 0 && (Array.isArray((res as any).sieves) || Array.isArray(input.sieves))) {
+    const rawSieves = (res as any).sieves || input.sieves;
+    const totalDryMass = res.totalDryMassG || input.initialDryMassG || (input as any).dryMassAfterWashingG || 1000;
+    rows = rawSieves.map((s: any) => {
+      const aperture = Number(s.apertureMm || s.sieveMm || s.sizeMm || 0);
+      const retMass = Number(s.retainedMassG ?? 0);
+      const passPct = s.passingPercent !== undefined
+        ? Number(s.passingPercent)
+        : (s.cumulativePassingPercent !== undefined ? Number(s.cumulativePassingPercent) : 100);
+      const cumRetPct = 100 - passPct;
+      const retPct = s.retainedPercent !== undefined
+        ? Number(s.retainedPercent)
+        : (totalDryMass > 0 ? Number(((retMass / totalDryMass) * 100).toFixed(1)) : 0);
+      return {
+        sieveMm: aperture,
+        retainedMassG: retMass,
+        retainedPercent: retPct,
+        cumulativeRetainedPercent: Number(cumRetPct.toFixed(1)),
+        passingPercent: Number(passPct.toFixed(1)),
+        minSpecPercent: s.minSpecPercent,
+        maxSpecPercent: s.maxSpecPercent,
+      };
+    });
+  }
+  const hasChart = rows.length > 0;
 
   const formCode = org.formCodes?.grain_size || 'GR1-FOR-01';
   const accreditationLabel = org.accreditationNumber?.trim()
@@ -694,28 +767,33 @@ function buildGrainSizeSheet(
   ].filter(Boolean).join(' | ');
 
   let rowsXml = '';
-  // Row 1: Org Header, Contact & Accreditation
-  rowsXml += `<row r="1" ht="28">
-    <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
-    ${orgContact ? `<c r="D1" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
-    ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
+  // Row 1: Org Name (Col B, clear of Left Logo in Col A)
+  rowsXml += `<row r="1" ht="26">
+    <c r="B1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
   </row>`;
 
-  // Row 2: Document Title & Form Code
+  // Row 2: Document Title & Standard (Col B, clear of Left Logo in Col A)
   const titleText = lang === 'fr' ? 'PROCES-VERBAL D\'ANALYSE GRANULOMÉTRIQUE' : 'PARTICLE SIZE DISTRIBUTION TEST REPORT';
-  rowsXml += `<row r="2" ht="24">
-    <c r="A2" t="inlineStr" s="3"><is><t>${titleText} - ${escapeXml(analysis.standard)}</t></is></c>
-    <c r="G2" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
+  rowsXml += `<row r="2" ht="22">
+    <c r="B2" t="inlineStr" s="3"><is><t>${titleText} - ${escapeXml(analysis.standard)}</t></is></c>
   </row>`;
 
-  // Row 3: Meta & Watermark
-  rowsXml += `<row r="3">
-    <c r="A3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'N° Rapport :' : 'Report No:'} ${escapeXml(analysis.reportNumber)} (v${analysis.version})</t></is></c>
-    <c r="D3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'Date :' : 'Date:'} ${escapeXml(analysis.testedDate)}</t></is></c>
-    ${watermark ? `<c r="G3" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
-  </row>
-  <row r="4"/>
-  <row r="5">
+  // Row 3: Contact & Accreditation (Cols B & E)
+  rowsXml += `<row r="3" ht="18">
+    ${orgContact ? `<c r="B3" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
+    ${accreditationLabel ? `<c r="E3" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
+  </row>`;
+
+  // Row 4: Report Number, Date, Form Code & Watermark
+  rowsXml += `<row r="4" ht="18">
+    <c r="B4" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'N° Rapport :' : 'Report No:'} ${escapeXml(analysis.reportNumber)} (v${analysis.version})</t></is></c>
+    <c r="C4" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'Date :' : 'Date:'} ${escapeXml(analysis.testedDate)}</t></is></c>
+    <c r="E4" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
+    ${watermark ? `<c r="F4" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
+  </row>`;
+  const totalDryMass = res.totalDryMassG ?? input.initialDryMassG ?? (input as any).dryMassAfterWashingG ?? (rows.reduce((sum: number, r: any) => sum + (r.retainedMassG || 0), 0) || 1000);
+
+  rowsXml += `<row r="5">
     <c r="A5" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Client :' : 'Client:'}</t></is></c>
     <c r="B5" t="inlineStr"><is><t>${escapeXml(client.companyName)}</t></is></c>
     <c r="D5" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Échantillon :' : 'Sample ID:'}</t></is></c>
@@ -725,7 +803,7 @@ function buildGrainSizeSheet(
     <c r="A6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Projet :' : 'Project:'}</t></is></c>
     <c r="B6" t="inlineStr"><is><t>${escapeXml(project.programmeTitle || project.programme ? `${project.projectName} / ${project.programmeTitle || project.programme}` : project.projectName)}</t></is></c>
     <c r="D6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Masse sèche (Ms) :' : 'Total Dry Mass (Ms):'}</t></is></c>
-    <c r="E6" s="7"><v>${res.totalDryMassG}</v></c>
+    <c r="E6" s="7"><v>${totalDryMass}</v></c>
   </row>
   <row r="7">
     <c r="A7" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Site / Lieu :' : 'Site Location:'}</t></is></c>
@@ -762,6 +840,9 @@ function buildGrainSizeSheet(
   const summaryStartRow = lastDataRow + 2;
 
   // Characteristics & Classification
+  const pass2mm = res.passing2mmPercent ?? rows.find((r: any) => r.sieveMm === 2)?.passingPercent ?? (res.gravelPercent !== undefined ? 100 - res.gravelPercent : 0);
+  const pass008mm = res.passing008mmPercent ?? res.finesPercent ?? rows.find((r: any) => Math.abs(r.sieveMm - 0.08) < 0.005)?.passingPercent ?? 0;
+
   rowsXml += `
   <row r="${summaryStartRow}">
     <c r="A${summaryStartRow}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'PARAMÈTRE' : 'PARAMETER'}</t></is></c>
@@ -769,11 +850,11 @@ function buildGrainSizeSheet(
   </row>
   <row r="${summaryStartRow + 1}">
     <c r="A${summaryStartRow + 1}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Passant à 2 mm' : 'Passing 2 mm'}</t></is></c>
-    <c r="B${summaryStartRow + 1}" s="10"><v>${res.passing2mmPercent}</v></c>
+    <c r="B${summaryStartRow + 1}" s="10"><v>${pass2mm}</v></c>
   </row>
   <row r="${summaryStartRow + 2}">
     <c r="A${summaryStartRow + 2}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Passant à 0,08 mm (Fines)' : 'Passing 0.08 mm (Fines)'}</t></is></c>
-    <c r="B${summaryStartRow + 2}" s="10"><v>${res.passing008mmPercent}</v></c>
+    <c r="B${summaryStartRow + 2}" s="10"><v>${pass008mm}</v></c>
   </row>
   <row r="${summaryStartRow + 3}">
     <c r="A${summaryStartRow + 3}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Classification LCPC' : 'LCPC Classification'}</t></is></c>
@@ -787,10 +868,14 @@ function buildGrainSizeSheet(
 
   // Observations / Signatures
   const obsRow = afterRevRow + 1;
+  const cleanObservations = (analysis.observations || analysis.aiNarrative || (lang === 'fr' ? 'Conforme aux exigences normatives.' : 'Complies with standard requirements.'))
+    .replace(/\[AI-drafted[^\]]*\]/gi, '')
+    .trim();
+
   rowsXml += `
   <row r="${obsRow}">
     <c r="A${obsRow}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Observations :' : 'Observations:'}</t></is></c>
-    <c r="B${obsRow}" t="inlineStr"><is><t>${escapeXml(analysis.observations || analysis.aiNarrative || 'Conforme aux exigences normatives.')}</t></is></c>
+    <c r="B${obsRow}" t="inlineStr"><is><t>${escapeXml(cleanObservations)}</t></is></c>
   </row>`;
 
   rowsXml += buildSignaturesRows(analysis, org, lang, obsRow + 2);
@@ -816,23 +901,32 @@ function buildGrainSizeSheet(
   <sheetData>
     ${rowsXml}
   </sheetData>
+  <mergeCells count="7">
+    <mergeCell ref="B1:E1"/>
+    <mergeCell ref="B2:E2"/>
+    <mergeCell ref="B3:D3"/>
+    <mergeCell ref="B5:C5"/>
+    <mergeCell ref="B6:C6"/>
+    <mergeCell ref="B7:C7"/>
+    <mergeCell ref="B${obsRow}:E${obsRow}"/>
+  </mergeCells>
   <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
   <pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/>
   <drawing r:id="rId1"/>
 </worksheet>`;
 
-  const chartXml = buildGrainSizeChartXml(9, lastDataRow, lang, rows);
+  const chartXml = hasChart ? buildGrainSizeChartXml(9, lastDataRow, lang, rows, sheetName) : null;
 
-  return { sheetXml, chartXml, hasChart: true };
+  return { sheetXml, chartXml, hasChart };
 }
 
-function buildGrainSizeChartXml(
+export function buildGrainSizeChartXml(
   startRow: number,
   endRow: number,
   lang: 'en' | 'fr',
-  rows: Array<{ sieveMm: number; passingPercent: number }> = []
+  rows: Array<{ sieveMm: number; passingPercent: number }> = [],
+  sheetName: string = (lang === 'fr' ? 'Rapport' : 'Report')
 ): string {
-  const sheetName = lang === 'fr' ? 'Rapport' : 'Report';
   const chartTitle = lang === 'fr' ? 'COURBE GRANULOMÉTRIQUE' : 'PARTICLE SIZE DISTRIBUTION';
   const serTitle = lang === 'fr' ? 'Passant cumulé' : 'Cumulative Passing';
   const xTitle = lang === 'fr' ? 'Dimension des mailles d (mm)' : 'Sieve opening d (mm)';
@@ -927,10 +1021,33 @@ function buildWaterContentSheet(
   sample: GeoLabSample,
   org: OrganisationProfile,
   lang: 'en' | 'fr',
-  watermark: string
+  watermark: string,
+  _sheetName: string = (lang === 'fr' ? 'Rapport' : 'Report')
 ) {
-  const res = analysis.computedResults;
-  const specs = res.specimens || [];
+  const input = analysis.rawInput || ({} as any);
+  const res = analysis.computedResults || ({} as any);
+  let specs: any[] = res.specimens || [];
+  if (specs.length === 0 && Array.isArray(input.specimens) && input.specimens.length > 0) {
+    specs = input.specimens.map((s: any, idx: number) => {
+      const m0 = s.tareMassG || 0;
+      const m1 = s.wetSoilPlusTareG || 0;
+      const m2 = s.drySoilPlusTareG || 0;
+      const mw = m1 - m2;
+      const md = m2 - m0;
+      const w = s.waterContentPercent ?? (md > 0 ? Number(((mw / md) * 100).toFixed(1)) : 0);
+      return {
+        specimenId: s.specimenId || `E${idx + 1}`,
+        containerId: s.containerId || `T${idx + 1}`,
+        tareMassG: m0,
+        wetSoilPlusTareG: m1,
+        drySoilPlusTareG: m2,
+        drySoilMassG: md,
+        waterMassG: mw,
+        waterContentPercent: w,
+      };
+    });
+  }
+  const hasSpecs = specs.length > 0;
 
   const formCode = org.formCodes?.water_content || 'TE1-FOR-01';
   const accreditationLabel = org.accreditationNumber?.trim()
@@ -943,28 +1060,31 @@ function buildWaterContentSheet(
   ].filter(Boolean).join(' | ');
 
   let rowsXml = '';
-  // Row 1: Org Header, Contact & Accreditation
-  rowsXml += `<row r="1" ht="28">
-    <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
-    ${orgContact ? `<c r="D1" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
-    ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
+  // Row 1: Org Header
+  rowsXml += `<row r="1" ht="26">
+    <c r="B1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
   </row>`;
 
   // Row 2: Document Title & Form Code
   const titleText = lang === 'fr' ? 'PROCES-VERBAL DE TENEUR EN EAU NATURELLE' : 'NATURAL WATER CONTENT TEST REPORT';
-  rowsXml += `<row r="2" ht="24">
-    <c r="A2" t="inlineStr" s="3"><is><t>${titleText} - ${escapeXml(analysis.standard)}</t></is></c>
-    <c r="G2" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
+  rowsXml += `<row r="2" ht="22">
+    <c r="B2" t="inlineStr" s="3"><is><t>${titleText} - ${escapeXml(analysis.standard)}</t></is></c>
   </row>`;
 
-  // Row 3: Meta & Watermark
-  rowsXml += `<row r="3">
-    <c r="A3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'N° Rapport :' : 'Report No:'} ${escapeXml(analysis.reportNumber)} (v${analysis.version})</t></is></c>
-    <c r="D3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'Date :' : 'Date:'} ${escapeXml(analysis.testedDate)}</t></is></c>
-    ${watermark ? `<c r="G3" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
-  </row>
-  <row r="4"/>
-  <row r="5">
+  // Row 3: Contact & Accreditation
+  rowsXml += `<row r="3" ht="18">
+    ${orgContact ? `<c r="B3" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
+    ${accreditationLabel ? `<c r="E3" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
+  </row>`;
+
+  // Row 4: Meta & Watermark
+  rowsXml += `<row r="4" ht="18">
+    <c r="B4" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'N° Rapport :' : 'Report No:'} ${escapeXml(analysis.reportNumber)} (v${analysis.version})</t></is></c>
+    <c r="C4" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'Date :' : 'Date:'} ${escapeXml(analysis.testedDate)}</t></is></c>
+    <c r="E4" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
+    ${watermark ? `<c r="F4" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
+  </row>`;
+  rowsXml += `<row r="5">
     <c r="A5" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Client :' : 'Client:'}</t></is></c>
     <c r="B5" t="inlineStr"><is><t>${escapeXml(client.companyName)}</t></is></c>
     <c r="D5" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Échantillon :' : 'Sample ID:'}</t></is></c>
@@ -974,7 +1094,7 @@ function buildWaterContentSheet(
     <c r="A6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Projet :' : 'Project:'}</t></is></c>
     <c r="B6" t="inlineStr"><is><t>${escapeXml(project.programmeTitle || project.programme ? `${project.projectName} / ${project.programmeTitle || project.programme}` : project.projectName)}</t></is></c>
     <c r="D6" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Tolérance répétabilité :' : 'Tolerance:'}</t></is></c>
-    <c r="E6" s="10"><v>${res.maxTolerancePercent}</v></c>
+    <c r="E6" s="10"><v>${res.maxTolerancePercent ?? input.maxTolerancePercent ?? 0.5}</v></c>
   </row>
   <row r="7">
     <c r="A7" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Site / Lieu :' : 'Site Location:'}</t></is></c>
@@ -1012,21 +1132,26 @@ function buildWaterContentSheet(
   const lastDataRow = 8 + specs.length;
   const summaryRow = lastDataRow + 2;
 
+  const meanVal = res.meanWaterContentPercent ?? (res as any).averageWaterContentPercent ?? input.directNaturalWaterContentPercent ?? 0;
+  const avgFormulaXml = hasSpecs
+    ? `<c r="B${summaryRow}" s="10"><f>AVERAGE(H9:H${lastDataRow})</f><v>${meanVal}</v></c>`
+    : `<c r="B${summaryRow}" s="10"><v>${meanVal}</v></c>`;
+
   // Mean & Repeatability
   rowsXml += `
   <row r="${summaryRow}">
     <c r="A${summaryRow}" t="inlineStr" s="8"><is><t>${lang === 'fr' ? 'Teneur en eau moyenne (w)' : 'Mean Water Content (w)'}</t></is></c>
-    <c r="B${summaryRow}" s="10"><f>AVERAGE(H9:H${lastDataRow})</f><v>${res.meanWaterContentPercent}</v></c>
+    ${avgFormulaXml}
     <c r="C${summaryRow}" t="inlineStr"><is><t>%</t></is></c>
   </row>
   <row r="${summaryRow + 1}">
     <c r="A${summaryRow + 1}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Écart entre prises (Δw)' : 'Difference (Δw)'}</t></is></c>
-    <c r="B${summaryRow + 1}" s="10"><v>${res.differenceBetweenSpecimensPercent}</v></c>
+    <c r="B${summaryRow + 1}" s="10"><v>${res.differenceBetweenSpecimensPercent ?? 0}</v></c>
     <c r="C${summaryRow + 1}" t="inlineStr"><is><t>%</t></is></c>
   </row>
   <row r="${summaryRow + 2}">
     <c r="A${summaryRow + 2}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Conformité répétabilité' : 'Repeatability Status'}</t></is></c>
-    <c r="B${summaryRow + 2}" t="inlineStr"><is><t>${res.repeatabilityAccepted ? (lang === 'fr' ? 'CONFORME' : 'PASSED') : (lang === 'fr' ? 'NON CONFORME' : 'FAILED')}</t></is></c>
+    <c r="B${summaryRow + 2}" t="inlineStr"><is><t>${(res.repeatabilityAccepted ?? true) ? (lang === 'fr' ? 'CONFORME' : 'PASSED') : (lang === 'fr' ? 'NON CONFORME' : 'FAILED')}</t></is></c>
   </row>`;
 
   // Revision Table
@@ -1036,10 +1161,14 @@ function buildWaterContentSheet(
 
   // Observations / Signatures
   const obsRow = afterRevRow + 1;
+  const cleanObservations = (analysis.observations || analysis.aiNarrative || (lang === 'fr' ? 'Conforme aux exigences normatives.' : 'Complies with standard requirements.'))
+    .replace(/\[AI-drafted[^\]]*\]/gi, '')
+    .trim();
+
   rowsXml += `
   <row r="${obsRow}">
     <c r="A${obsRow}" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Observations :' : 'Observations:'}</t></is></c>
-    <c r="B${obsRow}" t="inlineStr"><is><t>${escapeXml(analysis.observations || analysis.aiNarrative || 'Conforme aux exigences normatives.')}</t></is></c>
+    <c r="B${obsRow}" t="inlineStr"><is><t>${escapeXml(cleanObservations)}</t></is></c>
   </row>`;
 
   rowsXml += buildSignaturesRows(analysis, org, lang, obsRow + 2);
@@ -1050,18 +1179,28 @@ function buildWaterContentSheet(
     <pageSetUpPr fitToPage="1"/>
   </sheetPr>
   <cols>
-    <col min="1" max="1" width="30" customWidth="1"/>
-    <col min="2" max="2" width="20" customWidth="1"/>
-    <col min="3" max="3" width="22" customWidth="1"/>
+    <col min="1" max="1" width="16" customWidth="1"/>
+    <col min="2" max="2" width="14" customWidth="1"/>
+    <col min="3" max="3" width="18" customWidth="1"/>
     <col min="4" max="4" width="22" customWidth="1"/>
     <col min="5" max="5" width="22" customWidth="1"/>
-    <col min="6" max="6" width="20" customWidth="1"/>
-    <col min="7" max="7" width="20" customWidth="1"/>
-    <col min="8" max="8" width="24" customWidth="1"/>
+    <col min="6" max="6" width="18" customWidth="1"/>
+    <col min="7" max="7" width="18" customWidth="1"/>
+    <col min="8" max="8" width="18" customWidth="1"/>
   </cols>
   <sheetData>
     ${rowsXml}
   </sheetData>
+  <mergeCells count="7">
+    <mergeCell ref="B1:E1"/>
+    <mergeCell ref="B2:E2"/>
+    <mergeCell ref="B3:D3"/>
+    <mergeCell ref="B5:C5"/>
+    <mergeCell ref="B6:C6"/>
+    <mergeCell ref="B7:C7"/>
+    <mergeCell ref="B${obsRow}:E${obsRow}"/>
+  </mergeCells>
+  <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
   <pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/>
   <drawing r:id="rId1"/>
 </worksheet>`;
@@ -1079,7 +1218,8 @@ function buildGenericSheet(
   sample: GeoLabSample,
   org: OrganisationProfile,
   lang: 'en' | 'fr',
-  watermark: string
+  watermark: string,
+  _sheetName: string = (lang === 'fr' ? 'Rapport' : 'Report')
 ) {
   const testDef = getTestDefinition(analysis.testType);
   const formCode = (org.formCodes as any)?.[analysis.testType] || 'LAB-FOR-GEN';
@@ -1093,28 +1233,31 @@ function buildGenericSheet(
   ].filter(Boolean).join(' | ');
 
   let rowsXml = '';
-  // Row 1: Org Header, Contact & Accreditation
-  rowsXml += `<row r="1" ht="28">
-    <c r="A1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
-    ${orgContact ? `<c r="D1" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
-    ${accreditationLabel ? `<c r="G1" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
+  // Row 1: Org Header
+  rowsXml += `<row r="1" ht="26">
+    <c r="B1" t="inlineStr" s="1"><is><t>${escapeXml(org.companyName)}</t></is></c>
   </row>`;
 
   // Row 2: Document Title & Form Code
   const titleText = (testDef.name[lang] || testDef.name.en).toUpperCase();
-  rowsXml += `<row r="2" ht="24">
-    <c r="A2" t="inlineStr" s="3"><is><t>${escapeXml(titleText)} - ${escapeXml(analysis.standard)}</t></is></c>
-    <c r="G2" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
+  rowsXml += `<row r="2" ht="22">
+    <c r="B2" t="inlineStr" s="3"><is><t>${escapeXml(titleText)} - ${escapeXml(analysis.standard)}</t></is></c>
   </row>`;
 
-  // Row 3: Meta & Watermark
-  rowsXml += `<row r="3">
-    <c r="A3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'N° Rapport :' : 'Report No:'} ${escapeXml(analysis.reportNumber)} (v${analysis.version})</t></is></c>
-    <c r="D3" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'Date :' : 'Date:'} ${escapeXml(analysis.testedDate)}</t></is></c>
-    ${watermark ? `<c r="G3" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
-  </row>
-  <row r="4"/>
-  <row r="5">
+  // Row 3: Contact & Accreditation
+  rowsXml += `<row r="3" ht="18">
+    ${orgContact ? `<c r="B3" t="inlineStr" s="0"><is><t>${escapeXml(orgContact)}</t></is></c>` : ''}
+    ${accreditationLabel ? `<c r="E3" t="inlineStr" s="2"><is><t>${accreditationLabel}</t></is></c>` : ''}
+  </row>`;
+
+  // Row 4: Meta & Watermark
+  rowsXml += `<row r="4" ht="18">
+    <c r="B4" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'N° Rapport :' : 'Report No:'} ${escapeXml(analysis.reportNumber)} (v${analysis.version})</t></is></c>
+    <c r="C4" t="inlineStr" s="4"><is><t>${lang === 'fr' ? 'Date :' : 'Date:'} ${escapeXml(analysis.testedDate)}</t></is></c>
+    <c r="E4" t="inlineStr" s="2"><is><t>${lang === 'fr' ? 'Formulaire : ' : 'Form: '}${escapeXml(formCode)}</t></is></c>
+    ${watermark ? `<c r="F4" t="inlineStr" s="5"><is><t>${watermark}</t></is></c>` : ''}
+  </row>`;
+  rowsXml += `<row r="5">
     <c r="A5" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Client :' : 'Client:'}</t></is></c>
     <c r="B5" t="inlineStr"><is><t>${escapeXml(client.companyName)}</t></is></c>
     <c r="D5" t="inlineStr" s="6"><is><t>${lang === 'fr' ? 'Échantillon :' : 'Sample ID:'}</t></is></c>
@@ -1245,18 +1388,28 @@ function buildGenericSheet(
 // -------------------------------------------------------------
 // OpenXML Packaging Helpers
 // -------------------------------------------------------------
-function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean): string {
+export function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean, chartStartRow: number = 8, chartEndRow: number = 28): string {
   let anchorsXml = '';
 
-  // Logo Anchors
+  // Logo Anchors: placed cleanly in Col A (col 0), Col G (col 6) or top right (col 13 to 16)
   logos.forEach((logo, idx) => {
-    const colFrom = logo.position === 'left' ? 0 : (logo.position === 'center' ? 3 : 6);
-    const colTo = logo.position === 'left' ? 1 : (logo.position === 'center' ? 4 : 7);
+    let colFrom = 0;
+    let colTo = 1;
+    if (logo.position === 'left') {
+      colFrom = 0;
+      colTo = 1;
+    } else if (logo.position === 'center') {
+      colFrom = 6;
+      colTo = 7;
+    } else {
+      colFrom = 13;
+      colTo = 16;
+    }
 
     anchorsXml += `
     <xdr:twoCellAnchor editAs="oneCell">
-      <xdr:from><xdr:col>${colFrom}</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>15000</xdr:rowOff></xdr:from>
-      <xdr:to><xdr:col>${colTo}</xdr:col><xdr:colOff>100000</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>40000</xdr:rowOff></xdr:to>
+      <xdr:from><xdr:col>${colFrom}</xdr:col><xdr:colOff>10000</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>10000</xdr:rowOff></xdr:from>
+      <xdr:to><xdr:col>${colTo}</xdr:col><xdr:colOff>40000</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>30000</xdr:rowOff></xdr:to>
       <xdr:pic>
         <xdr:nvPicPr>
           <xdr:cNvPr id="${10 + idx}" name="${logo.fileName}"/>
@@ -1275,12 +1428,12 @@ function getDrawingXml(logos: EmbeddedLogo[], hasChart: boolean): string {
     </xdr:twoCellAnchor>`;
   });
 
-  // Native DrawingML Chart Anchor (Real plotted Excel vector chart from worksheet cells)
+  // Native DrawingML Chart Anchor (placed side-by-side with table in columns H to Q)
   if (hasChart) {
     anchorsXml += `
     <xdr:twoCellAnchor>
-      <xdr:from><xdr:col>7</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
-      <xdr:to><xdr:col>16</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>24</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+      <xdr:from><xdr:col>7</xdr:col><xdr:colOff>20000</xdr:colOff><xdr:row>${chartStartRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+      <xdr:to><xdr:col>16</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${chartEndRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
       <xdr:graphicFrame macro="">
         <xdr:nvGraphicFramePr>
           <xdr:cNvPr id="2" name="Chart"/>

@@ -309,5 +309,98 @@ describe('Soil Summary Excel Generator (Fiche Récapitulative des Sols)', () => 
     const zip = await JSZip.loadAsync(await blob.arrayBuffer());
     expect(zip.file('xl/charts/chart1.xml')).toBeDefined();
     expect(zip.file('xl/charts/chart2.xml')).toBeDefined();
+
+    const fs = await import('fs');
+    fs.writeFileSync(
+      'C:/Users/HP/.gemini/antigravity/brain/32fdb360-7213-4ada-8422-d613eb76333d/scratch/test_summary_only.xlsx',
+      Buffer.from(await blob.arrayBuffer())
+    );
+  });
+
+  it('generates multi-tab workbook containing synthesis sheet + individual detailed test sheets with native charts', async () => {
+    const blob = await generateSoilSummaryExcelReport({
+      sample: mockSample,
+      project: mockProject,
+      client: mockClient,
+      orgProfile: mockOrg,
+      analyses: [mockGrainSizeAnalysis, mockProctorAnalysis, mockWaterContentAnalysis],
+      language: 'fr',
+    });
+
+    const ab = await blob.arrayBuffer();
+    const workbook = xlsx.read(ab, { type: 'array' });
+    // Verify all 4 tabs exist
+    expect(workbook.SheetNames).toHaveLength(4);
+    expect(workbook.SheetNames[0]).toBe('Fiche_Recap');
+    expect(workbook.SheetNames).toContain('Granulometrie');
+    expect(workbook.SheetNames).toContain('Proctor');
+    expect(workbook.SheetNames).toContain('Teneur_Eau');
+
+    const zip = await JSZip.loadAsync(ab);
+    // Verify DrawingML charts for Sheet 1 (charts 1, 2, 3), Granulométrie (chart 4), Proctor (chart 5)
+    expect(zip.file('xl/charts/chart1.xml')).toBeDefined();
+    expect(zip.file('xl/charts/chart2.xml')).toBeDefined();
+    expect(zip.file('xl/charts/chart3.xml')).toBeDefined();
+    expect(zip.file('xl/charts/chart4.xml')).toBeDefined();
+    expect(zip.file('xl/charts/chart5.xml')).toBeDefined();
+
+    // Verify drawing parts exist for sheets with charts (Sheet 1, Granulometrie, Proctor)
+    expect(zip.file('xl/drawings/drawing1.xml')).toBeDefined();
+    expect(zip.file('xl/drawings/drawing2.xml')).toBeDefined();
+    expect(zip.file('xl/drawings/drawing3.xml')).toBeDefined();
+
+    // Verify mergeCells on Sheet 1
+    const sheet1Xml = await zip.file('xl/worksheets/sheet1.xml')!.async('string');
+    expect(sheet1Xml).toContain('<mergeCells count="21">');
+    expect(sheet1Xml).toContain('<mergeCell ref="A11:A16"/>');
+    expect(sheet1Xml).toContain('<mergeCell ref="A17:A22"/>');
+    expect(sheet1Xml).toContain('<mergeCell ref="A23:A41"/>');
+
+    // Save test file to scratch for COM validation
+    const fs = await import('fs');
+    fs.writeFileSync(
+      'C:/Users/HP/.gemini/antigravity/brain/32fdb360-7213-4ada-8422-d613eb76333d/scratch/test_multi_tab_sample.xlsx',
+      Buffer.from(ab)
+    );
+
+    // Also generate isolated 2-tab workbooks to test with Excel COM
+    const bGranulo = await generateSoilSummaryExcelReport({
+      sample: mockSample,
+      project: mockProject,
+      client: mockClient,
+      orgProfile: mockOrg,
+      analyses: [mockGrainSizeAnalysis],
+      language: 'fr',
+    });
+    fs.writeFileSync(
+      'C:/Users/HP/.gemini/antigravity/brain/32fdb360-7213-4ada-8422-d613eb76333d/scratch/test_tab_granulo.xlsx',
+      Buffer.from(await bGranulo.arrayBuffer())
+    );
+
+    const bProctor = await generateSoilSummaryExcelReport({
+      sample: mockSample,
+      project: mockProject,
+      client: mockClient,
+      orgProfile: mockOrg,
+      analyses: [mockProctorAnalysis],
+      language: 'fr',
+    });
+    fs.writeFileSync(
+      'C:/Users/HP/.gemini/antigravity/brain/32fdb360-7213-4ada-8422-d613eb76333d/scratch/test_tab_proctor.xlsx',
+      Buffer.from(await bProctor.arrayBuffer())
+    );
+
+    const bWater = await generateSoilSummaryExcelReport({
+      sample: mockSample,
+      project: mockProject,
+      client: mockClient,
+      orgProfile: mockOrg,
+      analyses: [mockWaterContentAnalysis],
+      language: 'fr',
+    });
+    fs.writeFileSync(
+      'C:/Users/HP/.gemini/antigravity/brain/32fdb360-7213-4ada-8422-d613eb76333d/scratch/test_tab_water.xlsx',
+      Buffer.from(await bWater.arrayBuffer())
+    );
   });
 });

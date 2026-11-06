@@ -6,8 +6,7 @@ import type {
   GeoLabSample,
   OrganisationProfile,
 } from '../../types/geolab';
-import type { ProctorInput, ProctorResults } from '../tests/proctor';
-import type { GrainSizeInput, GrainSizeResults } from '../tests/grainSize';
+import { buildTestSheetAndChart, getDrawingXml } from './excelGenerator';
 
 export interface SoilSummaryExcelOptions {
   sample: GeoLabSample;
@@ -77,9 +76,48 @@ const STANDARD_AFNOR_SIEVES = [
   { module: 20, apertureMm: 0.08, classLabel: '' },
 ];
 
+const TEST_NAME_MAP: Record<string, { fr: string; en: string }> = {
+  proctor: { fr: 'Proctor', en: 'Proctor' },
+  grain_size: { fr: 'Granulometrie', en: 'Grain_Size' },
+  water_content: { fr: 'Teneur_Eau', en: 'Water_Content' },
+  sand_equivalent: { fr: 'Equiv_Sable', en: 'Sand_Equiv' },
+  methylene_blue: { fr: 'Bleu_Methylene', en: 'Methylene_Blue' },
+  specific_gravity: { fr: 'Masse_Volumique', en: 'Specific_Gravity' },
+  bulk_density: { fr: 'Densite_Apparente', en: 'Bulk_Density' },
+  los_angeles: { fr: 'Los_Angeles', en: 'Los_Angeles' },
+  micro_deval: { fr: 'Micro_Deval', en: 'Micro_Deval' },
+  flakiness: { fr: 'Aplatissement', en: 'Flakiness' },
+  surface_cleanliness: { fr: 'Proprete', en: 'Cleanliness' },
+  california_bearing_ratio: { fr: 'CBR', en: 'CBR' },
+  direct_shear: { fr: 'Cisaillement', en: 'Direct_Shear' },
+  oedometer: { fr: 'Oedometre', en: 'Oedometer' },
+  triaxial: { fr: 'Triaxial', en: 'Triaxial' },
+};
+
+function getUniqueSheetName(baseName: string, usedNames: Set<string>): string {
+  // Strip accents and non-ASCII characters to prevent XML parsing issues
+  const ascii = baseName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\\/*?:[\]]/g, '_')
+    .trim()
+    .substring(0, 31);
+  let clean = ascii || 'Sheet';
+  let candidate = clean;
+  let counter = 2;
+  while (usedNames.has(candidate.toLowerCase())) {
+    const suffix = `_${counter}`;
+    candidate = `${clean.substring(0, 31 - suffix.length)}${suffix}`;
+    counter++;
+  }
+  usedNames.add(candidate.toLowerCase());
+  return candidate;
+}
+
 /**
  * Builds the official Geotechnical Soil Summary Sheet (FICHE RÉCAPITULATIVE DES SOLS / ASSURANCE QUALITE)
- * matching the industry reference format with real native DrawingML charts and live formulas.
+ * matching the industry reference template with real native DrawingML charts, live formulas,
+ * and comprehensive multi-tab detailed test sheets.
  */
 export async function generateSoilSummaryExcelReport(options: SoilSummaryExcelOptions): Promise<Blob> {
   const { sample, project, client, orgProfile } = options;
@@ -92,7 +130,6 @@ export async function generateSoilSummaryExcelReport(options: SoilSummaryExcelOp
   const proctorAn = analyses.find((a) => a.testType === 'proctor');
   const waterAn = analyses.find((a) => a.testType === 'water_content');
   const specGravAn = analyses.find((a) => a.testType === 'specific_gravity');
-  const bulkDensityAn = analyses.find((a) => a.testType === 'bulk_density');
   const sandEqAn = analyses.find((a) => a.testType === 'sand_equivalent');
   const blueAn = analyses.find((a) => a.testType === 'methylene_blue');
   const laAn = analyses.find((a) => a.testType === 'los_angeles');
@@ -111,26 +148,25 @@ export async function generateSoilSummaryExcelReport(options: SoilSummaryExcelOp
     const ap = Number(s.apertureMm || s.sieveMm || s.sizeMm);
     const passPct = s.passingPercent !== undefined ? s.passingPercent : (s.cumulativePassingPercent !== undefined ? s.cumulativePassingPercent : undefined);
     if (!isNaN(ap) && passPct !== undefined) {
-      // Normalize to fraction if between 0 and 1 or keep fraction
-      passingMap.set(ap, passPct > 1.0 ? passPct / 100 : passPct);
+      passingMap.set(ap, passPct > 1.0 ? Number((passPct / 100).toFixed(4)) : Number(passPct.toFixed(4)));
     }
   });
 
   // Key sieve metrics
-  const passing2mm = passingMap.get(2) ?? (gsResults.passing2mmPercent ? gsResults.passing2mmPercent / 100 : 0.972);
-  const passing04mm = passingMap.get(0.4) ?? (passingMap.get(0.4) !== undefined ? passingMap.get(0.4) : 0.440);
-  const passing008mm = passingMap.get(0.08) ?? (gsResults.finesPercent ? gsResults.finesPercent / 100 : 0.003);
-  const cu = gsResults.cu ?? '';
-  const cc = gsResults.cc ?? '';
+  const passing2mm = passingMap.get(2) ?? (gsResults.passing2mmPercent ? Number((gsResults.passing2mmPercent / 100).toFixed(3)) : 0.972);
+  const passing04mm = passingMap.get(0.4) ?? 0.440;
+  const passing008mm = passingMap.get(0.08) ?? (gsResults.finesPercent ? Number((gsResults.finesPercent / 100).toFixed(3)) : 0.003);
+  const cu = gsResults.cu !== undefined ? (typeof gsResults.cu === 'number' ? gsResults.cu.toFixed(2) : String(gsResults.cu)) : '';
+  const cc = gsResults.cc !== undefined ? (typeof gsResults.cc === 'number' ? gsResults.cc.toFixed(2) : String(gsResults.cc)) : '';
   const lcpcClass = gsResults.lcpcClassification || 'Sm (Sable propre mal gradué)';
 
   // Proctor results & compaction points
   const prResults: any = proctorAn?.computedResults || {};
   const prInput: any = proctorAn?.rawInput || {};
   const wopm = prResults.opmMoisturePercent !== undefined
-    ? prResults.opmMoisturePercent / 100
-    : (prResults.optimumWaterContentPercent ? prResults.optimumWaterContentPercent / 100 : 0.073);
-  const rhos_opm = prResults.maxDryDensityGcm3 || 2.225;
+    ? Number((prResults.opmMoisturePercent / 100).toFixed(4))
+    : (prResults.optimumWaterContentPercent ? Number((prResults.optimumWaterContentPercent / 100).toFixed(4)) : 0.073);
+  const rhos_opm = prResults.maxDryDensityGcm3 ? Number(prResults.maxDryDensityGcm3.toFixed(3)) : 2.225;
   const particleDensityGs = prInput.particleDensityGs || (specGravAn?.computedResults as any)?.particleDensity || 2.82;
 
   // Compaction points
@@ -139,8 +175,8 @@ export async function generateSoilSummaryExcelReport(options: SoilSummaryExcelOp
     compactionPoints = prInput.points
       .filter((p: any) => p && typeof p.dryDensityGcm3 === 'number' && typeof p.waterContentPercent === 'number')
       .map((p: any) => {
-        const wFrac = p.waterContentPercent / 100;
-        const rhos = p.dryDensityGcm3 as number;
+        const wFrac = Number((p.waterContentPercent / 100).toFixed(4));
+        const rhos = Number(Number(p.dryDensityGcm3).toFixed(3));
         const comp = rhos_opm ? Number((rhos / rhos_opm).toFixed(3)) : undefined;
         return { w: wFrac, rhos, comp };
       });
@@ -157,22 +193,40 @@ export async function generateSoilSummaryExcelReport(options: SoilSummaryExcelOp
 
   // Saturation curve points: for each rhos, w_sat = 1/rhos - 1/Gs
   const saturationPoints = compactionPoints.map((cp) => {
-    const wSat = Number((1 / cp.rhos - 1 / particleDensityGs).toFixed(6));
+    const wSat = Number((1 / cp.rhos - 1 / particleDensityGs).toFixed(4));
     return { rhos: cp.rhos, gs: particleDensityGs, wSat };
   });
 
-  // Summary results
-  const naturalW = (waterAn?.computedResults as any)?.averageWaterContentPercent ?? 10.7;
+  // Summary lab test results
+  const naturalW = (waterAn?.computedResults as any)?.averageWaterContentPercent !== undefined
+    ? Number((waterAn!.computedResults as any).averageWaterContentPercent).toFixed(1)
+    : '10.7';
   const cbr95 = (proctorAn?.computedResults as any)?.cbrAt95Percent ?? 40;
   const swelling = 0.5;
-  const wl = (grainSizeAn?.computedResults as any)?.liquidLimit ?? 32.6;
-  const ip = (grainSizeAn?.computedResults as any)?.plasticityIndex ?? 9.6;
-  const es = (sandEqAn?.computedResults as any)?.sandEquivalentPercent ?? '';
-  const vbs = (blueAn?.computedResults as any)?.vbsValue ?? '';
-  const los = (laAn?.computedResults as any)?.lossPercent ?? '';
-  const mde = (mdeAn?.computedResults as any)?.lossPercent ?? '';
-  const flakinessA = (flakinessAn?.computedResults as any)?.flakinessIndex ?? '';
-  const cleanlinessP = (cleanlinessAn?.computedResults as any)?.cleanlinessIndex ?? '';
+  const wl = (grainSizeAn?.computedResults as any)?.liquidLimit !== undefined
+    ? Number((grainSizeAn!.computedResults as any).liquidLimit).toFixed(1)
+    : '32.6';
+  const ip = (grainSizeAn?.computedResults as any)?.plasticityIndex !== undefined
+    ? Number((grainSizeAn!.computedResults as any).plasticityIndex).toFixed(1)
+    : '9.6';
+  const es = (sandEqAn?.computedResults as any)?.sandEquivalentPercent !== undefined
+    ? Number((sandEqAn!.computedResults as any).sandEquivalentPercent).toFixed(1)
+    : '';
+  const vbs = (blueAn?.computedResults as any)?.vbsValue !== undefined
+    ? Number((blueAn!.computedResults as any).vbsValue).toFixed(2)
+    : '';
+  const los = (laAn?.computedResults as any)?.lossPercent !== undefined
+    ? Number((laAn!.computedResults as any).lossPercent).toFixed(1)
+    : '';
+  const mde = (mdeAn?.computedResults as any)?.lossPercent !== undefined
+    ? Number((mdeAn!.computedResults as any).lossPercent).toFixed(1)
+    : '';
+  const flakinessA = (flakinessAn?.computedResults as any)?.flakinessIndex !== undefined
+    ? Number((flakinessAn!.computedResults as any).flakinessIndex).toFixed(1)
+    : '';
+  const cleanlinessP = (cleanlinessAn?.computedResults as any)?.cleanlinessIndex !== undefined
+    ? Number((cleanlinessAn!.computedResults as any).cleanlinessIndex).toFixed(1)
+    : '';
 
   // HRB and GTR classification
   const hrbClass = 'A3';
@@ -190,14 +244,35 @@ export async function generateSoilSummaryExcelReport(options: SoilSummaryExcelOp
 
   // 1. Logos
   const logos: EmbeddedLogo[] = [];
-  const leftB64 = orgProfile.headerLogos?.leftBase64 || orgProfile.logoBase64;
+  const headerLogos = orgProfile.headerLogos || (orgProfile as any).logos;
+  const leftB64 = headerLogos?.leftBase64 || headerLogos?.left || orgProfile.logoBase64;
   if (leftB64 && leftB64.startsWith('data:image')) {
     logos.push({
-      id: 'rIdLogo1',
-      fileName: 'logo_left.png',
+      id: 'rIdLogoLeft',
+      fileName: 'imageLeft.png',
       b64: leftB64.split(',')[1],
-      ext: leftB64.includes('image/jpeg') ? 'jpg' : 'png',
+      ext: leftB64.includes('image/jpeg') || leftB64.includes('image/jpg') ? 'jpg' : 'png',
       position: 'left',
+    });
+  }
+  const centerB64 = headerLogos?.centerBase64 || headerLogos?.center;
+  if (centerB64 && centerB64.startsWith('data:image')) {
+    logos.push({
+      id: 'rIdLogoCenter',
+      fileName: 'imageCenter.png',
+      b64: centerB64.split(',')[1],
+      ext: centerB64.includes('image/jpeg') || centerB64.includes('image/jpg') ? 'jpg' : 'png',
+      position: 'center',
+    });
+  }
+  const rightB64 = headerLogos?.rightBase64 || headerLogos?.right;
+  if (rightB64 && rightB64.startsWith('data:image')) {
+    logos.push({
+      id: 'rIdLogoRight',
+      fileName: 'imageRight.png',
+      b64: rightB64.split(',')[1],
+      ext: rightB64.includes('image/jpeg') || rightB64.includes('image/jpg') ? 'jpg' : 'png',
+      position: 'right',
     });
   }
 
@@ -205,8 +280,13 @@ export async function generateSoilSummaryExcelReport(options: SoilSummaryExcelOp
     zip.file(`xl/media/${logo.fileName}`, logo.b64, { base64: true });
   });
 
-  // 2. Build Sheet XML
-  const sheetXml = buildSummarySheetXml({
+  const usedSheetNames = new Set<string>();
+
+  // Determine Tab 1 name (Default to 'Fiche_Recap' to maintain backward-compatibility with tests)
+  const summarySheetName = getUniqueSheetName(options.sheetName || 'Fiche_Recap', usedSheetNames);
+
+  // 2. Build Sheet 1 XML (Master Geotechnical Synthesis Sheet)
+  const summarySheetXml = buildSummarySheetXml({
     sample,
     project,
     client,
@@ -246,27 +326,25 @@ export async function generateSoilSummaryExcelReport(options: SoilSummaryExcelOp
     destination: options.destination || 'en place',
   });
 
-  const cleanSheetName = options.sheetName
-    ? options.sheetName.replace(/[\\/*?:[\]]/g, '_').trim().substring(0, 31)
-    : 'Fiche_Recap';
+  // 3. Build Sheet 1 Charts:
+  // Chart 1: Courbe Granulométrique (Tamis Log vs Passant %)
+  const chart1Xml = buildSummaryGrainSizeChartXml(4, 34, lang, summarySheetName);
+  // Chart 2: Courbe Proctor et Saturation (w vs rhos)
+  const chart2Xml = buildSummaryProctorChartXml(
+    6,
+    6 + compactionPoints.length - 1,
+    15,
+    15 + saturationPoints.length - 1,
+    lang,
+    compactionPoints,
+    saturationPoints,
+    summarySheetName
+  );
+  // Chart 3: Courbe CBR (CBR vs Compacité)
+  const chart3Xml = buildSummaryCBRChartXml(6, 6 + compactionPoints.length - 1, lang, compactionPoints, summarySheetName);
 
-  // 3. Build Chart 1: Courbe Granulométrique (Tamis Log vs Passant %)
-  const chart1Xml = buildSummaryGrainSizeChartXml(4, 34, lang, cleanSheetName);
-
-  // 4. Build Chart 2: Courbe Proctor et Saturation (w vs rhos)
-  const chart2Xml = buildSummaryProctorChartXml(6, 6 + compactionPoints.length - 1, 15, 15 + saturationPoints.length - 1, lang, compactionPoints, saturationPoints, cleanSheetName);
-
-  // 5. Build Chart 3: Courbe CBR (CBR vs Compacité)
-  const chart3Xml = buildSummaryCBRChartXml(6, 6 + compactionPoints.length - 1, lang, compactionPoints, cleanSheetName);
-
-  // 6. Structure Zip
-  zip.file('[Content_Types].xml', getSummaryContentTypesXml(logos));
-  zip.file('_rels/.rels', getSummaryGlobalRelsXml());
-  zip.file('xl/workbook.xml', getSummaryWorkbookXml(cleanSheetName));
-  zip.file('xl/_rels/workbook.xml.rels', getSummaryWorkbookRelsXml());
-  zip.file('xl/styles.xml', getSummaryStylesXml(orgProfile.primaryColor));
-  zip.file('xl/worksheets/sheet1.xml', sheetXml);
-
+  // Save Sheet 1
+  zip.file('xl/worksheets/sheet1.xml', summarySheetXml);
   zip.file(
     'xl/worksheets/_rels/sheet1.xml.rels',
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -274,21 +352,110 @@ export async function generateSoilSummaryExcelReport(options: SoilSummaryExcelOp
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
 </Relationships>`
   );
-
   zip.file('xl/drawings/drawing1.xml', getSummaryDrawingXml(logos));
   zip.file('xl/drawings/_rels/drawing1.xml.rels', getSummaryDrawingRelsXml(logos));
   zip.file('xl/charts/chart1.xml', chart1Xml);
   zip.file('xl/charts/chart2.xml', chart2Xml);
   zip.file('xl/charts/chart3.xml', chart3Xml);
 
+  const sheetsInfo: Array<{ sheetId: number; name: string }> = [
+    { sheetId: 1, name: summarySheetName },
+  ];
+
+  let nextDrawingIdx = 2;
+  let nextChartIdx = 4;
+  const drawingIndices = [1];
+  const chartIndices = [1, 2, 3];
+
+  // 4. Build Detailed Test Sheets for Each Analysis (Tabs 2+)
+  const isDemo = Boolean(
+    project.isDemo ||
+    client.isDemo ||
+    client.companyName === 'Demo Client' ||
+    sample.sampleId?.startsWith('DEMO-')
+  );
+  const watermarkText = isDemo ? 'DEMO' : '';
+
+  for (let i = 0; i < analyses.length; i++) {
+    const an = analyses[i];
+    const sheetIdx = i + 2;
+    const testTitleObj = TEST_NAME_MAP[an.testType] || { fr: an.testType, en: an.testType };
+    const baseTabName = isFr ? testTitleObj.fr : testTitleObj.en;
+    const tabName = getUniqueSheetName(baseTabName, usedSheetNames);
+
+    const { sheetXml, chartXml, hasChart } = buildTestSheetAndChart(
+      an.testType,
+      an,
+      client,
+      project,
+      sample,
+      orgProfile,
+      lang,
+      watermarkText,
+      tabName
+    );
+
+    const hasDrawing = hasChart || logos.length > 0;
+
+    if (hasDrawing) {
+      const drawingIdx = nextDrawingIdx++;
+      drawingIndices.push(drawingIdx);
+
+      // Keep drawing link in sheet
+      zip.file(`xl/worksheets/sheet${sheetIdx}.xml`, sheetXml);
+      zip.file(
+        `xl/worksheets/_rels/sheet${sheetIdx}.xml.rels`,
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${drawingIdx}.xml"/>
+</Relationships>`
+      );
+
+      // Drawing for test sheet
+      const drawingXml = getDrawingXml(logos, hasChart, 8, 28);
+      zip.file(`xl/drawings/drawing${drawingIdx}.xml`, drawingXml);
+
+      let dRelsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+      logos.forEach((logo) => {
+        dRelsXml += `\n  <Relationship Id="${logo.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${logo.fileName}"/>`;
+      });
+
+      if (hasChart && chartXml) {
+        const cIdx = nextChartIdx++;
+        chartIndices.push(cIdx);
+        dRelsXml += `\n  <Relationship Id="rIdChart" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${cIdx}.xml"/>`;
+        zip.file(`xl/charts/chart${cIdx}.xml`, chartXml);
+      }
+      dRelsXml += '\n</Relationships>';
+      zip.file(`xl/drawings/_rels/drawing${drawingIdx}.xml.rels`, dRelsXml);
+    } else {
+      // No drawing or chart: strip drawing tag from sheet XML to maintain clean OpenXML conformity
+      const cleanSheetXml = sheetXml.replace(/<drawing\s+r:id="rId1"\s*\/>/, '');
+      zip.file(`xl/worksheets/sheet${sheetIdx}.xml`, cleanSheetXml);
+    }
+
+    sheetsInfo.push({ sheetId: sheetIdx, name: tabName });
+  }
+
+  // 5. Structure Zip package
+  zip.file('[Content_Types].xml', getMultiSheetContentTypesXml(sheetsInfo.length, drawingIndices, chartIndices, logos));
+  zip.file('_rels/.rels', getSummaryGlobalRelsXml());
+  zip.file('xl/workbook.xml', getMultiSheetWorkbookXml(sheetsInfo));
+  zip.file('xl/_rels/workbook.xml.rels', getMultiSheetWorkbookRelsXml(sheetsInfo.length));
+  zip.file('xl/styles.xml', getUnifiedStylesXml(orgProfile.primaryColor));
+
   zip.file('docProps/core.xml', getSummaryCorePropsXml(sample.sampleId, orgProfile.companyName));
-  zip.file('docProps/app.xml', getSummaryAppPropsXml());
+  zip.file('docProps/app.xml', getMultiSheetAppPropsXml(sheetsInfo.map((s) => s.name)));
 
   return await zip.generateAsync({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
 }
+
+// -------------------------------------------------------------
+// Sheet 1 (Master Geotechnical Synthesis Sheet Builder)
+// -------------------------------------------------------------
 
 function buildSummarySheetXml(data: any): string {
   const {
@@ -333,9 +500,9 @@ function buildSummarySheetXml(data: any): string {
   const isFr = (lang || 'fr') === 'fr';
   const rows: string[] = [];
 
-  // Row 1: Header Quality Assurance
+  // Row 1: Header Quality Assurance (Height 26, left logo anchored in cell A1 above data)
   rows.push(`
-  <row r="1" ht="24" customHeight="1">
+  <row r="1" ht="26" customHeight="1">
     <c r="G1" t="inlineStr" s="2"><is><t>${isFr ? 'ASSURANCE QUALITE' : 'QUALITY ASSURANCE'}</t></is></c>
   </row>`);
 
@@ -374,40 +541,46 @@ function buildSummarySheetXml(data: any): string {
     // Left Metadata on Rows 4-10
     if (rowIdx === 4) {
       colA_D = `
-      <c r="A4" t="inlineStr" s="4"><is><t>${isFr ? 'Nature du matériau :' : 'Material description:'}</t></is></c>
+      <c r="A4" t="inlineStr" s="12"><is><t>${isFr ? 'Nature du matériau :' : 'Material description:'}</t></is></c>
       <c r="B4" t="inlineStr" s="9"><is><t>${escapeXml(sample.materialType || 'Sable sableuse')}</t></is></c>`;
     } else if (rowIdx === 5) {
       colA_D = `
-      <c r="A5" t="inlineStr" s="4"><is><t>${isFr ? 'Provenance / Site :' : 'Origin / Site:'}</t></is></c>
+      <c r="A5" t="inlineStr" s="12"><is><t>${isFr ? 'Provenance / Site :' : 'Origin / Site:'}</t></is></c>
       <c r="B5" t="inlineStr" s="9"><is><t>${escapeXml(locLabel)}</t></is></c>`;
     } else if (rowIdx === 6) {
       colA_D = `
-      <c r="A6" t="inlineStr" s="4"><is><t>${isFr ? 'Destination :' : 'Destination / Use:'}</t></is></c>
+      <c r="A6" t="inlineStr" s="12"><is><t>${isFr ? 'Destination :' : 'Destination / Use:'}</t></is></c>
       <c r="B6" t="inlineStr" s="9"><is><t>${escapeXml(destination)}</t></is></c>`;
     } else if (rowIdx === 7) {
       colA_D = `
-      <c r="A7" t="inlineStr" s="4"><is><t>${isFr ? 'Date de prélèvement :' : 'Sampling date:'}</t></is></c>
+      <c r="A7" t="inlineStr" s="12"><is><t>${isFr ? 'Date de prélèvement :' : 'Sampling date:'}</t></is></c>
       <c r="B7" t="inlineStr" s="9"><is><t>${escapeXml(sample.samplingDate || dateStr)}</t></is></c>`;
     } else if (rowIdx === 8) {
       colA_D = `
-      <c r="A8" t="inlineStr" s="4"><is><t>${isFr ? 'N° Échantillon :' : 'Sample ID:'}</t></is></c>
+      <c r="A8" t="inlineStr" s="12"><is><t>${isFr ? 'N° Échantillon :' : 'Sample ID:'}</t></is></c>
       <c r="B8" t="inlineStr" s="9"><is><t>${escapeXml(sample.sampleId)}</t></is></c>`;
     } else if (rowIdx === 9) {
       colA_D = `
-      <c r="A9" t="inlineStr" s="4"><is><t>${isFr ? 'Projet / Dossier :' : 'Project / File:'}</t></is></c>
+      <c r="A9" t="inlineStr" s="12"><is><t>${isFr ? 'Projet / Dossier :' : 'Project / File:'}</t></is></c>
       <c r="B9" t="inlineStr" s="9"><is><t>${escapeXml(projFull)}</t></is></c>`;
     } else if (rowIdx === 10) {
       colA_D = `
-      <c r="A10" t="inlineStr" s="4"><is><t>${isFr ? 'Client :' : 'Client:'}</t></is></c>
+      <c r="A10" t="inlineStr" s="12"><is><t>${isFr ? 'Client :' : 'Client:'}</t></is></c>
       <c r="B10" t="inlineStr" s="9"><is><t>${escapeXml(clientName)}</t></is></c>`;
-    } else if (sieve.classLabel) {
-      // Fraction Label
-      colA_D = `
-      <c r="A${rowIdx}" t="inlineStr" s="3"><is><t>${sieve.classLabel}</t></is></c>
-      <c r="B${rowIdx}" t="inlineStr"><is><t>${ap} mm</t></is></c>`;
-    } else {
-      colA_D = `
-      <c r="B${rowIdx}" t="inlineStr"><is><t>${ap} mm</t></is></c>`;
+    } else if (rowIdx >= 11 && rowIdx <= 41) {
+      // Fraction descriptions on Rows 11-41
+      const fracIdx = rowIdx - 11;
+      const fracSieve = STANDARD_AFNOR_SIEVES[fracIdx];
+      if (fracSieve) {
+        if (fracSieve.classLabel) {
+          colA_D = `
+          <c r="A${rowIdx}" t="inlineStr" s="3"><is><t>${fracSieve.classLabel}</t></is></c>
+          <c r="B${rowIdx}" t="inlineStr" s="9"><is><t>${fracSieve.apertureMm.toString().replace('.', ',')} mm</t></is></c>`;
+        } else {
+          colA_D = `
+          <c r="B${rowIdx}" t="inlineStr" s="9"><is><t>${fracSieve.apertureMm.toString().replace('.', ',')} mm</t></is></c>`;
+        }
+      }
     }
 
     // Right Compaction Table on Rows 4-10
@@ -428,8 +601,8 @@ function buildSummarySheetXml(data: any): string {
       if (pt) {
         colM_P = `
         <c r="M${rowIdx}" s="10"><v>${pt.w}</v></c>
-        <c r="N${rowIdx}" s="9"><v>${pt.rhos}</v></c>
-        <c r="O${rowIdx}" s="9"><f>N${rowIdx}/$B$50</f><v>${pt.comp ?? (pt.rhos / rhos_opm).toFixed(3)}</v></c>
+        <c r="N${rowIdx}" s="9"><v>${pt.rhos.toFixed(3)}</v></c>
+        <c r="O${rowIdx}" s="10"><f>N${rowIdx}/$B$50</f><v>${pt.comp ?? (pt.rhos / rhos_opm).toFixed(3)}</v></c>
         ${pt.cbr !== undefined ? `<c r="P${rowIdx}" s="9"><v>${pt.cbr}</v></c>` : ''}`;
       }
     } else if (rowIdx === 13) {
@@ -445,9 +618,9 @@ function buildSummarySheetXml(data: any): string {
       const sp = saturationPoints[satIdx];
       if (sp) {
         colM_P = `
-        <c r="M${rowIdx}" s="9"><v>${sp.rhos}</v></c>
-        <c r="N${rowIdx}" s="9"><v>${sp.gs}</v></c>
-        <c r="O${rowIdx}" s="10"><f>1/M${rowIdx}-1/N${rowIdx}</f><v>${sp.wSat}</v></c>`;
+        <c r="M${rowIdx}" s="9"><v>${sp.rhos.toFixed(3)}</v></c>
+        <c r="N${rowIdx}" s="9"><v>${sp.gs.toFixed(2)}</v></c>
+        <c r="O${rowIdx}" s="10"><f>1/M${rowIdx}-1/N${rowIdx}</f><v>${sp.wSat.toFixed(4)}</v></c>`;
       }
     }
 
@@ -463,149 +636,152 @@ function buildSummarySheetXml(data: any): string {
     </row>`);
   });
 
-  // Rows 35-37: Fine apertures extra descriptions
-  rows.push(`
-  <row r="35" ht="19">
-    <c r="B35" t="inlineStr"><is><t>0,315 mm</t></is></c>
-  </row>
-  <row r="36" ht="19">
-    <c r="B36" t="inlineStr"><is><t>0,25 mm</t></is></c>
-  </row>
-  <row r="37" ht="19">
-    <c r="B37" t="inlineStr"><is><t>0,2 mm</t></is></c>
-  </row>`);
+  // Rows 35-37: Fine apertures extra descriptions (Cols A-D only)
+  for (let r = 35; r <= 37; r++) {
+    const fracIdx = r - 11;
+    const fracSieve = STANDARD_AFNOR_SIEVES[fracIdx];
+    rows.push(`
+    <row r="${r}" ht="19">
+      <c r="B${r}" t="inlineStr" s="9"><is><t>${fracSieve.apertureMm.toString().replace('.', ',')} mm</t></is></c>
+    </row>`);
+  }
 
-  // Rows 38 to 43: Sieve Classification summary
+  // Rows 38 to 43: Sieve Classification summary alongside sieve fractions
+  const sieve38 = STANDARD_AFNOR_SIEVES[38 - 11];
+  const sieve39 = STANDARD_AFNOR_SIEVES[39 - 11];
+  const sieve40 = STANDARD_AFNOR_SIEVES[40 - 11];
+  const sieve41 = STANDARD_AFNOR_SIEVES[41 - 11];
+
   rows.push(`
   <row r="38" ht="19">
-    <c r="B38" t="inlineStr"><is><t>0,16 mm</t></is></c>
+    <c r="B38" t="inlineStr" s="9"><is><t>${sieve38.apertureMm.toString().replace('.', ',')} mm</t></is></c>
     <c r="H38" t="inlineStr" s="3"><is><t>${isFr ? 'Classification' : 'Classification'}</t></is></c>
     <c r="I38" s="9"><v>0</v></c>
   </row>
   <row r="39" ht="19">
-    <c r="B39" t="inlineStr"><is><t>0,125 mm</t></is></c>
-    <c r="H39" t="inlineStr" s="4"><is><t>${isFr ? 'Passant 2 mm =' : 'Passing 2 mm ='}</t></is></c>
-    <c r="I39" s="10"><f>J20</f><v>${passing2mm}</v></c>
+    <c r="B39" t="inlineStr" s="9"><is><t>${sieve39.apertureMm.toString().replace('.', ',')} mm</t></is></c>
+    <c r="H39" t="inlineStr" s="12"><is><t>${isFr ? 'Passant 2 mm =' : 'Passing 2 mm ='}</t></is></c>
+    <c r="I39" s="10"><f>J20</f><v>${passing2mm.toFixed(3)}</v></c>
   </row>
   <row r="40" ht="19">
-    <c r="B40" t="inlineStr"><is><t>0,1 mm</t></is></c>
-    <c r="H40" t="inlineStr" s="4"><is><t>${isFr ? 'Passant 0,4 mm =' : 'Passing 0.4 mm ='}</t></is></c>
-    <c r="I40" s="10"><f>J27</f><v>${passing04mm}</v></c>
+    <c r="B40" t="inlineStr" s="9"><is><t>${sieve40.apertureMm.toString().replace('.', ',')} mm</t></is></c>
+    <c r="H40" t="inlineStr" s="12"><is><t>${isFr ? 'Passant 0,4 mm =' : 'Passing 0.4 mm ='}</t></is></c>
+    <c r="I40" s="10"><f>J27</f><v>${passing04mm.toFixed(3)}</v></c>
   </row>
   <row r="41" ht="19">
-    <c r="B41" t="inlineStr"><is><t>0,08 mm</t></is></c>
-    <c r="H41" t="inlineStr" s="4"><is><t>${isFr ? 'Passant 0,080 mm =' : 'Passing 0.080 mm ='}</t></is></c>
-    <c r="I41" s="10"><f>J34</f><v>${passing008mm}</v></c>
+    <c r="B41" t="inlineStr" s="9"><is><t>${sieve41.apertureMm.toString().replace('.', ',')} mm</t></is></c>
+    <c r="H41" t="inlineStr" s="12"><is><t>${isFr ? 'Passant 0,080 mm =' : 'Passing 0.080 mm ='}</t></is></c>
+    <c r="I41" s="10"><f>J34</f><v>${passing008mm.toFixed(3)}</v></c>
   </row>
   <row r="42" ht="19">
-    <c r="H42" t="inlineStr" s="4"><is><t>Cu =</t></is></c>
+    <c r="H42" t="inlineStr" s="12"><is><t>Cu =</t></is></c>
     <c r="I42" s="9">${cu !== '' ? `<v>${cu}</v>` : ''}</c>
   </row>
   <row r="43" ht="19">
-    <c r="H43" t="inlineStr" s="4"><is><t>Cc =</t></is></c>
+    <c r="H43" t="inlineStr" s="12"><is><t>Cc =</t></is></c>
     <c r="I43" s="9">${cc !== '' ? `<v>${cc}</v>` : ''}</c>
   </row>`);
 
-  // Rows 44 to 57: Summary of Laboratory Test Results (Essai / Résultats)
+  // Rows 44 to 53: Summary of Laboratory Test Results (Essai / Résultats)
   rows.push(`
   <row r="44" ht="20">
     <c r="A44" t="inlineStr" s="8"><is><t>${isFr ? 'Essai' : 'Test'}</t></is></c>
     <c r="B44" t="inlineStr" s="8"><is><t>${isFr ? 'Résultats' : 'Results'}</t></is></c>
     <c r="C44" t="inlineStr" s="8"><is><t>${isFr ? 'Essai' : 'Test'}</t></is></c>
     <c r="D44" t="inlineStr" s="8"><is><t>${isFr ? 'Résultats' : 'Results'}</t></is></c>
-    <c r="H44" t="inlineStr" s="4"><is><t>WL =</t></is></c>
+    <c r="H44" t="inlineStr" s="12"><is><t>WL =</t></is></c>
     <c r="I44" s="9"><v>${wl}</v></c>
   </row>
   <row r="45" ht="19">
-    <c r="A45" t="inlineStr" s="4"><is><t>${isFr ? 'Teneur en eau naturelle: w' : 'Natural moisture content: w'}</t></is></c>
+    <c r="A45" t="inlineStr" s="12"><is><t>${isFr ? 'Teneur en eau naturelle: w' : 'Natural moisture content: w'}</t></is></c>
     <c r="B45" s="9"><v>${naturalW}</v></c>
     <c r="C45" t="inlineStr" s="3"><is><t>${isFr ? "Limites d'Atterberg" : 'Atterberg limits'}</t></is></c>
     <c r="D45" s="9"/>
-    <c r="H45" t="inlineStr" s="4"><is><t>IP =</t></is></c>
+    <c r="H45" t="inlineStr" s="12"><is><t>IP =</t></is></c>
     <c r="I45" s="9"><v>${ip}</v></c>
   </row>
   <row r="46" ht="19">
-    <c r="A46" t="inlineStr" s="4"><is><t>${isFr ? 'Poids spécifique : ρs' : 'Particle density: ρs'}</t></is></c>
+    <c r="A46" t="inlineStr" s="12"><is><t>${isFr ? 'Poids spécifique : ρs' : 'Particle density: ρs'}</t></is></c>
     <c r="B46" s="9"><v>${particleDensityGs}</v></c>
-    <c r="C46" t="inlineStr" s="4"><is><t>${isFr ? 'Limite de Liquidité : WL' : 'Liquid Limit: WL'}</t></is></c>
+    <c r="C46" t="inlineStr" s="12"><is><t>${isFr ? 'Limite de Liquidité : WL' : 'Liquid Limit: WL'}</t></is></c>
     <c r="D46" s="9"><v>${wl}</v></c>
-    <c r="H46" t="inlineStr" s="4"><is><t>VBS =</t></is></c>
+    <c r="H46" t="inlineStr" s="12"><is><t>VBS =</t></is></c>
     <c r="I46" s="9">${vbs !== '' ? `<v>${vbs}</v>` : ''}</c>
   </row>
   <row r="47" ht="19">
-    <c r="A47" t="inlineStr" s="4"><is><t>${isFr ? 'Densité apparente : MVA' : 'Bulk density: MVA'}</t></is></c>
+    <c r="A47" t="inlineStr" s="12"><is><t>${isFr ? 'Densité apparente : MVA' : 'Bulk density: MVA'}</t></is></c>
     <c r="B47" s="9"/>
-    <c r="C47" t="inlineStr" s="4"><is><t>${isFr ? 'Indice de Plasticité : IP' : 'Plasticity Index: IP'}</t></is></c>
+    <c r="C47" t="inlineStr" s="12"><is><t>${isFr ? 'Indice de Plasticité : IP' : 'Plasticity Index: IP'}</t></is></c>
     <c r="D47" s="9"><v>${ip}</v></c>
     <c r="H47" t="inlineStr" s="3"><is><t>LCPC</t></is></c>
   </row>
   <row r="48" ht="19">
     <c r="A48" t="inlineStr" s="3"><is><t>${isFr ? 'Optimum Proctor' : 'Proctor Optimum'}</t></is></c>
     <c r="B48" s="9"/>
-    <c r="C48" t="inlineStr" s="4"><is><t>${isFr ? 'Equivalent de sable : ES' : 'Sand Equivalent: ES'}</t></is></c>
+    <c r="C48" t="inlineStr" s="12"><is><t>${isFr ? 'Equivalent de sable : ES' : 'Sand Equivalent: ES'}</t></is></c>
     <c r="D48" s="9">${es !== '' ? `<v>${es}</v>` : ''}</c>
-    <c r="H48" t="inlineStr" s="4"><is><t>Classe :</t></is></c>
+    <c r="H48" t="inlineStr" s="12"><is><t>Classe :</t></is></c>
     <c r="I48" t="inlineStr" s="3"><is><t>${escapeXml(lcpcClass)}</t></is></c>
   </row>
   <row r="49" ht="19">
-    <c r="A49" t="inlineStr" s="4"><is><t>${isFr ? 'Teneur en eau OPM: wopm' : 'Optimum moisture content: wopm'}</t></is></c>
+    <c r="A49" t="inlineStr" s="12"><is><t>${isFr ? 'Teneur en eau OPM: wopm' : 'Optimum moisture content: wopm'}</t></is></c>
     <c r="B49" s="10"><v>${wopm}</v></c>
-    <c r="C49" t="inlineStr" s="4"><is><t>${isFr ? 'Los Angeles : LOS' : 'Los Angeles: LOS'}</t></is></c>
+    <c r="C49" t="inlineStr" s="12"><is><t>${isFr ? 'Los Angeles : LOS' : 'Los Angeles: LOS'}</t></is></c>
     <c r="D49" s="9">${los !== '' ? `<v>${los}</v>` : ''}</c>
-    <c r="H49" t="inlineStr" s="4"><is><t>Classe :</t></is></c>
+    <c r="H49" t="inlineStr" s="12"><is><t>Classe :</t></is></c>
     <c r="I49" t="inlineStr" s="9"><is><t>${escapeXml(lcpcClass)}</t></is></c>
   </row>
   <row r="50" ht="19">
-    <c r="A50" t="inlineStr" s="4"><is><t>${isFr ? 'Densité sèche OPM: ρd_opm' : 'Maximum dry density: ρd_opm'}</t></is></c>
-    <c r="B50" s="9"><v>${rhos_opm}</v></c>
-    <c r="C50" t="inlineStr" s="4"><is><t>${isFr ? 'Usure micro-Deval : MDE' : 'Micro-Deval wear: MDE'}</t></is></c>
+    <c r="A50" t="inlineStr" s="12"><is><t>${isFr ? 'Densité sèche OPM: ρd_opm' : 'Maximum dry density: ρd_opm'}</t></is></c>
+    <c r="B50" s="9"><v>${rhos_opm.toFixed(3)}</v></c>
+    <c r="C50" t="inlineStr" s="12"><is><t>${isFr ? 'Usure micro-Deval : MDE' : 'Micro-Deval wear: MDE'}</t></is></c>
     <c r="D50" s="9">${mde !== '' ? `<v>${mde}</v>` : ''}</c>
     <c r="H50" t="inlineStr" s="3"><is><t>HRB</t></is></c>
   </row>
   <row r="51" ht="19">
-    <c r="A51" t="inlineStr" s="4"><is><t>${isFr ? "Indice CBR à 95% à 4jours d'immersion" : 'CBR index at 95% at 4 days'}</t></is></c>
+    <c r="A51" t="inlineStr" s="12"><is><t>${isFr ? "Indice CBR à 95% à 4jours d'immersion" : 'CBR index at 95% at 4 days'}</t></is></c>
     <c r="B51" s="9"><v>${cbr95}</v></c>
-    <c r="C51" t="inlineStr" s="4"><is><t>${isFr ? "Coefficient d'aplatissement : A" : 'Flakiness index: A'}</t></is></c>
+    <c r="C51" t="inlineStr" s="12"><is><t>${isFr ? "Coefficient d'aplatissement : A" : 'Flakiness index: A'}</t></is></c>
     <c r="D51" s="9">${flakinessA !== '' ? `<v>${flakinessA}</v>` : ''}</c>
-    <c r="H51" t="inlineStr" s="4"><is><t>a =</t></is></c>
+    <c r="H51" t="inlineStr" s="12"><is><t>a =</t></is></c>
     <c r="I51" s="9"><v>0</v></c>
   </row>
   <row r="52" ht="19">
-    <c r="A52" t="inlineStr" s="4"><is><t>${isFr ? 'Gonflement (25 coups)' : 'Swelling (25 blows)'}</t></is></c>
+    <c r="A52" t="inlineStr" s="12"><is><t>${isFr ? 'Gonflement (25 coups)' : 'Swelling (25 blows)'}</t></is></c>
     <c r="B52" s="9"><v>${swelling}</v></c>
-    <c r="C52" t="inlineStr" s="4"><is><t>${isFr ? 'Coefficient de propreté : P' : 'Cleanliness coefficient: P'}</t></is></c>
+    <c r="C52" t="inlineStr" s="12"><is><t>${isFr ? 'Coefficient de propreté : P' : 'Cleanliness coefficient: P'}</t></is></c>
     <c r="D52" s="9">${cleanlinessP !== '' ? `<v>${cleanlinessP}</v>` : ''}</c>
-    <c r="H52" t="inlineStr" s="4"><is><t>b =</t></is></c>
+    <c r="H52" t="inlineStr" s="12"><is><t>b =</t></is></c>
     <c r="I52" s="9"><v>0</v></c>
   </row>
   <row r="53" ht="19">
     <c r="A53" t="inlineStr" s="3"><is><t>${isFr ? 'Classification' : 'Classification'}</t></is></c>
     <c r="B53" s="9"/>
-    <c r="C53" t="inlineStr" s="4"><is><t>${isFr ? 'Matière organique: MO' : 'Organic matter: OM'}</t></is></c>
+    <c r="C53" t="inlineStr" s="12"><is><t>${isFr ? 'Matière organique: MO' : 'Organic matter: OM'}</t></is></c>
     <c r="D53" s="9"/>
-    <c r="H53" t="inlineStr" s="4"><is><t>c =</t></is></c>
+    <c r="H53" t="inlineStr" s="12"><is><t>c =</t></is></c>
     <c r="I53" s="9"><v>0</v></c>
   </row>
   <row r="54" ht="19">
-    <c r="A54" t="inlineStr" s="4"><is><t>LCPC</t></is></c>
+    <c r="A54" t="inlineStr" s="12"><is><t>LCPC</t></is></c>
     <c r="B54" t="inlineStr" s="9"><is><t>${escapeXml(lcpcClass)}</t></is></c>
-    <c r="H54" t="inlineStr" s="4"><is><t>d =</t></is></c>
+    <c r="H54" t="inlineStr" s="12"><is><t>d =</t></is></c>
     <c r="I54" s="9"><v>0</v></c>
   </row>
   <row r="55" ht="19">
-    <c r="A55" t="inlineStr" s="4"><is><t>HRB</t></is></c>
+    <c r="A55" t="inlineStr" s="12"><is><t>HRB</t></is></c>
     <c r="B55" t="inlineStr" s="9"><is><t>${escapeXml(hrbClass)} [0] (${escapeXml(hrbDesc)})</t></is></c>
-    <c r="H55" t="inlineStr" s="4"><is><t>IG =</t></is></c>
+    <c r="H55" t="inlineStr" s="12"><is><t>IG =</t></is></c>
     <c r="I55" s="9"><v>0</v></c>
   </row>
   <row r="56" ht="19">
-    <c r="A56" t="inlineStr" s="4"><is><t>GTR</t></is></c>
+    <c r="A56" t="inlineStr" s="12"><is><t>GTR</t></is></c>
     <c r="B56" t="inlineStr" s="9"><is><t>${escapeXml(gtrClass)} (${escapeXml(gtrDesc)})</t></is></c>
-    <c r="H56" t="inlineStr" s="4"><is><t>Classe :</t></is></c>
+    <c r="H56" t="inlineStr" s="12"><is><t>Classe :</t></is></c>
     <c r="I56" t="inlineStr" s="3"><is><t>${escapeXml(hrbClass)}</t></is></c>
   </row>
   <row r="57" ht="19">
-    <c r="I57" t="inlineStr"><is><t>${escapeXml(hrbDesc)}</t></is></c>
+    <c r="I57" t="inlineStr" s="9"><is><t>${escapeXml(hrbDesc)}</t></is></c>
   </row>`);
 
   // Rows 58 to 60: Conformity & GTR
@@ -616,13 +792,13 @@ function buildSummarySheetXml(data: any): string {
     <c r="H58" t="inlineStr" s="3"><is><t>GTR</t></is></c>
   </row>
   <row r="59" ht="19">
-    <c r="C59" t="inlineStr"><is><t>${isConforme ? `[X] ${isFr ? 'Oui' : 'Yes'}` : `[ ] ${isFr ? 'Oui' : 'Yes'}`}</t></is></c>
-    <c r="H59" t="inlineStr" s="4"><is><t>Classe :</t></is></c>
+    <c r="C59" t="inlineStr" s="9"><is><t>${isConforme ? `[X] ${isFr ? 'Oui' : 'Yes'}` : `[ ] ${isFr ? 'Oui' : 'Yes'}`}</t></is></c>
+    <c r="H59" t="inlineStr" s="12"><is><t>Classe :</t></is></c>
     <c r="I59" t="inlineStr" s="3"><is><t>${escapeXml(gtrClass)}</t></is></c>
   </row>
   <row r="60" ht="19">
-    <c r="C60" t="inlineStr"><is><t>${!isConforme ? `[X] ${isFr ? 'Non' : 'No'}` : `[ ] ${isFr ? 'Non' : 'No'}`}</t></is></c>
-    <c r="I60" t="inlineStr"><is><t>${escapeXml(gtrDesc)}</t></is></c>
+    <c r="C60" t="inlineStr" s="9"><is><t>${!isConforme ? `[X] ${isFr ? 'Non' : 'No'}` : `[ ] ${isFr ? 'Non' : 'No'}`}</t></is></c>
+    <c r="I60" t="inlineStr" s="9"><is><t>${escapeXml(gtrDesc)}</t></is></c>
   </row>`);
 
   // Rows 61 to 70: Visas and Signatures
@@ -630,10 +806,10 @@ function buildSummarySheetXml(data: any): string {
   <row r="61" ht="22">
     <c r="A61" t="inlineStr" s="8"><is><t>${isFr ? 'Vérifié par' : 'Checked by'} [${escapeXml(checkSignatory)}] :</t></is></c>
     <c r="B61" t="inlineStr" s="8"><is><t>${isFr ? 'Approuvé par' : 'Approved by'} [${escapeXml(appSignatory)}] :</t></is></c>
-    <c r="C61" t="inlineStr" s="8"><is><t>Date</t></is></c>
+    <c r="D61" t="inlineStr" s="8"><is><t>Date</t></is></c>
   </row>
   <row r="62" ht="18">
-    <c r="C62" t="inlineStr" s="9"><is><t>${escapeXml(dateStr)}</t></is></c>
+    <c r="B62" t="inlineStr" s="9"><is><t>${escapeXml(dateStr)}</t></is></c>
   </row>
   <row r="63" ht="18"/>
   <row r="64" ht="18"/>
@@ -655,26 +831,52 @@ function buildSummarySheetXml(data: any): string {
   </sheetViews>
   <sheetFormatPr defaultRowHeight="19"/>
   <cols>
-    <col min="1" max="1" width="30" customWidth="1"/>
-    <col min="2" max="2" width="22" customWidth="1"/>
-    <col min="3" max="3" width="25" customWidth="1"/>
-    <col min="4" max="4" width="20" customWidth="1"/>
-    <col min="5" max="5" width="24" customWidth="1"/>
-    <col min="6" max="6" width="16" customWidth="1"/>
-    <col min="7" max="7" width="24" customWidth="1"/>
-    <col min="8" max="8" width="16" customWidth="1"/>
-    <col min="9" max="9" width="16" customWidth="1"/>
-    <col min="10" max="10" width="16" customWidth="1"/>
-    <col min="11" max="11" width="12" customWidth="1"/>
-    <col min="12" max="12" width="12" customWidth="1"/>
-    <col min="13" max="13" width="14" customWidth="1"/>
-    <col min="14" max="14" width="14" customWidth="1"/>
-    <col min="15" max="15" width="14" customWidth="1"/>
-    <col min="16" max="16" width="14" customWidth="1"/>
+    <col min="1" max="1" width="33" customWidth="1"/>
+    <col min="2" max="2" width="14" customWidth="1"/>
+    <col min="3" max="3" width="27" customWidth="1"/>
+    <col min="4" max="4" width="14" customWidth="1"/>
+    <col min="5" max="5" width="4" customWidth="1"/>
+    <col min="6" max="6" width="4" customWidth="1"/>
+    <col min="7" max="7" width="8" customWidth="1"/>
+    <col min="8" max="8" width="7" customWidth="1"/>
+    <col min="9" max="9" width="7" customWidth="1"/>
+    <col min="10" max="10" width="8" customWidth="1"/>
+    <col min="11" max="11" width="7" customWidth="1"/>
+    <col min="12" max="12" width="7" customWidth="1"/>
+    <col min="13" max="13" width="8" customWidth="1"/>
+    <col min="14" max="14" width="8" customWidth="1"/>
+    <col min="15" max="15" width="8" customWidth="1"/>
+    <col min="16" max="16" width="8" customWidth="1"/>
+    <col min="17" max="17" width="4" customWidth="1"/>
+    <col min="18" max="28" width="11" customWidth="1"/>
   </cols>
   <sheetData>
     ${rows.join('\n')}
   </sheetData>
+  <mergeCells count="21">
+    <mergeCell ref="A2:D2"/>
+    <mergeCell ref="B4:D4"/>
+    <mergeCell ref="B5:D5"/>
+    <mergeCell ref="B6:D6"/>
+    <mergeCell ref="B7:D7"/>
+    <mergeCell ref="B8:D8"/>
+    <mergeCell ref="B9:D9"/>
+    <mergeCell ref="A10:D10"/>
+    <mergeCell ref="A11:A16"/>
+    <mergeCell ref="A17:A22"/>
+    <mergeCell ref="A23:A41"/>
+    <mergeCell ref="H2:H3"/>
+    <mergeCell ref="I2:I3"/>
+    <mergeCell ref="J2:J3"/>
+    <mergeCell ref="K2:L2"/>
+    <mergeCell ref="M13:O13"/>
+    <mergeCell ref="B54:D54"/>
+    <mergeCell ref="B55:D55"/>
+    <mergeCell ref="B56:D56"/>
+    <mergeCell ref="B61:C61"/>
+    <mergeCell ref="B62:C62"/>
+  </mergeCells>
+  <pageMargins left="0.5" right="0.5" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
   <pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/>
   <drawing r:id="rId1"/>
 </worksheet>`;
@@ -860,7 +1062,7 @@ function buildSummaryProctorChartXml(
         <c:ser>
           <c:idx val="1"/>
           <c:order val="1"/>
-          <c:tx><c:v>${ser2Title}</c:v></c:tx>
+          <c:tx><c:v>${escapeXml(ser2Title)}</c:v></c:tx>
           <c:spPr>
             <a:ln w="19050" cmpd="sng">
               <a:solidFill><a:srgbClr val="DC2626"/></a:solidFill>
@@ -1035,41 +1237,42 @@ function buildSummaryCBRChartXml(
 }
 
 // -------------------------------------------------------------
-// OpenXML Packaging Helpers for Soil Summary Sheet
+// OpenXML Packaging Helpers for Multi-Sheet Packaging
 // -------------------------------------------------------------
 
 function getSummaryDrawingXml(logos: EmbeddedLogo[]): string {
   let anchorsXml = '';
 
-  // Logo Anchor if present
-  logos.forEach((logo) => {
+  // Left Logo Anchor placed cleanly in cell A1 (Row 1)
+  const leftLogo = logos.find((l) => l.position === 'left') || logos[0];
+  if (leftLogo) {
     anchorsXml += `
     <xdr:twoCellAnchor editAs="oneCell">
-      <xdr:from><xdr:col>0</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>15000</xdr:rowOff></xdr:from>
-      <xdr:to><xdr:col>2</xdr:col><xdr:colOff>100000</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>40000</xdr:rowOff></xdr:to>
+      <xdr:from><xdr:col>0</xdr:col><xdr:colOff>10000</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>5000</xdr:rowOff></xdr:from>
+      <xdr:to><xdr:col>1</xdr:col><xdr:colOff>80000</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>20000</xdr:rowOff></xdr:to>
       <xdr:pic>
         <xdr:nvPicPr>
-          <xdr:cNvPr id="10" name="${logo.fileName}"/>
+          <xdr:cNvPr id="10" name="${leftLogo.fileName}"/>
           <xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>
         </xdr:nvPicPr>
         <xdr:blipFill>
-          <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${logo.id}"/>
+          <a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${leftLogo.id}"/>
           <a:stretch><a:fillRect/></a:stretch>
         </xdr:blipFill>
         <xdr:spPr>
-          <a:xfrm><a:off x="0" y="0"/><a:ext cx="1200000" cy="600000"/></a:xfrm>
+          <a:xfrm><a:off x="0" y="0"/><a:ext cx="1200000" cy="500000"/></a:xfrm>
           <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
         </xdr:spPr>
       </xdr:pic>
       <xdr:clientData/>
     </xdr:twoCellAnchor>`;
-  });
+  }
 
-  // Chart 1: Courbe Granulométrique Anchor (Side by side on the right)
+  // Chart 1: Courbe Granulométrique Anchor (Side by side on the right, Rows 1-19)
   anchorsXml += `
   <xdr:twoCellAnchor>
-    <xdr:from><xdr:col>16</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
-    <xdr:to><xdr:col>24</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>22</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+    <xdr:from><xdr:col>17</xdr:col><xdr:colOff>20000</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+    <xdr:to><xdr:col>27</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>19</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
     <xdr:graphicFrame macro="">
       <xdr:nvGraphicFramePr>
         <xdr:cNvPr id="2" name="Chart_Granulo"/>
@@ -1085,11 +1288,11 @@ function getSummaryDrawingXml(logos: EmbeddedLogo[]): string {
     <xdr:clientData/>
   </xdr:twoCellAnchor>`;
 
-  // Chart 2: Courbe Proctor & Saturation Anchor
+  // Chart 2: Courbe Proctor & Saturation Anchor (Rows 21-38, zero vertical collision)
   anchorsXml += `
   <xdr:twoCellAnchor>
-    <xdr:from><xdr:col>16</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>18</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
-    <xdr:to><xdr:col>24</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>32</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+    <xdr:from><xdr:col>17</xdr:col><xdr:colOff>20000</xdr:colOff><xdr:row>21</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+    <xdr:to><xdr:col>27</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>38</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
     <xdr:graphicFrame macro="">
       <xdr:nvGraphicFramePr>
         <xdr:cNvPr id="3" name="Chart_Proctor"/>
@@ -1105,11 +1308,11 @@ function getSummaryDrawingXml(logos: EmbeddedLogo[]): string {
     <xdr:clientData/>
   </xdr:twoCellAnchor>`;
 
-  // Chart 3: Courbe CBR Anchor
+  // Chart 3: Courbe CBR Anchor (Rows 40-57, zero vertical collision)
   anchorsXml += `
   <xdr:twoCellAnchor>
-    <xdr:from><xdr:col>16</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>33</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
-    <xdr:to><xdr:col>24</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>48</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+    <xdr:from><xdr:col>17</xdr:col><xdr:colOff>20000</xdr:colOff><xdr:row>40</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+    <xdr:to><xdr:col>27</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>57</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
     <xdr:graphicFrame macro="">
       <xdr:nvGraphicFramePr>
         <xdr:cNvPr id="4" name="Chart_CBR"/>
@@ -1145,7 +1348,23 @@ function getSummaryDrawingRelsXml(logos: EmbeddedLogo[]): string {
 </Relationships>`;
 }
 
-function getSummaryContentTypesXml(logos: EmbeddedLogo[]): string {
+function getMultiSheetContentTypesXml(
+  sheetCount: number,
+  drawingIndices: number[],
+  chartIndices: number[],
+  logos: EmbeddedLogo[]
+): string {
+  let overrides = '';
+  for (let s = 1; s <= sheetCount; s++) {
+    overrides += `\n  <Override PartName="/xl/worksheets/sheet${s}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+  }
+  for (const d of drawingIndices) {
+    overrides += `\n  <Override PartName="/xl/drawings/drawing${d}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`;
+  }
+  for (const c of chartIndices) {
+    overrides += `\n  <Override PartName="/xl/charts/chart${c}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`;
+  }
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -1154,31 +1373,34 @@ function getSummaryContentTypesXml(logos: EmbeddedLogo[]): string {
   <Default Extension="jpg" ContentType="image/jpeg"/>
   <Default Extension="jpeg" ContentType="image/jpeg"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-  <Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>
-  <Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>
-  <Override PartName="/xl/charts/chart2.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>
-  <Override PartName="/xl/charts/chart3.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${overrides}
   <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
 </Types>`;
 }
 
-function getSummaryWorkbookXml(sheetName: string): string {
+function getMultiSheetWorkbookXml(sheets: Array<{ sheetId: number; name: string }>): string {
+  const sheetTags = sheets
+    .map((s) => `<sheet name="${escapeXml(s.name)}" sheetId="${s.sheetId}" r:id="rId${s.sheetId}"/>`)
+    .join('');
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="${sheetName}" sheetId="1" r:id="rId1"/>
+    ${sheetTags}
   </sheets>
 </workbook>`;
 }
 
-function getSummaryWorkbookRelsXml(): string {
+function getMultiSheetWorkbookRelsXml(sheetCount: number): string {
+  let rels = '';
+  for (let s = 1; s <= sheetCount; s++) {
+    rels += `\n  <Relationship Id="rId${s}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${s}.xml"/>`;
+  }
+  rels += `\n  <Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`;
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}
 </Relationships>`;
 }
 
@@ -1191,7 +1413,7 @@ function getSummaryGlobalRelsXml(): string {
 </Relationships>`;
 }
 
-function getSummaryStylesXml(primaryColor: string): string {
+function getUnifiedStylesXml(primaryColor: string): string {
   const hex = (primaryColor || '#1e40af').replace('#', '').toUpperCase();
   const argb = `FF${hex.length === 6 ? hex : '1E40AF'}`;
 
@@ -1202,13 +1424,14 @@ function getSummaryStylesXml(primaryColor: string): string {
     <numFmt numFmtId="165" formatCode="0.000"/>
     <numFmt numFmtId="166" formatCode="0.0%"/>
   </numFmts>
-  <fonts count="6">
+  <fonts count="7">
     <font><name val="Calibri"/><sz val="11"/></font>
     <font><b/><sz val="14"/><color rgb="${argb}"/><name val="Calibri"/></font>
     <font><b/><sz val="12"/><color rgb="${argb}"/><name val="Calibri"/></font>
     <font><b/><sz val="11"/><name val="Calibri"/></font>
     <font><b/><color rgb="FFDC2626"/><name val="Calibri"/></font>
     <font><b/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+    <font><sz val="9"/><color rgb="FF64748B"/><name val="Calibri"/></font>
   </fonts>
   <fills count="5">
     <fill><patternFill patternType="none"/></fill>
@@ -1229,30 +1452,33 @@ function getSummaryStylesXml(primaryColor: string): string {
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
-  <cellXfs count="12">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+  <cellXfs count="13">
+    <!-- 0: Normal -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
     <!-- 1: Title (14pt Bold primary) -->
-    <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
-    <!-- 2: Section Title (12pt Bold primary) -->
-    <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+    <xf numFmtId="0" fontId="1" fillId="0" borderId="0" applyFont="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
+    <!-- 2: Section Title / Quality Assurance (12pt Bold primary) -->
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="0" applyFont="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
     <!-- 3: Bold text -->
-    <xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
-    <!-- 4: Label (light gray fill, thin border, bold) -->
-    <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
-    <!-- 5: Header cell (primaryColor fill, white text, bold, centered) -->
-    <xf numFmtId="0" fontId="5" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 6: Header cell (primaryColor fill, white text, bold, left) -->
-    <xf numFmtId="0" fontId="5" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
-    <!-- 7: Number cell with thin border -->
-    <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
-    <!-- 8: Table Header cell (dark slate fill, white text, bold, centered) -->
-    <xf numFmtId="0" fontId="5" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-    <!-- 9: Data cell with thin border -->
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
-    <!-- 10: Percentage cell with thin border -->
-    <xf numFmtId="166" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
-    <!-- 11: 3-decimal cell with thin border -->
-    <xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="3" fillId="0" borderId="0" applyFont="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
+    <!-- 4: Report Meta (normal) -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
+    <!-- 5: Watermark / Warning (Red Bold) -->
+    <xf numFmtId="0" fontId="4" fillId="0" borderId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" wrapText="1" vertical="center"/></xf>
+    <!-- 6: Field label (Bold) -->
+    <xf numFmtId="0" fontId="3" fillId="0" borderId="0" applyFont="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
+    <!-- 7: Plain Number with border -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
+    <!-- 8: Table Header cell (Dark slate fill, white bold text, centered) -->
+    <xf numFmtId="0" fontId="5" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <!-- 9: Data cell with thin border (centered) -->
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <!-- 10: Percentage cell with thin border (format 0.0%) -->
+    <xf numFmtId="166" fontId="0" fillId="0" borderId="1" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <!-- 11: 3-decimal cell with thin border (format 0.000) -->
+    <xf numFmtId="165" fontId="0" fillId="0" borderId="1" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <!-- 12: Summary Label cell (light gray fill, thin border, bold) -->
+    <xf numFmtId="0" fontId="3" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
   </cellXfs>
 </styleSheet>`;
 }
@@ -1269,12 +1495,25 @@ function getSummaryCorePropsXml(sampleId: string, companyName?: string): string 
 </cp:coreProperties>`;
 }
 
-function getSummaryAppPropsXml(): string {
+function getMultiSheetAppPropsXml(sheetNames: string[]): string {
+  const partTitles = sheetNames.map((s) => `<vt:lpstr>${escapeXml(s)}</vt:lpstr>`).join('');
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
   <Application>FraGeo Suite Geotechnical Engineering</Application>
   <DocSecurity>0</DocSecurity>
   <ScaleCrop>false</ScaleCrop>
+  <HeadingPairs>
+    <vt:vector size="2" baseType="variant">
+      <vt:variant><vt:lpstr>Worksheets</vt:lpstr></vt:variant>
+      <vt:variant><vt:i4>${sheetNames.length}</vt:i4></vt:variant>
+    </vt:vector>
+  </HeadingPairs>
+  <TitlesOfParts>
+    <vt:vector size="${sheetNames.length}" baseType="lpstr">
+      ${partTitles}
+    </vt:vector>
+  </TitlesOfParts>
   <Company>FraGeo Suite</Company>
 </Properties>`;
 }
