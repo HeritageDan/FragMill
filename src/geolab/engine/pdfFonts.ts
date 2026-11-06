@@ -1,24 +1,55 @@
 import type { jsPDF } from 'jspdf';
 
 /**
- * Transliterates Greek characters and special symbols to readable ASCII/Latin-1
- * representations when falling back to default Helvetica font.
+ * Transliterates Greek characters, subscripts, mathematical symbols and special characters
+ * to readable standard ASCII/Latin-1 representations so that fonts like Times-Roman
+ * or Helvetica never produce corrupted glyphs such as '£', '”', '• €', etc.
  */
 export function transliterateGreekAndSpecialChars(text: string): string {
   if (!text) return text;
   return text
+    // Greek uppercase and lowercase symbols
+    .replace(/Σ|∑/g, 'Total ')
+    .replace(/Δ|δ/g, 'Delta ')
     .replace(/ρd_opm/g, 'rho_d_opm')
     .replace(/ρd_max/g, 'rho_d_max')
     .replace(/ρd/g, 'rho_d')
     .replace(/ρs/g, 'rho_s')
     .replace(/ρ/g, 'rho')
     .replace(/γ/g, 'gamma')
-    .replace(/≥/g, '>=')
-    .replace(/≤/g, '<=')
+    .replace(/μ|µ/g, 'u')
+    .replace(/ø|Ø/g, 'D')
+    // Subscripts
+    .replace(/d₁₀/g, 'd10')
+    .replace(/d₃₀/g, 'd30')
+    .replace(/d₆₀/g, 'd60')
+    .replace(/D₁₀/g, 'D10')
+    .replace(/D₃₀/g, 'D30')
+    .replace(/D₆₀/g, 'D60')
+    .replace(/[\u2080-\u2089]/g, (m) => String(m.charCodeAt(0) - 0x2080))
+    // Superscripts
+    .replace(/[\u2070-\u2079]/g, (m) => String(m.charCodeAt(0) - 0x2070))
+    .replace(/\u00B9/g, '1')
+    .replace(/\u00B2/g, '2')
+    .replace(/\u00B3/g, '3')
     .replace(/²/g, '2')
     .replace(/³/g, '3')
+    // Mathematical & comparison
+    .replace(/≥/g, '>=')
+    .replace(/≤/g, '<=')
+    .replace(/±/g, '+/-')
+    .replace(/×/g, 'x')
     .replace(/°/g, ' deg')
-    .replace(/[\uE000-\uF8FF]/g, '-') // Replace private-use bullet glyphs with standard dash
+    // Punctuation and dashes
+    .replace(/[—–]/g, '-')
+    .replace(/[‘’‚‛]/g, "'")
+    .replace(/[“”„‟]/g, '"')
+    .replace(/…/g, '...')
+    .replace(/[•·]/g, '-')
+    // Markdown artifacts
+    .replace(/\*\*/g, '')
+    // Private-use and legacy corrupted glyphs
+    .replace(/[\uE000-\uF8FF]/g, '-')
     .replace(/Ád_opm/g, 'rho_d_opm')
     .replace(/Ád/g, 'rho_d');
 }
@@ -52,7 +83,7 @@ export async function setupUnicodeFont(doc: jsPDF): Promise<boolean> {
     const originalText = doc.text.bind(doc);
     doc.text = function (text: any, x: any, y: any, options: any) {
       const currentFont = doc.getFont()?.fontName;
-      if (currentFont === 'times') {
+      if (!currentFont || currentFont.toLowerCase().includes('times') || !(doc as any).__isUnicodeFontActive) {
         if (typeof text === 'string') {
           text = transliterateGreekAndSpecialChars(text);
         } else if (Array.isArray(text)) {

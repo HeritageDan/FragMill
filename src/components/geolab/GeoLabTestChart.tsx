@@ -511,10 +511,10 @@ export const GeoLabTestChart: React.FC<GeoLabTestChartProps> = ({
         </div>
 
         {/* Cleanliness Scale Gauge */}
-        <div className="space-y-1 bg-slate-900 p-3 rounded-lg border border-slate-800">
-          <div className="flex justify-between text-xs text-slate-300">
+        <div className="space-y-1 bg-slate-900 p-3 rounded-lg border border-slate-800 min-w-0">
+          <div className="flex flex-wrap justify-between text-xs text-slate-300 gap-2">
             <span>{isFr ? 'Échelle de Propreté (Seuils NF)' : 'Cleanliness Thresholds (NF standard)'}</span>
-            <span className="font-bold text-emerald-400">
+            <span className="font-bold text-emerald-400 break-words">
               {categories.find((c) => esP <= c.max)?.label || categories[categories.length - 1].label}
             </span>
           </div>
@@ -536,8 +536,8 @@ export const GeoLabTestChart: React.FC<GeoLabTestChartProps> = ({
     const cat = isLA ? results.laCategory : results.mdeCategory;
 
     return (
-      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-        <div className="flex justify-between items-center">
+      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3 min-w-0">
+        <div className="flex flex-wrap justify-between items-center gap-2">
           <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <span className={`w-2.5 h-2.5 rounded-full ${isLA ? 'bg-rose-500' : 'bg-purple-500'} inline-block`} />
             {isLA
@@ -549,22 +549,22 @@ export const GeoLabTestChart: React.FC<GeoLabTestChartProps> = ({
           </span>
         </div>
 
-        <div className="bg-slate-900 p-4 rounded-lg border border-slate-800 flex items-center justify-between">
-          <div>
+        <div className="bg-slate-900 p-4 rounded-lg border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 min-w-0">
+          <div className="min-w-0 flex-shrink-0">
             <span className="text-slate-400 text-xs block">{isLA ? 'Coefficient LA :' : 'Coefficient MDE :'}</span>
             <span className={`text-3xl font-bold font-mono ${coeff <= 25 ? 'text-emerald-400' : coeff <= 35 ? 'text-amber-400' : 'text-red-400'}`}>
               {coeff.toFixed(1)} %
             </span>
           </div>
-          <div className="text-right text-xs text-slate-400 max-w-xs">
-            <span className="block font-semibold text-white mb-0.5">
+          <div className="text-left sm:text-right text-xs text-slate-400 min-w-0 max-w-full sm:max-w-md">
+            <span className="block font-semibold text-white mb-0.5 break-words">
               {coeff <= 20
                 ? (isFr ? 'Très Haute Dureté (Couche de Roulement)' : 'High Wear Resistance (Surface Course)')
                 : coeff <= 30
                 ? (isFr ? 'Dureté Moyenne (Couche de Base / Fondation)' : 'Medium Hardness (Base Course)')
                 : (isFr ? 'Matériau Évolutif ou Tendre (Remblais uniquement)' : 'Soft Material (Fill only)')}
             </span>
-            <span>{isFr ? 'Norme NF EN 1097-2' : 'EN 1097-2 / ASTM C131'}</span>
+            <span className="break-words">{isFr ? 'Norme NF EN 1097-2' : 'EN 1097-2 / ASTM C131'}</span>
           </div>
         </div>
       </div>
@@ -577,8 +577,8 @@ export const GeoLabTestChart: React.FC<GeoLabTestChartProps> = ({
     const cat = results.flakinessCategory;
 
     return (
-      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-        <div className="flex justify-between items-center">
+      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3 min-w-0">
+        <div className="flex flex-wrap justify-between items-center gap-2">
           <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-teal-500 inline-block" />
             {isFr ? 'Coefficient d\'Aplatissement Global (FI)' : 'Flakiness Index (FI)'}
@@ -588,15 +588,15 @@ export const GeoLabTestChart: React.FC<GeoLabTestChartProps> = ({
           </span>
         </div>
 
-        <div className="bg-slate-900 p-4 rounded-lg border border-slate-800 flex items-center justify-between">
-          <div>
+        <div className="bg-slate-900 p-4 rounded-lg border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 min-w-0">
+          <div className="min-w-0 flex-shrink-0">
             <span className="text-slate-400 text-xs block">{isFr ? 'Indice global d\'aplatissement :' : 'Global Flakiness Index :'}</span>
             <span className={`text-3xl font-bold font-mono ${fi <= 20 ? 'text-emerald-400' : fi <= 35 ? 'text-amber-400' : 'text-red-400'}`}>
               {fi.toFixed(1)} %
             </span>
           </div>
-          <div className="text-right text-xs text-slate-400">
-            <span className="block font-semibold text-white">
+          <div className="text-left sm:text-right text-xs text-slate-400 min-w-0 max-w-full sm:max-w-md">
+            <span className="block font-semibold text-white break-words">
               {fi <= 15
                 ? (isFr ? 'Forme cubique optimale (Enrobés / Bétons)' : 'Cubic shape (Optimal for asphalt/concrete)')
                 : fi <= 25
@@ -615,20 +615,20 @@ export const GeoLabTestChart: React.FC<GeoLabTestChartProps> = ({
     const sensClass = results.soilSensitivityClass || '';
 
     return (
-      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3 min-w-0">
         <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
           {isFr ? 'Valeur de Bleu du Sol (VBS) — Classification GTR' : 'Methylene Blue Value (VBS) — Soil Sensitivity'}
         </h4>
 
-        <div className="bg-slate-900 p-4 rounded-lg border border-slate-800 flex items-center justify-between">
-          <div>
+        <div className="bg-slate-900 p-4 rounded-lg border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 min-w-0">
+          <div className="min-w-0 flex-shrink-0">
             <span className="text-slate-400 text-xs block">Valeur VBS :</span>
             <span className="text-3xl font-bold font-mono text-blue-400">{vbs.toFixed(2)} g/100g</span>
           </div>
-          <div className="text-right text-xs">
-            <span className="block font-bold text-white mb-0.5">{sensClass || (vbs < 1.5 ? 'Sableux peu sensible' : 'Sol argileux')}</span>
-            <span className="text-slate-400">
+          <div className="text-left sm:text-right text-xs min-w-0 max-w-full sm:max-w-md">
+            <span className="block font-bold text-white mb-0.5 break-words">{sensClass || (vbs < 1.5 ? 'Sableux peu sensible' : 'Sol argileux')}</span>
+            <span className="text-slate-400 break-words">
               {vbs < 0.1
                 ? (isFr ? 'Sol insensible à l\'eau' : 'Water-insensitive soil')
                 : vbs < 1.5

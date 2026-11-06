@@ -12,8 +12,13 @@ import { getTestDefinition } from '../tests';
 import type { ProctorInput, ProctorResults } from '../tests/proctor';
 import type { GrainSizeInput, GrainSizeResults } from '../tests/grainSize';
 import type { WaterContentInput, WaterContentResults } from '../tests/waterContent';
-import { setupUnicodeFont } from './pdfFonts';
+import { setupUnicodeFont, transliterateGreekAndSpecialChars } from './pdfFonts';
 import { renderTestChartDataUrlSync, isTestWithGraph } from '../studies/engine/chartRenderer';
+
+export function cleanPdfText(text: any): string {
+  if (text === null || text === undefined) return '';
+  return transliterateGreekAndSpecialChars(String(text));
+}
 
 export interface PdfGenerationOptions {
   analysis: GeoLabAnalysis;
@@ -43,6 +48,105 @@ function hexToRgb(hex: string): [number, number, number] {
   const g = parseInt(clean.substring(2, 4), 16) || 64;
   const b = parseInt(clean.substring(4, 6), 16) || 175;
   return [r, g, b];
+}
+
+function renderObservationsSection(
+  doc: jsPDF,
+  narrativeText: string,
+  margin: number,
+  contentWidth: number,
+  cursorY: number,
+  lang: 'en' | 'fr',
+  prR: number,
+  prG: number,
+  prB: number,
+  ensureSpace: (needed: number, curY: number) => number
+): number {
+  cursorY = ensureSpace(25, cursorY);
+
+  doc.setFont('times', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(prR, prG, prB);
+  doc.text(
+    lang === 'fr' ? 'OBSERVATIONS & INTERPRÉTATION GÉOTECHNIQUE' : 'OBSERVATIONS & GEOTECHNICAL INTERPRETATION',
+    margin,
+    cursorY
+  );
+  cursorY += 4;
+
+  if (!narrativeText || !narrativeText.trim()) {
+    narrativeText = lang === 'fr'
+      ? 'Essai réalisé conformément à la norme de référence. Résultats conformes aux spécifications du projet.'
+      : 'Test performed in accordance with reference standard. Results satisfy project specifications.';
+  }
+
+  const rawParagraphs = narrativeText.split(/\n+/).map((p) => p.trim()).filter(Boolean);
+
+  for (const rawPara of rawParagraphs) {
+    // 1. Disclaimer tag [AI-drafted...] or [Rédigé par IA...]
+    if (rawPara.startsWith('[') && rawPara.endsWith(']')) {
+      cursorY = ensureSpace(7, cursorY);
+      doc.setFont('times', 'italic');
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(cleanPdfText(rawPara), margin, cursorY + 2.5);
+      cursorY += 4.5;
+      continue;
+    }
+
+    // 2. Heading lines
+    const isHeading =
+      rawPara.startsWith('##') ||
+      rawPara.startsWith('#') ||
+      (rawPara.startsWith('**') && rawPara.endsWith('**') && rawPara.length < 90) ||
+      rawPara.startsWith('**Recommandation') ||
+      rawPara.startsWith('**Recommendation') ||
+      rawPara.startsWith('Recommandation') ||
+      rawPara.startsWith('Recommendation');
+
+    const cleanPara = cleanPdfText(
+      rawPara
+        .replace(/^#+\s*/, '')
+        .replace(/^\*\*(.*?)\*\*$/, '$1')
+        .replace(/\*\*/g, '')
+    );
+
+    if (isHeading) {
+      cursorY = ensureSpace(8, cursorY);
+      doc.setFont('times', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text(cleanPara, margin, cursorY + 2.5);
+      cursorY += 4.5;
+      continue;
+    }
+
+    // 3. Regular prose paragraph
+    doc.setFont('times', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(51, 65, 85);
+
+    const lines = doc.splitTextToSize(cleanPara, contentWidth) as string[];
+    const lineH = 3.6;
+
+    for (let i = 0; i < lines.length; i++) {
+      cursorY = ensureSpace(lineH + 2, cursorY);
+      const isLastLine = i === lines.length - 1;
+      const lineText = lines[i];
+
+      // CRITICAL: Never justify a single-line paragraph or the final line of a paragraph!
+      if (lines.length > 1 && !isLastLine && lineText.length > 55) {
+        doc.text(lineText, margin, cursorY + 2.5, { align: 'justify', maxWidth: contentWidth });
+      } else {
+        doc.text(lineText, margin, cursorY + 2.5, { align: 'left' });
+      }
+      cursorY += lineH;
+    }
+
+    cursorY += 2; // Paragraph gap
+  }
+
+  return cursorY + 3;
 }
 
 export function renderAnalysisSheet(
@@ -325,20 +429,51 @@ export function renderAnalysisSheet(
 
   cursorY += projectBoxHeight + 4;
 
+  const FOOTER_Y = pageHeight - 10;
+  const MAX_CONTENT_Y = 272;
+
+  const drawRunningHeader = (): number => {
+    doc.setFillColor(prR, prG, prB);
+    doc.rect(margin, 12, contentWidth, 1.2, 'F');
+
+    doc.setFont('times', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(prR, prG, prB);
+    const leftHead = `${cleanPdfText(analysis.reportNumber)} - ${cleanPdfText(testDef.name[lang].toUpperCase())} (${cleanPdfText(analysis.standard)})`;
+    doc.text(leftHead, margin, 18);
+
+    doc.setFont('times', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    const rightHead = `${cleanPdfText(sample.sampleId)} | ${cleanPdfText(project.projectName || client.companyName)} | ${analysis.testedDate}`;
+    doc.text(rightHead, pageWidth - margin, 18, { align: 'right' });
+
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.4);
+    doc.line(margin, 21, pageWidth - margin, 21);
+
+    return 26;
+  };
+
+  const ensureSpace = (needed: number, curY: number): number => {
+    if (curY + needed > MAX_CONTENT_Y) {
+      doc.addPage();
+      return drawRunningHeader();
+    }
+    return curY;
+  };
+
   // -------------------------------------------------------------
   // 3. Test Specific Results & Chart
   // -------------------------------------------------------------
   if (testDef.id === 'proctor') {
-    renderProctorPdfSection(doc, analysis as GeoLabAnalysis<ProctorInput, ProctorResults>, margin, cursorY, contentWidth, lang, prR, prG, prB);
-    cursorY += 105;
+    cursorY = renderProctorPdfSection(doc, analysis as GeoLabAnalysis<ProctorInput, ProctorResults>, margin, cursorY, contentWidth, lang, prR, prG, prB, ensureSpace);
   } else if (testDef.id === 'grain_size') {
-    renderGrainSizePdfSection(doc, analysis as GeoLabAnalysis<GrainSizeInput, GrainSizeResults>, margin, cursorY, contentWidth, lang, prR, prG, prB);
-    cursorY += 105;
+    cursorY = renderGrainSizePdfSection(doc, analysis as GeoLabAnalysis<GrainSizeInput, GrainSizeResults>, margin, cursorY, contentWidth, lang, prR, prG, prB, ensureSpace);
   } else if (testDef.id === 'water_content') {
-    renderWaterContentPdfSection(doc, analysis as GeoLabAnalysis<WaterContentInput, WaterContentResults>, margin, cursorY, contentWidth, lang, prR, prG, prB);
-    cursorY += 75;
+    cursorY = renderWaterContentPdfSection(doc, analysis as GeoLabAnalysis<WaterContentInput, WaterContentResults>, margin, cursorY, contentWidth, lang, prR, prG, prB, ensureSpace);
   } else {
-    cursorY = renderGenericTestPdfSection(doc, analysis, testDef, margin, cursorY, contentWidth, lang, prR, prG, prB);
+    cursorY = renderGenericTestPdfSection(doc, analysis, testDef, margin, cursorY, contentWidth, lang, prR, prG, prB, ensureSpace);
   }
 
   // -------------------------------------------------------------
@@ -356,6 +491,9 @@ export function renderAnalysisSheet(
           approvedBy: analysis.approvedBy?.name || 'Directeur Technique',
         },
       ];
+
+  const revTableH = 6 + Math.min(2, revs.length) * 4.5 + 4;
+  cursorY = ensureSpace(revTableH + 6, cursorY);
 
   doc.setFont('times', 'bold');
   doc.setFontSize(7.5);
@@ -382,33 +520,32 @@ export function renderAnalysisSheet(
     doc.setFontSize(6.5);
     doc.setTextColor(15, 23, 42);
     doc.text(String(rev.index ?? rev.revNumber ?? 0), margin + 2, cursorY + 3);
-    doc.text(rev.date || '', margin + 14, cursorY + 3);
-    doc.text(rev.natureOfChange || rev.description || '-', margin + 36, cursorY + 3);
-    doc.text(rev.preparedBy || rev.author || '-', margin + 98, cursorY + 3);
-    doc.text(rev.checkedBy || '-', margin + 126, cursorY + 3);
-    doc.text(rev.approvedBy || '-', margin + 154, cursorY + 3);
+    doc.text(cleanPdfText(rev.date || ''), margin + 14, cursorY + 3);
+    doc.text(cleanPdfText(rev.natureOfChange || rev.description || '-'), margin + 36, cursorY + 3);
+    doc.text(cleanPdfText(rev.preparedBy || rev.author || '-'), margin + 98, cursorY + 3);
+    doc.text(cleanPdfText(rev.checkedBy || '-'), margin + 126, cursorY + 3);
+    doc.text(cleanPdfText(rev.approvedBy || '-'), margin + 154, cursorY + 3);
     doc.setDrawColor(226, 232, 240);
     doc.line(margin, cursorY + 4, margin + contentWidth, cursorY + 4);
     cursorY += 4.2;
   });
-  cursorY += 2;
+  cursorY += 3;
 
   // -------------------------------------------------------------
   // 5. Observations & Engineering Interpretation
   // -------------------------------------------------------------
-  doc.setFont('times', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(prR, prG, prB);
-  doc.text(lang === 'fr' ? 'OBSERVATIONS & INTERPRÉTATION GÉOTECHNIQUE' : 'OBSERVATIONS & GEOTECHNICAL INTERPRETATION', margin, cursorY);
-  cursorY += 2.5;
-
-  const narrativeText = analysis.observations || analysis.aiNarrative || (lang === 'fr' ? 'Essai réalisé conformément à la norme de référence. Résultats conformes aux spécifications du projet.' : 'Test performed in accordance with reference standard. Results satisfy project specifications.');
-  doc.setFont('times', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(51, 65, 85);
-  const splitNarrative = doc.splitTextToSize(narrativeText, contentWidth);
-  doc.text(splitNarrative, margin, cursorY + 2.5, { align: 'justify', maxWidth: contentWidth });
-  cursorY += splitNarrative.length * 4.2 + 7.5;
+  cursorY = renderObservationsSection(
+    doc,
+    analysis.observations || analysis.aiNarrative || '',
+    margin,
+    contentWidth,
+    cursorY,
+    lang,
+    prR,
+    prG,
+    prB,
+    ensureSpace
+  );
 
   // -------------------------------------------------------------
   // 6. Configurable Approval Chain (Up to 6 entries)
@@ -419,20 +556,20 @@ export function renderAnalysisSheet(
         {
           id: 'sig-1',
           roleLabel: { en: 'Tested by (Technician)', fr: 'Réalisé par (Technicien)' },
-          name: analysis.preparedBy?.name || orgProfile.signatories[0]?.name || '',
-          title: analysis.preparedBy?.title || orgProfile.signatories[0]?.title || '',
+          name: analysis.preparedBy?.name || orgProfile.signatories?.[0]?.name || '',
+          title: analysis.preparedBy?.title || orgProfile.signatories?.[0]?.title || '',
         },
         {
           id: 'sig-2',
           roleLabel: { en: 'Checked by (QA)', fr: 'Vérifié par (Qualité)' },
-          name: analysis.checkedBy?.name || orgProfile.signatories[1]?.name || '',
-          title: analysis.checkedBy?.title || orgProfile.signatories[1]?.title || '',
+          name: analysis.checkedBy?.name || orgProfile.signatories?.[1]?.name || '',
+          title: analysis.checkedBy?.title || orgProfile.signatories?.[1]?.title || '',
         },
         {
           id: 'sig-3',
           roleLabel: { en: 'Approved by (Director)', fr: 'Approuvé par (Directeur)' },
-          name: analysis.approvedBy?.name || orgProfile.signatories[2]?.name || '',
-          title: analysis.approvedBy?.title || orgProfile.signatories[2]?.title || '',
+          name: analysis.approvedBy?.name || orgProfile.signatories?.[2]?.name || '',
+          title: analysis.approvedBy?.title || orgProfile.signatories?.[2]?.title || '',
         },
       ];
 
@@ -441,6 +578,9 @@ export function renderAnalysisSheet(
   const numRows = Math.ceil(sigCount / 3);
   const sigBoxWidth = (contentWidth - (itemsPerRow - 1) * 4) / itemsPerRow;
   const sigHeight = 18;
+  const neededSigH = numRows * (sigHeight + 2.5) + 6;
+
+  cursorY = ensureSpace(neededSigH, cursorY);
 
   chain.forEach((sig, idx) => {
     const rowIdx = Math.floor(idx / 3);
@@ -457,13 +597,13 @@ export function renderAnalysisSheet(
     doc.setFont('times', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
-    doc.text(roleTitle, boxX + 2.5, boxY + 4, { maxWidth: textMaxW });
+    doc.text(cleanPdfText(roleTitle), boxX + 2.5, boxY + 4, { maxWidth: textMaxW });
 
     if (sig.name) {
       doc.setFont('times', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(sig.name, boxX + 2.5, boxY + 8.5, { maxWidth: textMaxW });
+      doc.text(cleanPdfText(sig.name), boxX + 2.5, boxY + 8.5, { maxWidth: textMaxW });
     }
 
     if (sig.stampOrSignatureBase64) {
@@ -484,20 +624,26 @@ export function renderAnalysisSheet(
   cursorY += numRows * (sigHeight + 2.5) + 4;
 
   // -------------------------------------------------------------
-  // 7. Footer Block
+  // 7. Stamp Running Footers on all pages for this sheet
   // -------------------------------------------------------------
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
+  const totalSheetPages = doc.getNumberOfPages() - startPage + 1;
+  for (let p = startPage; p <= doc.getNumberOfPages(); p++) {
+    doc.setPage(p);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.4);
+    doc.line(margin, FOOTER_Y, pageWidth - margin, FOOTER_Y);
 
-  doc.setFont('times', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(148, 163, 184);
-  doc.text(orgProfile.reportFooterText || 'FraGeo Suite - FraGeo Lab', margin, pageHeight - 6.5);
+    doc.setFont('times', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    const footerOrg = orgProfile.reportFooterText || 'FraGeo Suite - FraGeo Lab';
+    doc.text(cleanPdfText(footerOrg), margin, pageHeight - 6.5);
 
-  const pageLabel = ctx.isAnnex
-    ? `Page ${doc.getNumberOfPages()} / ${ctx.totalStudyPages || doc.getNumberOfPages()}`
-    : 'Page 1 / 1';
-  doc.text(pageLabel, pageWidth - margin, pageHeight - 6.5, { align: 'right' });
+    const pageLabel = ctx.isAnnex
+      ? `Page ${p} / ${ctx.totalStudyPages || doc.getNumberOfPages()}`
+      : `Page ${p - startPage + 1} / ${totalSheetPages}`;
+    doc.text(pageLabel, pageWidth - margin, pageHeight - 6.5, { align: 'right' });
+  }
 
   return { startPage, endPage: doc.getNumberOfPages() };
 }
@@ -543,8 +689,10 @@ function renderProctorPdfSection(
   lang: 'en' | 'fr',
   prR: number,
   prG: number,
-  prB: number
-) {
+  prB: number,
+  ensureSpace: (needed: number, curY: number) => number
+): number {
+  startY = ensureSpace(88, startY);
   const res = analysis.computedResults;
   const pts = res.points || [];
 
@@ -566,11 +714,11 @@ function renderProctorPdfSection(
   doc.setFontSize(10.5);
   doc.setTextColor(15, 23, 42);
   doc.text(`w_opm = ${res.opmMoisturePercent} %`, startX + 4, startY + 11.5);
-  doc.text(`ρd_opm = ${res.maxDryDensityGcm3} g/cm³`, startX + 4, startY + 17);
+  doc.text(cleanPdfText(`rho_d_opm = ${res.maxDryDensityGcm3} g/cm3`), startX + 4, startY + 17);
 
   doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
-  doc.text(`95% ρd = ${res.targetDryDensityGcm3} g/cm³`, startX + 46, startY + 17);
+  doc.text(cleanPdfText(`95% rho_d = ${res.targetDryDensityGcm3} g/cm3`), startX + 46, startY + 17);
 
   const fitMethodLabels: Record<string, { en: string; fr: string }> = {
     quadratic: { en: 'Polynomial deg. 2 (quadratic)', fr: 'Polynôme deg. 2 (quadratique)' },
@@ -596,9 +744,9 @@ function renderProctorPdfSection(
   doc.setTextColor(255, 255, 255);
   doc.text(lang === 'fr' ? 'Pt' : 'Pt', startX + 2, tableY + 4);
   doc.text(lang === 'fr' ? 'w (%)' : 'w (%)', startX + 14, tableY + 4);
-  doc.text(lang === 'fr' ? 'ρd (g/cm³)' : 'ρd (g/cm³)', startX + 32, tableY + 4);
+  doc.text(cleanPdfText(lang === 'fr' ? 'rho_d (g/cm3)' : 'rho_d (g/cm3)'), startX + 32, tableY + 4);
   doc.text(lang === 'fr' ? 'Comp (%)' : 'Comp (%)', startX + 54, tableY + 4);
-  doc.text(lang === 'fr' ? 'w_sat (%)' : 'w_sat (%)', startX + 72, tableY + 4);
+  doc.text(cleanPdfText(lang === 'fr' ? 'w_sat (%)' : 'w_sat (%)'), startX + 72, tableY + 4);
 
   tableY += 6;
   pts.forEach((p, idx) => {
@@ -632,6 +780,8 @@ function renderProctorPdfSection(
   } else {
     drawVectorProctorChart(doc, rightX, startY, rightWidth, chartHeight, res, prR, prG, prB, lang);
   }
+
+  return Math.max(tableY, startY + chartHeight) + 4;
 }
 
 function drawVectorProctorChart(
@@ -768,8 +918,10 @@ function renderGrainSizePdfSection(
   lang: 'en' | 'fr',
   prR: number,
   prG: number,
-  prB: number
-) {
+  prB: number,
+  ensureSpace: (needed: number, curY: number) => number
+): number {
+  startY = ensureSpace(88, startY);
   const res = analysis.computedResults;
   const rows = res.rows || [];
 
@@ -789,9 +941,9 @@ function renderGrainSizePdfSection(
 
   doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
-  doc.text(`Passant 2 mm: ${res.passing2mmPercent} % (Sable: ${res.sandPercent}%)`, startX + 4, startY + 11);
-  doc.text(`Passant 0,08 mm: ${res.passing008mmPercent} % (Fines: ${res.finesPercent}%)`, startX + 4, startY + 16);
-  doc.text(`LCPC: ${res.lcpcClassification}`, startX + 4, startY + 21);
+  doc.text(cleanPdfText(`Passant 2 mm: ${res.passing2mmPercent} % (Sable: ${res.sandPercent}%)`), startX + 4, startY + 11);
+  doc.text(cleanPdfText(`Passant 0,08 mm: ${res.passing008mmPercent} % (Fines: ${res.finesPercent}%)`), startX + 4, startY + 16);
+  doc.text(cleanPdfText(`LCPC: ${res.lcpcClassification}`), startX + 4, startY + 21);
 
   // Sieve Table
   let tableY = startY + 28;
@@ -835,6 +987,8 @@ function renderGrainSizePdfSection(
   } else {
     drawVectorGrainSizeChart(doc, rightX, startY, rightWidth, 65, res, prR, prG, prB, lang);
   }
+
+  return Math.max(tableY, startY + 65) + 4;
 }
 
 function drawVectorGrainSizeChart(
@@ -925,14 +1079,17 @@ function renderWaterContentPdfSection(
   lang: 'en' | 'fr',
   prR: number,
   prG: number,
-  prB: number
-) {
+  prB: number,
+  ensureSpace: (needed: number, curY: number) => number
+): number {
+  startY = ensureSpace(30, startY);
   const res = analysis.computedResults;
   const specs = res.specimens || [];
 
   // Summary KPI Card
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(prR, prG, prB);
+  doc.setLineWidth(0.4);
   doc.roundedRect(startX, startY, totalWidth, 18, 1.5, 1.5, 'FD');
 
   doc.setFont('times', 'bold');
@@ -946,7 +1103,8 @@ function renderWaterContentPdfSection(
 
   doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
-  doc.text(`${lang === 'fr' ? 'Écart entre prises' : 'Difference Δw'}: ${res.differenceBetweenSpecimensPercent}% (Max: ${res.maxTolerancePercent}%)`, startX + 50, startY + 14, { maxWidth: 82 });
+  const deltaLabel = lang === 'fr' ? 'Écart entre prises' : 'Difference Delta w';
+  doc.text(cleanPdfText(`${deltaLabel}: ${res.differenceBetweenSpecimensPercent}% (Max: ${res.maxTolerancePercent}%)`), startX + 50, startY + 14, { maxWidth: 82 });
 
   const repLabel = res.repeatabilityAccepted
     ? (lang === 'fr' ? 'RÉPÉTABILITÉ CONFORME' : 'REPEATABILITY PASSED')
@@ -957,30 +1115,33 @@ function renderWaterContentPdfSection(
 
   // Table
   let tableY = startY + 24;
+  tableY = ensureSpace(specs.length * 6 + 15, tableY);
+
   doc.setFillColor(prR, prG, prB);
   doc.rect(startX, tableY, totalWidth, 6, 'F');
   doc.setFont('times', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(255, 255, 255);
-  doc.text(lang === 'fr' ? 'Éprouvette' : 'Specimen', startX + 4, tableY + 4);
-  doc.text(lang === 'fr' ? 'Tare ID' : 'Tare ID', startX + 32, tableY + 4);
-  doc.text(lang === 'fr' ? 'Tare m0 (g)' : 'Tare m0 (g)', startX + 60, tableY + 4);
-  doc.text(lang === 'fr' ? 'Sol hum.+tare m1 (g)' : 'Wet+tare m1 (g)', startX + 90, tableY + 4);
-  doc.text(lang === 'fr' ? 'Sol sec+tare m2 (g)' : 'Dry+tare m2 (g)', startX + 124, tableY + 4);
-  doc.text(lang === 'fr' ? 'Teneur en eau w (%)' : 'Water Content w (%)', startX + 154, tableY + 4);
+  doc.text(lang === 'fr' ? 'Éprouvette' : 'Specimen', startX + 4, tableY + 4.2);
+  doc.text(lang === 'fr' ? 'Tare ID' : 'Tare ID', startX + 32, tableY + 4.2);
+  doc.text(lang === 'fr' ? 'Tare m0 (g)' : 'Tare m0 (g)', startX + 60, tableY + 4.2);
+  doc.text(lang === 'fr' ? 'Sol hum.+tare m1 (g)' : 'Wet+tare m1 (g)', startX + 90, tableY + 4.2);
+  doc.text(lang === 'fr' ? 'Sol sec+tare m2 (g)' : 'Dry+tare m2 (g)', startX + 124, tableY + 4.2);
+  doc.text(lang === 'fr' ? 'Teneur en eau w (%)' : 'Water Content w (%)', startX + 154, tableY + 4.2);
 
   tableY += 6;
   specs.forEach((s, idx) => {
     doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
     doc.rect(startX, tableY, totalWidth, 6, 'F');
     doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.2);
     doc.line(startX, tableY + 6, startX + totalWidth, tableY + 6);
 
     doc.setFont('times', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(15, 23, 42);
-    doc.text(s.specimenId, startX + 5, tableY + 4.2);
-    doc.text(s.containerId, startX + 34, tableY + 4.2);
+    doc.text(cleanPdfText(s.specimenId), startX + 5, tableY + 4.2);
+    doc.text(cleanPdfText(s.containerId), startX + 34, tableY + 4.2);
     doc.text(s.tareMassG.toFixed(2), startX + 62, tableY + 4.2);
     doc.text(s.wetSoilPlusTareG.toFixed(2), startX + 92, tableY + 4.2);
     doc.text(s.drySoilPlusTareG.toFixed(2), startX + 126, tableY + 4.2);
@@ -988,6 +1149,23 @@ function renderWaterContentPdfSection(
 
     tableY += 6;
   });
+
+  tableY += 8; // skip a blank line after table
+
+  // Water Content visual graph
+  let curY = tableY;
+  const hexColor = `#${prR.toString(16).padStart(2, '0')}${prG.toString(16).padStart(2, '0')}${prB.toString(16).padStart(2, '0')}`;
+  const chartImg = renderTestChartDataUrlSync('water_content', analysis.rawInput, res, lang, hexColor);
+  if (chartImg && chartImg.startsWith('data:image/png')) {
+    const chartH = 65;
+    curY = ensureSpace(chartH + 6, curY);
+    try {
+      doc.addImage(chartImg, 'PNG', startX, curY, totalWidth, chartH);
+      curY += chartH + 5;
+    } catch {}
+  }
+
+  return curY;
 }
 
 function renderGenericTestPdfSection(
@@ -1000,100 +1178,273 @@ function renderGenericTestPdfSection(
   lang: 'en' | 'fr',
   prR: number,
   prG: number,
-  prB: number
+  prB: number,
+  ensureSpace: (needed: number, curY: number) => number
 ): number {
   let cursorY = startY;
 
   // 1. Key Results KPI Box
-  const keyResults = testDef.keyResults ? testDef.keyResults(analysis.computedResults, lang) : [];
-  if (keyResults.length > 0) {
-    const kpiH = Math.max(18, 10 + Math.ceil(keyResults.length / 2) * 6);
+  const rawKeyResults = testDef.keyResults ? testDef.keyResults(analysis.computedResults, lang) : [];
+  if (rawKeyResults.length > 0) {
+    const keyResults = rawKeyResults.map((kr) => ({
+      label: cleanPdfText(kr.label),
+      value: cleanPdfText(`${kr.value}${kr.unit ? ' ' + kr.unit : ''}`),
+    }));
+
+    interface KpiRow {
+      isSingle: boolean;
+      items: Array<{ label: string; value: string }>;
+      rowHeight: number;
+    }
+
+    const rows: KpiRow[] = [];
+    let i = 0;
+    while (i < keyResults.length) {
+      const item1 = keyResults[i];
+      const isLong1 = item1.label.length + item1.value.length > 40;
+      if (isLong1 || i === keyResults.length - 1) {
+        const labelW = 45;
+        const valW = totalWidth - labelW - 10;
+        doc.setFont('times', 'normal');
+        doc.setFontSize(7.5);
+        const lLines = doc.splitTextToSize(`${item1.label} :`, labelW).length;
+        doc.setFont('times', 'bold');
+        doc.setFontSize(8);
+        const vLines = doc.splitTextToSize(item1.value, valW).length;
+        const maxLines = Math.max(lLines, vLines);
+        const rowH = Math.max(5.5, maxLines * 3.8 + 1.5);
+        rows.push({ isSingle: true, items: [item1], rowHeight: rowH });
+        i += 1;
+      } else {
+        const item2 = keyResults[i + 1];
+        const isLong2 = item2.label.length + item2.value.length > 40;
+        if (isLong2) {
+          const labelW = 45;
+          const valW = totalWidth - labelW - 10;
+          doc.setFont('times', 'normal');
+          doc.setFontSize(7.5);
+          const lLines = doc.splitTextToSize(`${item1.label} :`, labelW).length;
+          doc.setFont('times', 'bold');
+          doc.setFontSize(8);
+          const vLines = doc.splitTextToSize(item1.value, valW).length;
+          const maxLines = Math.max(lLines, vLines);
+          const rowH = Math.max(5.5, maxLines * 3.8 + 1.5);
+          rows.push({ isSingle: true, items: [item1], rowHeight: rowH });
+          i += 1;
+        } else {
+          const colW = (totalWidth - 6) / 2;
+          const labelW = 38;
+          const valW = colW - labelW - 2;
+
+          doc.setFont('times', 'normal');
+          doc.setFontSize(7.5);
+          const l1Lines = doc.splitTextToSize(`${item1.label} :`, labelW).length;
+          const l2Lines = doc.splitTextToSize(`${item2.label} :`, labelW).length;
+          doc.setFont('times', 'bold');
+          doc.setFontSize(8);
+          const v1Lines = doc.splitTextToSize(item1.value, valW).length;
+          const v2Lines = doc.splitTextToSize(item2.value, valW).length;
+
+          const maxLines = Math.max(l1Lines, l2Lines, v1Lines, v2Lines);
+          const rowH = Math.max(5.5, maxLines * 3.8 + 1.5);
+          rows.push({ isSingle: false, items: [item1, item2], rowHeight: rowH });
+          i += 2;
+        }
+      }
+    }
+
+    const titleH = 7.5;
+    const bottomPad = 3;
+    const totalKpiH = titleH + rows.reduce((sum, r) => sum + r.rowHeight, 0) + bottomPad;
+
+    cursorY = ensureSpace(totalKpiH + 5, cursorY);
+
+    // Draw box
     doc.setFillColor(248, 250, 252);
     doc.setDrawColor(prR, prG, prB);
-    doc.roundedRect(startX, cursorY, totalWidth, kpiH, 1.5, 1.5, 'FD');
+    doc.setLineWidth(0.4);
+    doc.roundedRect(startX, cursorY, totalWidth, totalKpiH, 1.5, 1.5, 'FD');
 
+    // Box Title
     doc.setFont('times', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(prR, prG, prB);
     doc.text(
       lang === 'fr' ? 'RÉSULTATS DE L’ESSAI' : 'COMPUTED TEST RESULTS',
       startX + 4,
-      cursorY + 5
+      cursorY + 5.5
     );
 
-    const colW = (totalWidth - 6) / 2;
-    const labelW = 46;
-    const valW = colW - labelW - 2;
+    let curRowY = cursorY + titleH;
+    rows.forEach((row) => {
+      if (row.isSingle) {
+        const it = row.items[0];
+        const labelW = 45;
+        const valW = totalWidth - labelW - 10;
 
-    let resY = cursorY + 11;
-    keyResults.forEach((kr, idx) => {
-      const colX = startX + 3 + (idx % 2) * (colW + 3);
-      doc.setFont('times', 'normal');
-      doc.setFontSize(7.5);
-      doc.setTextColor(71, 85, 105);
-      doc.text(`${kr.label} :`, colX, resY, { maxWidth: labelW });
+        doc.setFont('times', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`${it.label} :`, startX + 4, curRowY + 3.2, { maxWidth: labelW });
 
-      doc.setFont('times', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      doc.text(`${kr.value}${kr.unit ? ' ' + kr.unit : ''}`, colX + labelW + 2, resY, { maxWidth: valW });
+        doc.setFont('times', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(15, 23, 42);
+        doc.text(it.value, startX + 4 + labelW + 2, curRowY + 3.2, { maxWidth: valW });
+      } else {
+        const colW = (totalWidth - 6) / 2;
+        const labelW = 38;
+        const valW = colW - labelW - 2;
 
-      if (idx % 2 === 1 || idx === keyResults.length - 1) {
-        resY += 5.5;
+        row.items.forEach((it, colIdx) => {
+          const colX = startX + 4 + colIdx * (colW + 3);
+
+          doc.setFont('times', 'normal');
+          doc.setFontSize(7.5);
+          doc.setTextColor(71, 85, 105);
+          doc.text(`${it.label} :`, colX, curRowY + 3.2, { maxWidth: labelW });
+
+          doc.setFont('times', 'bold');
+          doc.setFontSize(8);
+          doc.setTextColor(15, 23, 42);
+          doc.text(it.value, colX + labelW + 2, curRowY + 3.2, { maxWidth: valW });
+        });
       }
+      curRowY += row.rowHeight;
     });
 
-    cursorY += kpiH + 5;
+    cursorY += totalKpiH + 5;
   }
 
   // 2. Input Parameters Box (if parameters exist)
   const params = testDef.inputSchema?.parameters || [];
   if (params.length > 0 && analysis.rawInput) {
-    const paramItems: Array<{ label: string; value: string }> = [];
+    const rawParamItems: Array<{ label: string; value: string }> = [];
     params.forEach((p) => {
       const val = analysis.rawInput[p.key];
       if (val !== undefined && val !== null && val !== '') {
-        paramItems.push({
-          label: p.label[lang] || p.key,
-          value: `${val}${p.unit ? ' ' + p.unit : ''}`,
+        rawParamItems.push({
+          label: cleanPdfText(p.label[lang] || p.key),
+          value: cleanPdfText(`${val}${p.unit ? ' ' + p.unit : ''}`),
         });
       }
     });
 
-    if (paramItems.length > 0) {
-      const pH = Math.max(14, 8 + Math.ceil(paramItems.length / 2) * 5);
+    if (rawParamItems.length > 0) {
+      interface ParamRow {
+        isSingle: boolean;
+        items: Array<{ label: string; value: string }>;
+        rowHeight: number;
+      }
+
+      const pRows: ParamRow[] = [];
+      let pi = 0;
+      while (pi < rawParamItems.length) {
+        const item1 = rawParamItems[pi];
+        const isLong1 = item1.label.length + item1.value.length > 40;
+        if (isLong1 || pi === rawParamItems.length - 1) {
+          const labelW = 44;
+          const valW = totalWidth - labelW - 10;
+          doc.setFont('times', 'normal');
+          doc.setFontSize(7);
+          const lLines = doc.splitTextToSize(`${item1.label} :`, labelW).length;
+          doc.setFont('times', 'bold');
+          const vLines = doc.splitTextToSize(item1.value, valW).length;
+          const maxLines = Math.max(lLines, vLines);
+          const rowH = Math.max(5, maxLines * 3.5 + 1.5);
+          pRows.push({ isSingle: true, items: [item1], rowHeight: rowH });
+          pi += 1;
+        } else {
+          const item2 = rawParamItems[pi + 1];
+          const isLong2 = item2.label.length + item2.value.length > 40;
+          if (isLong2) {
+            const labelW = 44;
+            const valW = totalWidth - labelW - 10;
+            doc.setFont('times', 'normal');
+            doc.setFontSize(7);
+            const lLines = doc.splitTextToSize(`${item1.label} :`, labelW).length;
+            doc.setFont('times', 'bold');
+            const vLines = doc.splitTextToSize(item1.value, valW).length;
+            const maxLines = Math.max(lLines, vLines);
+            const rowH = Math.max(5, maxLines * 3.5 + 1.5);
+            pRows.push({ isSingle: true, items: [item1], rowHeight: rowH });
+            pi += 1;
+          } else {
+            const colW = (totalWidth - 6) / 2;
+            const labelW = 38;
+            const valW = colW - labelW - 2;
+
+            doc.setFont('times', 'normal');
+            doc.setFontSize(7);
+            const l1Lines = doc.splitTextToSize(`${item1.label} :`, labelW).length;
+            const l2Lines = doc.splitTextToSize(`${item2.label} :`, labelW).length;
+            doc.setFont('times', 'bold');
+            const v1Lines = doc.splitTextToSize(item1.value, valW).length;
+            const v2Lines = doc.splitTextToSize(item2.value, valW).length;
+
+            const maxLines = Math.max(l1Lines, l2Lines, v1Lines, v2Lines);
+            const rowH = Math.max(5, maxLines * 3.5 + 1.5);
+            pRows.push({ isSingle: false, items: [item1, item2], rowHeight: rowH });
+            pi += 2;
+          }
+        }
+      }
+
+      const pTitleH = 6.5;
+      const pBottomPad = 2.5;
+      const totalPH = pTitleH + pRows.reduce((sum, r) => sum + r.rowHeight, 0) + pBottomPad;
+
+      cursorY = ensureSpace(totalPH + 5, cursorY);
+
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(startX, cursorY, totalWidth, pH, 1, 1, 'FD');
+      doc.setLineWidth(0.4);
+      doc.roundedRect(startX, cursorY, totalWidth, totalPH, 1, 1, 'FD');
 
       doc.setFont('times', 'bold');
       doc.setFontSize(7);
       doc.setTextColor(prR, prG, prB);
-      doc.text(lang === 'fr' ? 'PARAMÈTRES D’ESSAI' : 'TEST PARAMETERS', startX + 3, cursorY + 4);
+      doc.text(lang === 'fr' ? 'PARAMÈTRES D’ESSAI' : 'TEST PARAMETERS', startX + 4, cursorY + 4.5);
 
-      const colW = (totalWidth - 6) / 2;
-      const labelW = 44;
-      const valW = colW - labelW - 2;
+      let curRowY = cursorY + pTitleH;
+      pRows.forEach((row) => {
+        if (row.isSingle) {
+          const it = row.items[0];
+          const labelW = 44;
+          const valW = totalWidth - labelW - 10;
 
-      let py = cursorY + 9;
-      paramItems.forEach((pi, idx) => {
-        const colX = startX + 3 + (idx % 2) * (colW + 3);
-        doc.setFont('times', 'normal');
-        doc.setFontSize(7);
-        doc.setTextColor(71, 85, 105);
-        doc.text(`${pi.label} :`, colX, py, { maxWidth: labelW });
+          doc.setFont('times', 'normal');
+          doc.setFontSize(7);
+          doc.setTextColor(71, 85, 105);
+          doc.text(`${it.label} :`, startX + 4, curRowY + 3, { maxWidth: labelW });
 
-        doc.setFont('times', 'bold');
-        doc.setFontSize(7);
-        doc.setTextColor(15, 23, 42);
-        doc.text(pi.value, colX + labelW + 2, py, { maxWidth: valW });
+          doc.setFont('times', 'bold');
+          doc.setFontSize(7);
+          doc.setTextColor(15, 23, 42);
+          doc.text(it.value, startX + 4 + labelW + 2, curRowY + 3, { maxWidth: valW });
+        } else {
+          const colW = (totalWidth - 6) / 2;
+          const labelW = 38;
+          const valW = colW - labelW - 2;
 
-        if (idx % 2 === 1 || idx === paramItems.length - 1) {
-          py += 5;
+          row.items.forEach((it, colIdx) => {
+            const colX = startX + 4 + colIdx * (colW + 3);
+
+            doc.setFont('times', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(71, 85, 105);
+            doc.text(`${it.label} :`, colX, curRowY + 3, { maxWidth: labelW });
+
+            doc.setFont('times', 'bold');
+            doc.setFontSize(7);
+            doc.setTextColor(15, 23, 42);
+            doc.text(it.value, colX + labelW + 2, curRowY + 3, { maxWidth: valW });
+          });
         }
+        curRowY += row.rowHeight;
       });
 
-      cursorY += pH + 5;
+      cursorY += totalPH + 5;
     }
   }
 
@@ -1110,21 +1461,29 @@ function renderGenericTestPdfSection(
     doc.setFont('times', 'bold');
     doc.setFontSize(6.5);
     const headerLinesList = cols.map((c) => {
-      const lbl = c.label[lang] || c.key;
+      const lbl = cleanPdfText(c.label[lang] || c.key);
       return doc.splitTextToSize(lbl, innerColW);
     });
     const maxHdrLines = Math.max(1, ...headerLinesList.map((hl) => hl.length));
     const headerH = Math.max(6, maxHdrLines * 2.8 + 2.5);
 
-    doc.setFillColor(prR, prG, prB);
-    doc.rect(startX, cursorY, totalWidth, headerH, 'F');
-    doc.setTextColor(255, 255, 255);
-    cols.forEach((_, idx) => {
-      const colX = startX + idx * colW + cellPad;
-      const hl = headerLinesList[idx];
-      doc.text(hl, colX, cursorY + 3.2);
-    });
+    // Make sure we have space for header + at least 2 rows
+    cursorY = ensureSpace(headerH + 15, cursorY);
 
+    const drawTableHeader = (y: number) => {
+      doc.setFillColor(prR, prG, prB);
+      doc.rect(startX, y, totalWidth, headerH, 'F');
+      doc.setFont('times', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(255, 255, 255);
+      cols.forEach((_, idx) => {
+        const colX = startX + idx * colW + cellPad;
+        const hl = headerLinesList[idx];
+        doc.text(hl, colX, y + 3.2);
+      });
+    };
+
+    drawTableHeader(cursorY);
     cursorY += headerH;
 
     // Rows with word wrapping and dynamic row height
@@ -1133,15 +1492,23 @@ function renderGenericTestPdfSection(
       doc.setFontSize(6.5);
       const rowLinesList = cols.map((c) => {
         const val = row[c.key];
-        const valStr = val !== undefined && val !== null ? String(val) : '-';
+        const valStr = val !== undefined && val !== null ? cleanPdfText(String(val)) : '-';
         return doc.splitTextToSize(valStr, innerColW);
       });
       const maxRowLines = Math.max(1, ...rowLinesList.map((rl) => rl.length));
       const rowH = Math.max(5.5, maxRowLines * 2.8 + 2);
 
+      // Check space before drawing row: if cursorY + rowH > 270, break page and redraw header!
+      if (cursorY + rowH > 270) {
+        cursorY = ensureSpace(headerH + rowH + 10, 271);
+        drawTableHeader(cursorY);
+        cursorY += headerH;
+      }
+
       doc.setFillColor(rIdx % 2 === 0 ? 255 : 248, rIdx % 2 === 0 ? 255 : 250, rIdx % 2 === 0 ? 255 : 252);
       doc.rect(startX, cursorY, totalWidth, rowH, 'F');
       doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.2);
       doc.line(startX, cursorY + rowH, startX + totalWidth, cursorY + rowH);
 
       doc.setTextColor(15, 23, 42);
@@ -1154,7 +1521,7 @@ function renderGenericTestPdfSection(
       cursorY += rowH;
     });
 
-    cursorY += 8.5; // Always skip a blank line after a table before starting a new paragraph
+    cursorY += 8; // Always skip a blank line after a table before starting a new paragraph
   }
 
   // 4. Exact Test Graph (for tests with graphs)
@@ -1163,10 +1530,7 @@ function renderGenericTestPdfSection(
     const chartImg = renderTestChartDataUrlSync(analysis.testType, analysis.rawInput, analysis.computedResults, lang, hexColor);
     if (chartImg && chartImg.startsWith('data:image/png')) {
       const chartH = 65;
-      if (cursorY + chartH > 275) {
-        doc.addPage();
-        cursorY = 25;
-      }
+      cursorY = ensureSpace(chartH + 6, cursorY);
       try {
         doc.addImage(chartImg, 'PNG', startX, cursorY, totalWidth, chartH);
         cursorY += chartH + 5;

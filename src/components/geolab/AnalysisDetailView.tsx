@@ -297,27 +297,27 @@ export const AnalysisDetailView: React.FC<Props> = ({
 
       {/* Project & Sample Context Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-xs grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div>
+        <div className="min-w-0">
           <span className="text-slate-400 block mb-0.5">{language === 'fr' ? 'Client' : 'Client'}</span>
-          <span className="font-bold text-white flex items-center gap-1">
-            <Building2 className="w-3.5 h-3.5 text-blue-400" />
-            {client.companyName}
+          <span className="font-bold text-white flex items-center gap-1 min-w-0">
+            <Building2 className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+            <span className="truncate">{client.companyName}</span>
           </span>
         </div>
-        <div>
+        <div className="min-w-0">
           <span className="text-slate-400 block mb-0.5">{language === 'fr' ? 'Projet' : 'Project'}</span>
-          <span className="font-bold text-white">{project.projectName}</span>
+          <span className="font-bold text-white break-words block">{project.projectName}</span>
         </div>
-        <div>
+        <div className="min-w-0">
           <span className="text-slate-400 block mb-0.5">{language === 'fr' ? 'Échantillon' : 'Sample'}</span>
-          <span className="font-bold text-white flex items-center gap-1">
-            <Layers className="w-3.5 h-3.5 text-blue-400" />
-            {sample.sampleId} {sample.depth ? `(${sample.depth})` : ''}
+          <span className="font-bold text-white flex items-center gap-1 min-w-0">
+            <Layers className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+            <span className="truncate">{sample.sampleId} {sample.depth ? `(${sample.depth})` : ''}</span>
           </span>
         </div>
-        <div>
+        <div className="min-w-0">
           <span className="text-slate-400 block mb-0.5">{language === 'fr' ? 'Lieu / Localisation' : 'Site'}</span>
-          <span className="font-bold text-white">{project.siteLocation}</span>
+          <span className="font-bold text-white break-words block">{project.siteLocation}</span>
         </div>
       </div>
 
@@ -331,42 +331,42 @@ export const AnalysisDetailView: React.FC<Props> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           {analysis.testType === 'proctor' && (
             <>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">Teneur en eau Optimum (w_opm)</span>
-                <span className="text-xl font-bold text-white">{analysis.computedResults.opmMoisturePercent} %</span>
+                <span className="text-xl font-bold text-white break-words">{analysis.computedResults.opmMoisturePercent} %</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">Densité sèche max (ρd_opm)</span>
-                <span className="text-xl font-bold text-white">{analysis.computedResults.maxDryDensityGcm3} g/cm³</span>
+                <span className="text-xl font-bold text-white break-words">{analysis.computedResults.maxDryDensityGcm3} g/cm³</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">95% ρd (Cible de compactage)</span>
-                <span className="text-xl font-bold text-white">{analysis.computedResults.targetDryDensityGcm3} g/cm³</span>
+                <span className="text-xl font-bold text-white break-words">{analysis.computedResults.targetDryDensityGcm3} g/cm³</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">R² Ajustement polynomial</span>
-                <span className="text-xl font-bold text-emerald-400">{analysis.computedResults.fittedCoefficients.r2}</span>
+                <span className="text-xl font-bold text-emerald-400 break-words">{analysis.computedResults.fittedCoefficients.r2}</span>
               </div>
             </>
           )}
 
           {analysis.testType === 'grain_size' && (
             <>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">Passant à 2 mm</span>
-                <span className="text-xl font-bold text-white">{analysis.computedResults.passing2mmPercent} %</span>
+                <span className="text-xl font-bold text-white break-words">{analysis.computedResults.passing2mmPercent} %</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">Passant à 0,08 mm (Fines)</span>
-                <span className="text-xl font-bold text-white">{analysis.computedResults.passing008mmPercent} %</span>
+                <span className="text-xl font-bold text-white break-words">{analysis.computedResults.passing008mmPercent} %</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">Classification LCPC</span>
-                <span className="text-sm font-bold text-white truncate block">{analysis.computedResults.lcpcClassification}</span>
+                <span className="text-sm font-bold text-white break-words block">{analysis.computedResults.lcpcClassification}</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">Coefficients Cu / Cc</span>
-                <span className="text-sm font-bold text-white">
+                <span className="text-sm font-bold text-white break-words">
                   {analysis.computedResults.cu ? `Cu=${analysis.computedResults.cu}` : '-'} / {analysis.computedResults.cc ? `Cc=${analysis.computedResults.cc}` : '-'}
                 </span>
               </div>
@@ -375,17 +375,17 @@ export const AnalysisDetailView: React.FC<Props> = ({
 
           {analysis.testType === 'water_content' && (
             <>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">Teneur en eau moyenne (w)</span>
-                <span className="text-xl font-bold text-white">{analysis.computedResults.meanWaterContentPercent} %</span>
+                <span className="text-xl font-bold text-white break-words">{analysis.computedResults.meanWaterContentPercent} %</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">Écart entre éprouvettes (Δw)</span>
-                <span className="text-xl font-bold text-white">{analysis.computedResults.differenceBetweenSpecimensPercent} %</span>
+                <span className="text-xl font-bold text-white break-words">{analysis.computedResults.differenceBetweenSpecimensPercent} %</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0 sm:col-span-2">
                 <span className="text-slate-400 block">Critère de répétabilité</span>
-                <span className={`text-sm font-bold ${analysis.computedResults.repeatabilityAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`text-sm font-bold break-words ${analysis.computedResults.repeatabilityAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
                   {analysis.computedResults.repeatabilityAccepted ? 'CONFORME' : 'NON CONFORME'}
                 </span>
               </div>
@@ -394,21 +394,21 @@ export const AnalysisDetailView: React.FC<Props> = ({
 
           {analysis.testType === 'specific_gravity' && (
             <>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Densité Absolue (Gs)' : 'Specific Gravity (Gs)'}</span>
-                <span className="text-xl font-bold text-white">{(analysis.computedResults.meanGs ?? analysis.computedResults.specificGravity)?.toFixed(3)}</span>
+                <span className="text-xl font-bold text-white break-words">{(analysis.computedResults.meanGs ?? analysis.computedResults.specificGravity)?.toFixed(3)}</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Masse Volumique (ρs)' : 'Solid Density (ρs)'}</span>
-                <span className="text-xl font-bold text-white">{(analysis.computedResults.solidDensityGcm3 ?? analysis.computedResults.densityTm3 ?? analysis.computedResults.meanGs)?.toFixed(3)} t/m³</span>
+                <span className="text-xl font-bold text-white break-words">{(analysis.computedResults.solidDensityGcm3 ?? analysis.computedResults.densityTm3 ?? analysis.computedResults.meanGs)?.toFixed(3)} t/m³</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Écart d\'essais (ΔGs)' : 'Portion Delta (ΔGs)'}</span>
-                <span className="text-xl font-bold text-white">{analysis.computedResults.differenceGs ?? 0}</span>
+                <span className="text-xl font-bold text-white break-words">{analysis.computedResults.differenceGs ?? 0}</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Répétabilité' : 'Repeatability'}</span>
-                <span className={`text-sm font-bold ${analysis.computedResults.repeatabilityAccepted ? 'text-emerald-400' : 'text-amber-400'}`}>
+                <span className={`text-sm font-bold break-words ${analysis.computedResults.repeatabilityAccepted ? 'text-emerald-400' : 'text-amber-400'}`}>
                   {analysis.computedResults.repeatabilityAccepted ? (language === 'fr' ? 'CONFORME ≤ 0.03' : 'ACCEPTED ≤ 0.03') : (language === 'fr' ? 'ALERTE > 0.03' : 'DEVIATION > 0.03')}
                 </span>
               </div>
@@ -417,99 +417,99 @@ export const AnalysisDetailView: React.FC<Props> = ({
 
           {analysis.testType === 'bulk_density' && (
             <>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Masse Volumique Apparente' : 'Mean Bulk Density'}</span>
-                <span className="text-xl font-bold text-white">{(analysis.computedResults.meanBulkDensityGcm3 ?? analysis.computedResults.meanBulkDensityTm3)?.toFixed(3)} t/m³</span>
+                <span className="text-xl font-bold text-white break-words">{(analysis.computedResults.meanBulkDensityGcm3 ?? analysis.computedResults.meanBulkDensityTm3)?.toFixed(3)} t/m³</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">{language === 'fr' ? 'État de Compactage' : 'Compaction State'}</span>
-                <span className="text-sm font-bold text-emerald-400 uppercase">{analysis.computedResults.compactionState || '-'}</span>
+                <span className="text-sm font-bold text-emerald-400 uppercase break-words">{analysis.computedResults.compactionState || '-'}</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0 sm:col-span-2">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Écart Min/Max' : 'Delta Range'}</span>
-                <span className="text-xl font-bold text-white">{(analysis.computedResults.rangeTm3 ?? 0)?.toFixed(3)} t/m³</span>
+                <span className="text-xl font-bold text-white break-words">{(analysis.computedResults.rangeTm3 ?? 0)?.toFixed(3)} t/m³</span>
               </div>
             </>
           )}
 
           {analysis.testType === 'sand_equivalent' && (
             <>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">ES Visuel (ESv)</span>
-                <span className="text-xl font-bold text-amber-400">{(analysis.computedResults.meanEsVisual ?? analysis.computedResults.esVisual)?.toFixed(1)} %</span>
+                <span className="text-xl font-bold text-amber-400 break-words">{(analysis.computedResults.meanEsVisual ?? analysis.computedResults.esVisual)?.toFixed(1)} %</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">ES Piston (ESp)</span>
-                <span className="text-xl font-bold text-blue-400">{(analysis.computedResults.meanEsPiston ?? analysis.computedResults.esPiston)?.toFixed(1)} %</span>
+                <span className="text-xl font-bold text-blue-400 break-words">{(analysis.computedResults.meanEsPiston ?? analysis.computedResults.esPiston)?.toFixed(1)} %</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0 sm:col-span-2">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Qualification' : 'Sand Classification'}</span>
-                <span className="text-sm font-bold text-emerald-400">{analysis.computedResults.sandClassification || '-'}</span>
+                <span className="text-sm font-bold text-emerald-400 break-words">{analysis.computedResults.sandClassification || '-'}</span>
               </div>
             </>
           )}
 
           {analysis.testType === 'los_angeles' && (
             <>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Coefficient Los Angeles' : 'Los Angeles Coeff.'}</span>
-                <span className="text-xl font-bold text-rose-400">{(analysis.computedResults.laCoefficient ?? analysis.computedResults.meanLa)?.toFixed(1)} %</span>
+                <span className="text-xl font-bold text-rose-400 break-words">{(analysis.computedResults.laCoefficient ?? analysis.computedResults.meanLa)?.toFixed(1)} %</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0 sm:col-span-3">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Catégorie Normative' : 'EN Category'}</span>
-                <span className="text-sm font-bold text-white uppercase">{analysis.computedResults.laCategory || '-'}</span>
+                <span className="text-sm font-bold text-white uppercase break-words">{analysis.computedResults.laCategory || '-'}</span>
               </div>
             </>
           )}
 
           {analysis.testType === 'micro_deval' && (
             <>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Coefficient Micro-Deval' : 'Micro-Deval Coeff.'}</span>
-                <span className="text-xl font-bold text-purple-400">{(analysis.computedResults.mdeCoefficient ?? analysis.computedResults.meanMde)?.toFixed(1)} %</span>
+                <span className="text-xl font-bold text-purple-400 break-words">{(analysis.computedResults.mdeCoefficient ?? analysis.computedResults.meanMde)?.toFixed(1)} %</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0 sm:col-span-3">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Catégorie Normative' : 'EN Category'}</span>
-                <span className="text-sm font-bold text-white uppercase">{analysis.computedResults.mdeCategory || '-'}</span>
+                <span className="text-sm font-bold text-white uppercase break-words">{analysis.computedResults.mdeCategory || '-'}</span>
               </div>
             </>
           )}
 
           {analysis.testType === 'flakiness' && (
             <>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Indice d\'Aplatissement (FI)' : 'Flakiness Index (FI)'}</span>
-                <span className="text-xl font-bold text-teal-400">{(analysis.computedResults.flakinessIndexA ?? analysis.computedResults.globalFlakinessIndex)?.toFixed(1)} %</span>
+                <span className="text-xl font-bold text-teal-400 break-words">{(analysis.computedResults.flakinessIndexA ?? analysis.computedResults.globalFlakinessIndex)?.toFixed(1)} %</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0 sm:col-span-3">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Catégorie Normative' : 'EN Category'}</span>
-                <span className="text-sm font-bold text-white uppercase">{analysis.computedResults.flakinessCategory || '-'}</span>
+                <span className="text-sm font-bold text-white uppercase break-words">{analysis.computedResults.flakinessCategory || '-'}</span>
               </div>
             </>
           )}
 
           {analysis.testType === 'surface_cleanliness' && (
             <>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Propreté Superficielle (P)' : 'Surface Cleanliness (P)'}</span>
-                <span className="text-xl font-bold text-amber-400">{(analysis.computedResults.meanCleanlinessPercentageP ?? analysis.computedResults.cleanlinessPercentageP)?.toFixed(2)} %</span>
+                <span className="text-xl font-bold text-amber-400 break-words">{(analysis.computedResults.meanCleanlinessPercentageP ?? analysis.computedResults.cleanlinessPercentageP)?.toFixed(2)} %</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0 sm:col-span-3">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Catégorie Normative' : 'EN Category'}</span>
-                <span className="text-sm font-bold text-white uppercase">{analysis.computedResults.cleanlinessCategory || '-'}</span>
+                <span className="text-sm font-bold text-white uppercase break-words">{analysis.computedResults.cleanlinessCategory || '-'}</span>
               </div>
             </>
           )}
 
           {analysis.testType === 'methylene_blue' && (
             <>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Valeur de Bleu (VBS)' : 'Methylene Blue (VBS)'}</span>
-                <span className="text-xl font-bold text-blue-400">{(analysis.computedResults.primaryValue ?? analysis.computedResults.vbsValue ?? analysis.computedResults.mbValue)?.toFixed(2)} g/100g</span>
+                <span className="text-xl font-bold text-blue-400 break-words">{(analysis.computedResults.primaryValue ?? analysis.computedResults.vbsValue ?? analysis.computedResults.mbValue)?.toFixed(2)} g/100g</span>
               </div>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 min-w-0 sm:col-span-3">
                 <span className="text-slate-400 block">{language === 'fr' ? 'Sensibilité GTR' : 'Soil Sensitivity'}</span>
-                <span className="text-sm font-bold text-white">{analysis.computedResults.soilSensitivityClass || '-'}</span>
+                <span className="text-sm font-bold text-white break-words">{analysis.computedResults.soilSensitivityClass || '-'}</span>
               </div>
             </>
           )}

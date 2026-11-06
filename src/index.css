@@ -58,6 +58,18 @@
   body.dark .bg-slate-100 {
     background-color: #1e293b !important;
   }
+
+  /* Card and grid boundary protections: ensure text respects card boundaries across FraGeo */
+  .card,
+  [class*="rounded-xl"],
+  [class*="rounded-lg"],
+  [class*="rounded-2xl"],
+  [class*="rounded-md"] {
+    min-width: 0;
+  }
+  p, span, h1, h2, h3, h4, h5, h6, div, td, th {
+    overflow-wrap: break-word;
+  }
 }
 
 /* Custom Scrollbar */

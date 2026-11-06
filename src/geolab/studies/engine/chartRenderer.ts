@@ -225,6 +225,45 @@ export function renderTestChartDataUrlSync(
   }
 }
 
+function drawWrappedCanvasText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxLines = 3
+): number {
+  if (!text) return y;
+  const words = text.split(' ');
+  let line = '';
+  let curY = y;
+  let linesDrawn = 0;
+
+  for (let n = 0; n < words.length; n++) {
+    const testLine = line + (line ? ' ' : '') + words[n];
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && n > 0) {
+      if (linesDrawn === maxLines - 1 && n < words.length - 1) {
+        ctx.fillText(line + '...', x, curY);
+        return curY + lineHeight;
+      }
+      ctx.fillText(line, x, curY);
+      line = words[n];
+      curY += lineHeight;
+      linesDrawn++;
+      if (linesDrawn >= maxLines) break;
+    } else {
+      line = testLine;
+    }
+  }
+  if (line && linesDrawn < maxLines) {
+    ctx.fillText(line, x, curY);
+    curY += lineHeight;
+  }
+  return curY;
+}
+
 function drawChartOnContext(ctx: CanvasRenderingContext2D, config: ChartConfig, width: number, height: number) {
   const isFr = config.lang === 'fr';
 
@@ -840,7 +879,7 @@ function drawChartOnContext(ctx: CanvasRenderingContext2D, config: ChartConfig, 
     ctx.textAlign = 'left';
     ctx.font = 'bold 13px "Times New Roman", Times, serif';
     ctx.fillStyle = '#cbd5e1';
-    ctx.fillText(isFr ? 'Échelle de Propreté (Seuils Normatifs NF P94-071-1 / EN 933-8) :' : 'Cleanliness Scale (Normative Thresholds) :', 45, gaugeY + 30);
+    ctx.fillText(isFr ? 'Échelle de Propreté (Seuils Normatifs NF / EN) :' : 'Cleanliness Scale (Normative Thresholds) :', 45, gaugeY + 28);
 
     const currentCat = esP < 60
       ? (isFr ? 'Sol Argileux (Rejet)' : 'Clayey Soil (Reject)')
@@ -851,14 +890,14 @@ function drawChartOnContext(ctx: CanvasRenderingContext2D, config: ChartConfig, 
       : (isFr ? 'Sable Très Propre' : 'Very Clean Sand');
 
     ctx.textAlign = 'right';
-    ctx.font = 'bold 14px "Times New Roman", Times, serif';
+    ctx.font = 'bold 13px "Times New Roman", Times, serif';
     ctx.fillStyle = esP >= 70 ? '#34d399' : esP >= 60 ? '#fbbf24' : '#ef4444';
-    ctx.fillText(currentCat, 30 + gaugeW - 15, gaugeY + 30);
+    ctx.fillText(currentCat, 30 + gaugeW - 25, gaugeY + 28);
     ctx.textAlign = 'left';
 
     // Segmented Bar
     const barX = 45;
-    const barY = gaugeY + 55;
+    const barY = gaugeY + 58;
     const totalBarW = gaugeW - 30;
 
     // Segment 1: < 60%
@@ -877,8 +916,8 @@ function drawChartOnContext(ctx: CanvasRenderingContext2D, config: ChartConfig, 
     ctx.fillStyle = '#3b82f6';
     ctx.fillRect(barX + totalBarW * 0.8, barY, totalBarW * 0.2, 20);
 
-    // Marker for current ESp
-    const markerFrac = Math.max(0, Math.min(100, esP)) / 100;
+    // Marker for current ESp (clamped to prevent drawing off-canvas or outside card boundaries)
+    const markerFrac = Math.max(0.04, Math.min(0.96, esP / 100));
     const markerX = barX + totalBarW * markerFrac;
 
     ctx.fillStyle = '#ffffff';
@@ -892,7 +931,8 @@ function drawChartOnContext(ctx: CanvasRenderingContext2D, config: ChartConfig, 
     ctx.font = 'bold 12px "Times New Roman", Times, serif';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
-    ctx.fillText(`${esP.toFixed(1)}%`, markerX, barY - 18);
+    const clampedTextX = Math.max(barX + 20, Math.min(barX + totalBarW - 20, markerX));
+    ctx.fillText(`${esP.toFixed(1)}%`, clampedTextX, barY - 18);
 
     // Threshold labels
     ctx.font = '11px "Times New Roman", Times, serif';
@@ -952,19 +992,23 @@ function drawChartOnContext(ctx: CanvasRenderingContext2D, config: ChartConfig, 
 
     // Right Diagnostics
     const rightX = width / 2;
-    ctx.font = 'bold 16px "Times New Roman", Times, serif';
+    const maxDiagW = width - rightX - 50;
+    ctx.font = 'bold 15px "Times New Roman", Times, serif';
     ctx.fillStyle = '#ffffff';
     const diagTitle = coeff <= 20
       ? (isFr ? 'Très Haute Dureté (Couche de Roulement)' : 'High Wear Resistance (Surface Course)')
       : coeff <= 30
       ? (isFr ? 'Dureté Moyenne (Couche de Base / Fondation)' : 'Medium Hardness (Base Course)')
       : (isFr ? 'Matériau Évolutif ou Tendre (Remblais)' : 'Soft Material (Fill only)');
-    ctx.fillText(diagTitle, rightX, 130);
+    const diagNextY = drawWrappedCanvasText(ctx, diagTitle, rightX, 125, maxDiagW, 20, 2);
 
-    ctx.font = '14px "Times New Roman", Times, serif';
+    ctx.font = '13px "Times New Roman", Times, serif';
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText(isFr ? 'Norme d\'essai : NF EN 1097-2 / ASTM C131' : 'Standard: NF EN 1097-2 / ASTM C131', rightX, 165);
-    ctx.fillText(isFr ? 'Contrôle de conformité granulats pour assises et enrobés' : 'Aggregate compliance for subbase and asphalt', rightX, 195);
+    const stdText = isFr ? 'Norme d\'essai : NF EN 1097-2 / ASTM C131' : 'Standard: NF EN 1097-2 / ASTM C131';
+    drawWrappedCanvasText(ctx, stdText, rightX, Math.max(diagNextY + 4, 160), maxDiagW, 18, 1);
+
+    const subCompliance = isFr ? 'Contrôle de conformité granulats pour assises et enrobés' : 'Aggregate compliance for subbase and asphalt';
+    drawWrappedCanvasText(ctx, subCompliance, rightX, Math.max(diagNextY + 28, 188), maxDiagW, 18, 2);
   }
 
   // -------------------------------------------------------------
@@ -1004,19 +1048,23 @@ function drawChartOnContext(ctx: CanvasRenderingContext2D, config: ChartConfig, 
     ctx.fillText(`${fi.toFixed(1)} %`, 60, 190);
 
     const rightX = width / 2;
-    ctx.font = 'bold 16px "Times New Roman", Times, serif';
+    const maxShapeW = width - rightX - 50;
+    ctx.font = 'bold 15px "Times New Roman", Times, serif';
     ctx.fillStyle = '#ffffff';
     const shapeTitle = fi <= 15
       ? (isFr ? 'Forme cubique optimale (Enrobés / Bétons)' : 'Optimal cubic shape (Asphalt / Concrete)')
       : fi <= 25
       ? (isFr ? 'Forme courante acceptable' : 'Acceptable aggregate shape')
       : (isFr ? 'Granulats plats excessifs (Rejet couches nobles)' : 'Excessive flat particles (Reject)');
-    ctx.fillText(shapeTitle, rightX, 130);
+    const shapeNextY = drawWrappedCanvasText(ctx, shapeTitle, rightX, 125, maxShapeW, 20, 2);
 
-    ctx.font = '14px "Times New Roman", Times, serif';
+    ctx.font = '13px "Times New Roman", Times, serif';
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText(isFr ? 'Norme d\'essai : NF EN 933-3' : 'Standard: NF EN 933-3', rightX, 165);
-    ctx.fillText(isFr ? 'Tamisage sur grilles à fentes parallèles' : 'Sieving on bar sieves with parallel slots', rightX, 195);
+    const flakStd = isFr ? 'Norme d\'essai : NF EN 933-3' : 'Standard: NF EN 933-3';
+    drawWrappedCanvasText(ctx, flakStd, rightX, Math.max(shapeNextY + 4, 160), maxShapeW, 18, 1);
+
+    const flakDesc = isFr ? 'Tamisage sur grilles à fentes parallèles' : 'Sieving on bar sieves with parallel slots';
+    drawWrappedCanvasText(ctx, flakDesc, rightX, Math.max(shapeNextY + 28, 188), maxShapeW, 18, 2);
   }
 
   // -------------------------------------------------------------
@@ -1050,22 +1098,25 @@ function drawChartOnContext(ctx: CanvasRenderingContext2D, config: ChartConfig, 
     ctx.fillText(`${vbs.toFixed(2)} g/100g`, 60, 190);
 
     const rightX = width / 2;
-    ctx.font = 'bold 16px "Times New Roman", Times, serif';
+    const maxSensW = width - rightX - 50; // Inner boundary padding to prevent escaping card
+    ctx.font = 'bold 14px "Times New Roman", Times, serif';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(sensClass || (vbs < 1.5 ? (isFr ? 'Sableux peu sensible' : 'Low sensitivity sand') : (isFr ? 'Sol argileux plastique' : 'Plastic clayey soil')), rightX, 130);
+    const sensTitle = sensClass || (vbs < 1.5 ? (isFr ? 'Sableux peu sensible' : 'Low sensitivity sand') : (isFr ? 'Sol argileux plastique' : 'Plastic clayey soil'));
+    const sensNextY = drawWrappedCanvasText(ctx, sensTitle, rightX, 120, maxSensW, 18, 3);
 
-    ctx.font = '14px "Times New Roman", Times, serif';
+    ctx.font = '13px "Times New Roman", Times, serif';
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText(
-      vbs < 0.1
-        ? (isFr ? 'Sol insensible à l\'eau (Sols sableux purs)' : 'Water-insensitive soil')
-        : vbs < 1.5
-        ? (isFr ? 'Sol peu argileux à moyen (Sensibilité modérée)' : 'Low to medium clay activity')
-        : (isFr ? 'Sol très argileux plastique (Sensibilité élevée au gonflement)' : 'Highly plastic swelling clay'),
-      rightX,
-      165
-    );
-    ctx.fillText(isFr ? 'Norme d\'essai : NF P94-068' : 'Standard: NF P94-068', rightX, 195);
+    const sensDesc = vbs < 0.1
+      ? (isFr ? 'Sol insensible à l\'eau (Sols sableux purs)' : 'Water-insensitive soil')
+      : vbs < 1.5
+      ? (isFr ? 'Sol peu argileux à moyen (Sensibilité modérée)' : 'Low to medium clay activity')
+      : (isFr ? 'Sol très argileux plastique (Sensibilité élevée au gonflement)' : 'Highly plastic swelling clay');
+    const sensDescY = Math.max(sensNextY + 4, 160);
+    drawWrappedCanvasText(ctx, sensDesc, rightX, sensDescY, maxSensW, 17, 2);
+
+    ctx.font = '12px "Times New Roman", Times, serif';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText(isFr ? 'Norme d\'essai : NF P94-068' : 'Standard: NF P94-068', rightX, Math.max(sensDescY + 28, 202));
   }
 
   // -------------------------------------------------------------
