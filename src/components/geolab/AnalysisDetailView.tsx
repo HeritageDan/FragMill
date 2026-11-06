@@ -211,11 +211,11 @@ export const AnalysisDetailView: React.FC<Props> = ({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Fiche_Recap_${sample.sampleId.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
+      a.download = `Rapport_Analyses_${sample.sampleId.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      alert(`Fiche Récapitulative export error: ${err.message}`);
+      alert(`Analyses Report export error: ${err.message}`);
     } finally {
       setIsExportingSummary(false);
     }
@@ -360,10 +360,10 @@ export const AnalysisDetailView: React.FC<Props> = ({
             onClick={handleDownloadSoilSummaryExcel}
             disabled={isExportingSummary}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition shadow"
-            title={language === 'fr' ? 'Fiche récapitulative des sols (Assurance Qualité / Synthèse Multi-Essais)' : 'Soil Summary Sheet (QA Reference Format)'}
+            title={language === 'fr' ? "Rapport d'analyses de l'échantillon (Assurance Qualité / Synthèse Multi-Essais)" : 'Sample Analyses Report (QA Reference Format)'}
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-amber-200" />
-            {isExportingSummary ? '...' : language === 'fr' ? 'Fiche Récap (.xlsx)' : 'Soil Summary (.xlsx)'}
+            {isExportingSummary ? '...' : language === 'fr' ? 'Rapport Analyses (.xlsx)' : 'Analyses Report (.xlsx)'}
           </button>
 
           <button

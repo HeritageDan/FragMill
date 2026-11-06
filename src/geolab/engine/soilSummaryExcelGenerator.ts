@@ -17,6 +17,7 @@ export interface SoilSummaryExcelOptions {
   analyses?: GeoLabAnalysis[];
   language?: 'en' | 'fr';
   destination?: string;
+  sheetName?: string;
   conforme?: 'Oui' | 'Non' | boolean;
   observations?: string;
   checkedBy?: string;
@@ -245,16 +246,23 @@ export async function generateSoilSummaryExcelReport(options: SoilSummaryExcelOp
     destination: options.destination || 'en place',
   });
 
+  const cleanSheetName = options.sheetName
+    ? options.sheetName.replace(/[\\/*?:[\]]/g, '_').trim().substring(0, 31)
+    : 'Fiche_Recap';
+
   // 3. Build Chart 1: Courbe Granulométrique (Tamis Log vs Passant %)
-  const chart1Xml = buildSummaryGrainSizeChartXml(4, 34, lang);
+  const chart1Xml = buildSummaryGrainSizeChartXml(4, 34, lang, cleanSheetName);
 
   // 4. Build Chart 2: Courbe Proctor et Saturation (w vs rhos)
-  const chart2Xml = buildSummaryProctorChartXml(6, 6 + compactionPoints.length - 1, 15, 15 + saturationPoints.length - 1, lang, compactionPoints, saturationPoints);
+  const chart2Xml = buildSummaryProctorChartXml(6, 6 + compactionPoints.length - 1, 15, 15 + saturationPoints.length - 1, lang, compactionPoints, saturationPoints, cleanSheetName);
 
-  // 5. Structure Zip
+  // 5. Build Chart 3: Courbe CBR (CBR vs Compacité)
+  const chart3Xml = buildSummaryCBRChartXml(6, 6 + compactionPoints.length - 1, lang, compactionPoints, cleanSheetName);
+
+  // 6. Structure Zip
   zip.file('[Content_Types].xml', getSummaryContentTypesXml(logos));
   zip.file('_rels/.rels', getSummaryGlobalRelsXml());
-  zip.file('xl/workbook.xml', getSummaryWorkbookXml('Fiche_Recap'));
+  zip.file('xl/workbook.xml', getSummaryWorkbookXml(cleanSheetName));
   zip.file('xl/_rels/workbook.xml.rels', getSummaryWorkbookRelsXml());
   zip.file('xl/styles.xml', getSummaryStylesXml(orgProfile.primaryColor));
   zip.file('xl/worksheets/sheet1.xml', sheetXml);
@@ -271,6 +279,7 @@ export async function generateSoilSummaryExcelReport(options: SoilSummaryExcelOp
   zip.file('xl/drawings/_rels/drawing1.xml.rels', getSummaryDrawingRelsXml(logos));
   zip.file('xl/charts/chart1.xml', chart1Xml);
   zip.file('xl/charts/chart2.xml', chart2Xml);
+  zip.file('xl/charts/chart3.xml', chart3Xml);
 
   zip.file('docProps/core.xml', getSummaryCorePropsXml(sample.sampleId, orgProfile.companyName));
   zip.file('docProps/app.xml', getSummaryAppPropsXml());
@@ -675,8 +684,12 @@ function buildSummarySheetXml(data: any): string {
 // Native DrawingML Charts for the Soil Summary Sheet
 // -------------------------------------------------------------
 
-function buildSummaryGrainSizeChartXml(startRow: number, endRow: number, lang: 'en' | 'fr'): string {
-  const sheetName = 'Fiche_Recap';
+function buildSummaryGrainSizeChartXml(
+  startRow: number,
+  endRow: number,
+  lang: 'en' | 'fr',
+  sheetName: string = 'Fiche_Recap'
+): string {
   const chartTitle = lang === 'fr' ? 'COURBE GRANULOMETRIQUE' : 'PARTICLE SIZE DISTRIBUTION';
   const ser1Title = lang === 'fr' ? 'Passant cumulé' : 'Cumulative Passing';
   const xTitle = lang === 'fr' ? 'Diamètre des particules (mm)' : 'Particle diameter (mm)';
@@ -695,7 +708,7 @@ function buildSummaryGrainSizeChartXml(startRow: number, endRow: number, lang: '
           <c:order val="0"/>
           <c:tx><c:v>${ser1Title}</c:v></c:tx>
           <c:spPr>
-            <a:ln w="25400" cmpd="s">
+            <a:ln w="25400" cmpd="sng">
               <a:solidFill><a:srgbClr val="2563EB"/></a:solidFill>
               <a:prstDash val="solid"/>
             </a:ln>
@@ -776,9 +789,9 @@ function buildSummaryProctorChartXml(
   satEndRow: number,
   lang: 'en' | 'fr',
   compactionPoints: any[],
-  saturationPoints: any[]
+  saturationPoints: any[],
+  sheetName: string = 'Fiche_Recap'
 ): string {
-  const sheetName = 'Fiche_Recap';
   const chartTitle = lang === 'fr' ? 'COURBE PROCTOR ET SATURATION' : 'PROCTOR COMPACTION AND SATURATION';
   const ser1Title = lang === 'fr' ? 'Points Proctor (OPM)' : 'Proctor Points (OPM)';
   const ser2Title = lang === 'fr' ? 'Courbe de Saturation (Sr=100%)' : 'Saturation Line (Sr=100%)';
@@ -812,7 +825,7 @@ function buildSummaryProctorChartXml(
           <c:trendline>
             <c:name>${lang === 'fr' ? 'Courbe OPM polynomiale' : 'OPM polynomial fit'}</c:name>
             <c:spPr>
-              <a:ln w="25400" cmpd="s">
+              <a:ln w="25400" cmpd="sng">
                 <a:solidFill><a:srgbClr val="1E40AF"/></a:solidFill>
                 <a:prstDash val="solid"/>
               </a:ln>
@@ -849,7 +862,7 @@ function buildSummaryProctorChartXml(
           <c:order val="1"/>
           <c:tx><c:v>${ser2Title}</c:v></c:tx>
           <c:spPr>
-            <a:ln w="19050" cmpd="s">
+            <a:ln w="19050" cmpd="sng">
               <a:solidFill><a:srgbClr val="DC2626"/></a:solidFill>
               <a:prstDash val="dash"/>
             </a:ln>
@@ -922,6 +935,105 @@ function buildSummaryProctorChartXml(
 </c:chartSpace>`;
 }
 
+function buildSummaryCBRChartXml(
+  startRow: number,
+  endRow: number,
+  lang: 'en' | 'fr',
+  points: any[],
+  sheetName: string = 'Fiche_Recap'
+): string {
+  const chartTitle = 'CBR';
+  const serTitle = 'CBR';
+  const xTitle = 'CBR';
+  const yTitle = lang === 'fr' ? 'Compacité' : 'Compaction';
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:chart>
+    <c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${chartTitle}</a:t></a:r></a:p></c:rich></c:tx></c:title>
+    <c:autoTitleDeleted val="0"/>
+    <c:plotArea>
+      <c:layout/>
+      <c:scatterChart>
+        <c:scatterStyle val="lineMarker"/>
+        <c:ser>
+          <c:idx val="0"/>
+          <c:order val="0"/>
+          <c:tx><c:v>${serTitle}</c:v></c:tx>
+          <c:spPr>
+            <a:ln w="25400" cmpd="sng">
+              <a:solidFill><a:srgbClr val="059669"/></a:solidFill>
+              <a:prstDash val="solid"/>
+            </a:ln>
+          </c:spPr>
+          <c:marker>
+            <c:symbol val="diamond"/>
+            <c:size val="7"/>
+            <c:spPr>
+              <a:solidFill><a:srgbClr val="047857"/></a:solidFill>
+            </c:spPr>
+          </c:marker>
+          <c:xVal>
+            <c:numRef>
+              <c:f>'${sheetName}'!$P$${startRow}:$P$${endRow}</c:f>
+              ${points.length > 0 ? `<c:numCache>
+                <c:formatCode>0.0</c:formatCode>
+                <c:ptCount val="${points.length}"/>
+                ${points.map((p, i) => `<c:pt idx="${i}"><c:v>${p.cbr || 0}</c:v></c:pt>`).join('')}
+              </c:numCache>` : ''}
+            </c:numRef>
+          </c:xVal>
+          <c:yVal>
+            <c:numRef>
+              <c:f>'${sheetName}'!$O$${startRow}:$O$${endRow}</c:f>
+              ${points.length > 0 ? `<c:numCache>
+                <c:formatCode>0.0%</c:formatCode>
+                <c:ptCount val="${points.length}"/>
+                ${points.map((p, i) => `<c:pt idx="${i}"><c:v>${p.comp || 0}</c:v></c:pt>`).join('')}
+              </c:numCache>` : ''}
+            </c:numRef>
+          </c:yVal>
+          <c:smooth val="1"/>
+        </c:ser>
+        <c:axId val="3001"/>
+        <c:axId val="3002"/>
+      </c:scatterChart>
+      <!-- X-Axis (CBR) -->
+      <c:valAx>
+        <c:axId val="3001"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="b"/>
+        <c:majorGridlines/>
+        <c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${xTitle}</a:t></a:r></a:p></c:rich></c:tx></c:title>
+        <c:numFmt formatCode="0.0" sourceLinked="0"/>
+        <c:majorTickMark val="out"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:crossAx val="3002"/>
+        <c:crosses val="autoZero"/>
+      </c:valAx>
+      <!-- Y-Axis (Compacité) -->
+      <c:valAx>
+        <c:axId val="3002"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="l"/>
+        <c:majorGridlines/>
+        <c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${yTitle}</a:t></a:r></a:p></c:rich></c:tx></c:title>
+        <c:numFmt formatCode="0.0%" sourceLinked="0"/>
+        <c:majorTickMark val="out"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:crossAx val="3001"/>
+        <c:crosses val="autoZero"/>
+      </c:valAx>
+    </c:plotArea>
+    <c:legend><c:legendPos val="b"/><c:layout/></c:legend>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
+  </c:chart>
+</c:chartSpace>`;
+}
+
 // -------------------------------------------------------------
 // OpenXML Packaging Helpers for Soil Summary Sheet
 // -------------------------------------------------------------
@@ -976,8 +1088,8 @@ function getSummaryDrawingXml(logos: EmbeddedLogo[]): string {
   // Chart 2: Courbe Proctor & Saturation Anchor
   anchorsXml += `
   <xdr:twoCellAnchor>
-    <xdr:from><xdr:col>16</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>23</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
-    <xdr:to><xdr:col>24</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>43</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+    <xdr:from><xdr:col>16</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>18</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+    <xdr:to><xdr:col>24</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>32</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
     <xdr:graphicFrame macro="">
       <xdr:nvGraphicFramePr>
         <xdr:cNvPr id="3" name="Chart_Proctor"/>
@@ -987,6 +1099,26 @@ function getSummaryDrawingXml(logos: EmbeddedLogo[]): string {
       <a:graphic>
         <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
           <c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rIdChart2"/>
+        </a:graphicData>
+      </a:graphic>
+    </xdr:graphicFrame>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>`;
+
+  // Chart 3: Courbe CBR Anchor
+  anchorsXml += `
+  <xdr:twoCellAnchor>
+    <xdr:from><xdr:col>16</xdr:col><xdr:colOff>30000</xdr:colOff><xdr:row>33</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+    <xdr:to><xdr:col>24</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>48</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+    <xdr:graphicFrame macro="">
+      <xdr:nvGraphicFramePr>
+        <xdr:cNvPr id="4" name="Chart_CBR"/>
+        <xdr:cNvGraphicFramePr/>
+      </xdr:nvGraphicFramePr>
+      <xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>
+      <a:graphic>
+        <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+          <c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rIdChart3"/>
         </a:graphicData>
       </a:graphic>
     </xdr:graphicFrame>
@@ -1006,6 +1138,7 @@ function getSummaryDrawingRelsXml(logos: EmbeddedLogo[]): string {
   });
   rels += `\n  <Relationship Id="rIdChart1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/>`;
   rels += `\n  <Relationship Id="rIdChart2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart2.xml"/>`;
+  rels += `\n  <Relationship Id="rIdChart3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart3.xml"/>`;
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}
@@ -1026,6 +1159,7 @@ function getSummaryContentTypesXml(logos: EmbeddedLogo[]): string {
   <Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>
   <Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>
   <Override PartName="/xl/charts/chart2.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>
+  <Override PartName="/xl/charts/chart3.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>
   <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
   <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
 </Types>`;

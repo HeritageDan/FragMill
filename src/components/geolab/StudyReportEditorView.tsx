@@ -507,10 +507,10 @@ export const StudyReportEditorView: React.FC<Props> = ({
         analyses: sampleAnalyses.length > 0 ? sampleAnalyses : includedAnalyses,
         language: lang,
       });
-      const filename = `Fiche_Recap_${(targetSample.sampleId || 'Sol').replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
+      const filename = `Rapport_Analyses_${(targetSample.sampleId || 'Echantillon').replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
       downloadBlob(blob, filename);
     } catch (err: any) {
-      alert(`Soil Summary export failed: ${err?.message}`);
+      alert(`Analyses Report export failed: ${err?.message}`);
     } finally {
       setIsExporting(null);
       setExportProgress('');
@@ -623,10 +623,10 @@ export const StudyReportEditorView: React.FC<Props> = ({
             onClick={handleExportSoilSummary}
             disabled={isExporting !== null}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold transition shadow-sm disabled:opacity-50"
-            title={lang === 'fr' ? 'Télécharger la Fiche Récapitulative des Sols (Synthèse Multi-Essais)' : 'Download Soil Summary Sheet (.xlsx)'}
+            title={lang === 'fr' ? "Télécharger le rapport d'analyses complet de l'échantillon (.xlsx) avec détails et graphiques" : 'Download complete sample analyses report (.xlsx) with details and charts'}
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-amber-200" />
-            <span>{lang === 'fr' ? 'Fiche Récap (.xlsx)' : 'Soil Summary (.xlsx)'}</span>
+            <span>{lang === 'fr' ? 'Rapport Analyses (.xlsx)' : 'Analyses Report (.xlsx)'}</span>
           </button>
 
           <button

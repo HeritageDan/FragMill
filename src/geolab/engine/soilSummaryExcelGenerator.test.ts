@@ -235,8 +235,10 @@ describe('Soil Summary Excel Generator (Fiche Récapitulative des Sols)', () => 
     const drawingXml = await zip.file('xl/drawings/drawing1.xml')!.async('string');
     expect(drawingXml).toContain('Chart_Granulo');
     expect(drawingXml).toContain('Chart_Proctor');
+    expect(drawingXml).toContain('Chart_CBR');
     expect(drawingXml).toContain('r:id="rIdChart1"');
     expect(drawingXml).toContain('r:id="rIdChart2"');
+    expect(drawingXml).toContain('r:id="rIdChart3"');
     expect(drawingXml).not.toContain('<xdr:pic>');
 
     // Chart 1: Logarithmic PSD Chart
@@ -258,6 +260,13 @@ describe('Soil Summary Excel Generator (Fiche Récapitulative des Sols)', () => 
     expect(chart2Xml).toContain("'Fiche_Recap'!$O$15:$O$19"); // Saturation moisture
     expect(chart2Xml).toContain("'Fiche_Recap'!$M$15:$M$19"); // Saturation dry density
     expect(chart2Xml).toContain('COURBE PROCTOR ET SATURATION');
+
+    // Chart 3: CBR Chart
+    const chart3Xml = await zip.file('xl/charts/chart3.xml')!.async('string');
+    expect(chart3Xml).toContain('<c:scatterChart>');
+    expect(chart3Xml).toContain("'Fiche_Recap'!$P$6:$P$10"); // CBR values
+    expect(chart3Xml).toContain("'Fiche_Recap'!$O$6:$O$10"); // Compaction %
+    expect(chart3Xml).toContain('CBR');
   });
 
   it('supports English language generation', async () => {

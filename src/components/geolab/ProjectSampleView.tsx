@@ -167,7 +167,7 @@ export const ProjectSampleView: React.FC<Props> = ({
       const a = document.createElement('a');
       a.href = url;
       const safeName = (sample.sampleId || 'echantillon').replace(/[^a-zA-Z0-9_-]/g, '_');
-      a.download = `Fiche_Recap_${safeName}.xlsx`;
+      a.download = `Rapport_Analyses_${safeName}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -175,8 +175,8 @@ export const ProjectSampleView: React.FC<Props> = ({
     } catch (err: any) {
       alert(
         language === 'fr'
-          ? `Erreur lors de l'export de la fiche récapitulative : ${err?.message}`
-          : `Error exporting soil summary: ${err?.message}`
+          ? `Erreur lors de l'export du rapport d'analyses : ${err?.message}`
+          : `Error exporting analyses report: ${err?.message}`
       );
     } finally {
       setIsExportingSampleId(null);
@@ -450,16 +450,16 @@ export const ProjectSampleView: React.FC<Props> = ({
                                 className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-semibold rounded shadow transition"
                                 title={
                                   language === 'fr'
-                                    ? 'Télécharger la Fiche Récapitulative Excel (.xlsx) pour cet échantillon (Format Assurance Qualité / Multi-Essais)'
-                                    : 'Download Soil Summary Sheet (.xlsx) for this sample'
+                                    ? "Télécharger le rapport d'analyses complet de cet échantillon (.xlsx) avec détails, formules et graphiques"
+                                    : 'Download complete analyses report (.xlsx) for this sample with details, formulas and charts'
                                 }
                               >
                                 <FileSpreadsheet className="w-3.5 h-3.5 text-amber-200" />
                                 {isExportingSampleId === sample.id
                                   ? '...'
                                   : language === 'fr'
-                                  ? 'Fiche Récap. Sol (.xlsx)'
-                                  : 'Soil Summary (.xlsx)'}
+                                  ? 'Rapport Analyses (.xlsx)'
+                                  : 'Analyses Report (.xlsx)'}
                               </button>
 
                               <button

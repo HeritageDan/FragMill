@@ -136,7 +136,7 @@ export const ReportsListView: React.FC<Props> = ({ language, onSelectAnalysis, o
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Fiche_Recap_${s.sampleId.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
+    a.download = `Rapport_Analyses_${s.sampleId.replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -395,7 +395,7 @@ export const ReportsListView: React.FC<Props> = ({ language, onSelectAnalysis, o
                         </button>
                         <button
                           onClick={(e) => handleDownloadSoilSummary(an, e)}
-                          title={language === 'fr' ? 'Fiche Récapitulative des Sols (.xlsx)' : 'Soil Summary Sheet (.xlsx)'}
+                          title={language === 'fr' ? "Rapport d'analyses de l'échantillon (.xlsx) - Format Assurance Qualité multi-essais" : 'Sample Analyses Report (.xlsx) - Multi-test QA reference format'}
                           className="p-1.5 bg-amber-950 text-amber-400 hover:bg-amber-900 border border-amber-800 rounded transition"
                         >
                           <FileSpreadsheet className="w-3.5 h-3.5 text-amber-300" />

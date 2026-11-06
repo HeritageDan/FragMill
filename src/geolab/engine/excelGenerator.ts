@@ -561,7 +561,7 @@ function buildProctorChartXml(
           <c:trendline>
             <c:name>${lang === 'fr' ? 'Courbe OPM polynomiale' : 'OPM polynomial fit'}</c:name>
             <c:spPr>
-              <a:ln w="25400" cmpd="s">
+              <a:ln w="25400" cmpd="sng">
                 <a:solidFill><a:srgbClr val="1E40AF"/></a:solidFill>
                 <a:prstDash val="solid"/>
               </a:ln>
@@ -599,7 +599,7 @@ function buildProctorChartXml(
           <c:order val="1"/>
           <c:tx><c:v>${ser2Title}</c:v></c:tx>
           <c:spPr>
-            <a:ln w="19050" cmpd="s">
+            <a:ln w="19050" cmpd="sng">
               <a:solidFill>
                 <a:srgbClr val="DC2626"/>
               </a:solidFill>
